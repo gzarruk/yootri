@@ -1,0 +1,1997 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>yootri — Ironman 70.3 Training Planner</title>
+
+<!-- Favicons: SVG for modern browsers, .ico for legacy + the implicit favicon.ico request.
+     Paths are relative because the app is served from the /yootri/ project sub-path. -->
+<link rel="icon" href="favicon.ico" sizes="32x32" />
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+<meta name="theme-color" content="#161826" />
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
+<link rel="stylesheet" href="assets/nocturne.css" />
+
+<style>
+  body {
+    background:
+      radial-gradient(1200px 720px at 88% -180px, color-mix(in srgb, var(--color-accent-900) 70%, transparent), transparent 60%),
+      radial-gradient(1000px 820px at -12% 108%, color-mix(in srgb, black 28%, transparent), transparent 55%),
+      var(--color-bg);
+  }
+
+  .page {
+    padding: 44px clamp(20px, 3vw, 40px) 72px;
+  }
+
+  .back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent);
+    text-decoration: none;
+    margin-bottom: 26px;
+  }
+  .back-link:hover { color: var(--color-text); }
+
+  header { margin-bottom: 26px; }
+  header .kicker { margin-bottom: 12px; }
+  .im-h1 {
+    font-size: 36px;
+    letter-spacing: -0.02em;
+    margin: 0 0 6px;
+    color: var(--color-text);
+  }
+  .im-sub {
+    font-size: 15px;
+    margin: 0;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  }
+
+  /* ---- Plan overview ---- */
+
+  .overview { margin-bottom: 20px; }
+  .ov-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 8px;
+  }
+  .ov-label {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  }
+  .ov-right { display: inline-flex; align-items: center; gap: 14px; }
+  .ov-start {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent);
+  }
+  .ov-start .input {
+    min-height: 30px;
+    padding: 3px 8px;
+    font-size: 12px;
+    width: auto;
+    color-scheme: dark;
+  }
+  .ov-weeks {
+    font-size: 12px;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-text) 68%, transparent);
+  }
+  .ov-weeks b {
+    font-weight: 400;
+    color: var(--color-accent-300);
+    font-family: var(--font-heading);
+  }
+
+  .ov-phases { display: flex; gap: 4px; }
+  .ov-phase {
+    min-width: 0;
+    padding: 9px 12px;
+    border: 0;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-family: var(--font-heading);
+    font-weight: 500;
+    font-size: 12px;
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: color-mix(in srgb, var(--color-surface) 55%, transparent);
+    color: color-mix(in srgb, var(--color-text) 58%, transparent);
+    transition: background 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+  }
+  .ov-phase.active {
+    background: color-mix(in srgb, var(--color-accent) 26%, transparent);
+    color: var(--color-accent-100);
+    box-shadow: inset 0 0 0 1px var(--color-accent);
+  }
+  .ov-phase .name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ov-phase .wk { font-size: 10px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+  .ov-track {
+    margin-top: 10px;
+    height: 6px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-text) 12%, transparent);
+    overflow: hidden;
+  }
+  .ov-fill {
+    height: 100%;
+    background: var(--color-accent);
+    border-radius: 999px;
+    transition: width 0.16s ease;
+  }
+  .ov-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-top: 6px;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--color-text) 52%, transparent);
+  }
+  .ov-foot > span:first-child { white-space: nowrap; }
+  .ov-foot .pos { font-variant-numeric: tabular-nums; }
+  .ov-foot .pos b {
+    font-weight: 400;
+    color: var(--color-accent-300);
+    font-family: var(--font-heading);
+  }
+
+  /* ---- Toolbar ---- */
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 18px;
+  }
+  .wk-nav { display: inline-flex; align-items: center; gap: 8px; }
+  .wk-pos {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1.25;
+    min-width: 140px;
+  }
+  .wk-pos .top {
+    font-size: 13px;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-text) 78%, transparent);
+  }
+  .wk-pos .range {
+    font-size: 11px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--color-text) 48%, transparent);
+  }
+  .im-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .sync-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-text) 58%, transparent);
+  }
+  .sync-status::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-accent) 25%, transparent);
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinning { animation: spin 0.55s linear infinite; }
+  .sync-status.error { color: #e08a6c; }
+  .sync-status.error::before {
+    background: #e08a6c;
+    box-shadow: 0 0 0 3px color-mix(in srgb, #e08a6c 25%, transparent);
+  }
+
+  /* ---- Plan bar ---- */
+
+  .plan-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 14px;
+    margin-bottom: 20px;
+  }
+  .pb-left, .pb-right { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .pb-plan {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  }
+  .pb-plan .input {
+    min-height: 34px;
+    width: auto;
+    min-width: 156px;
+    max-width: 240px;
+    padding: 6px 30px 6px 11px;
+    font-size: 13px;
+  }
+  .account-email {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .account-email i { color: var(--color-accent); font-size: 14px; }
+  .account-note {
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-text) 40%, transparent);
+  }
+
+  /* ---- Summary bar ---- */
+
+  .summary {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    margin-bottom: 16px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-surface) 45%, transparent);
+    overflow-x: auto;
+  }
+  .sum-cell {
+    flex: 1 1 auto;
+    min-width: 108px;
+    padding: 12px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    border-left: 1px solid var(--color-divider);
+  }
+  .sum-cell:first-child { border-left: 0; min-width: 120px; }
+  .sum-cell.wide { flex: 1.4 1 auto; min-width: 148px; gap: 5px; }
+  .sum-label {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap;
+  }
+  .sum-value {
+    font-family: var(--font-heading);
+    font-weight: 400;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+    color: var(--color-text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .sum-value.accent { color: var(--color-accent-300); }
+  .sum-value .sub {
+    font-size: 13px;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  }
+  .sum-meter {
+    height: 4px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-text) 12%, transparent);
+    overflow: hidden;
+    margin-top: 2px;
+  }
+  .sum-meter > div { height: 100%; background: var(--color-accent); }
+
+  /* ---- Weekly board ---- */
+
+  .im-boardwrap { overflow-x: auto; padding-bottom: 4px; }
+  .im-board {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(146px, 1fr));
+    gap: 10px;
+    min-width: 960px;
+  }
+  .im-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    min-height: 360px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-surface) 45%, transparent);
+    transition: border-color 0.12s ease, background 0.12s ease;
+  }
+  .im-col.today {
+    border-color: var(--color-accent);
+    box-shadow: inset 0 0 0 1px var(--color-accent);
+  }
+  .im-col.drag-over {
+    border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 9%, transparent);
+  }
+  .col-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 2px 2px 4px;
+  }
+  .col-head .left { display: inline-flex; align-items: baseline; gap: 6px; }
+  .col-head .day {
+    font-family: var(--font-heading);
+    font-weight: 400;
+    font-size: 13px;
+    color: var(--color-text);
+  }
+  .col-head .date {
+    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-text) 38%, transparent);
+  }
+  .col-head .today-pill {
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
+    border-radius: 999px;
+    padding: 1px 6px;
+    align-self: center;
+  }
+  .col-head .total {
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--color-text) 42%, transparent);
+  }
+
+  .im-card {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 10px 10px 10px 11px;
+    border: 1px solid var(--color-divider);
+    border-left: 3px solid var(--disc-color, var(--color-neutral-500));
+    border-radius: var(--radius-md);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-sm);
+    cursor: grab;
+  }
+  .im-card:hover {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-accent) 42%, transparent), var(--shadow-sm);
+  }
+  .card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .disc-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: calc(var(--radius-md) * 0.75);
+    white-space: nowrap;
+  }
+  .card-acts { display: inline-flex; gap: 2px; flex: none; }
+  .icon-btn {
+    width: 22px;
+    height: 22px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: color-mix(in srgb, var(--color-text) 42%, transparent);
+    cursor: pointer;
+    transition: color 0.12s ease, background 0.12s ease;
+  }
+  .icon-btn.del { color: color-mix(in srgb, var(--color-text) 36%, transparent); }
+  .icon-btn:hover {
+    color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+  }
+  .icon-btn i { font-size: 13px; }
+  .card-focus {
+    font-size: 12.5px;
+    line-height: 1.38;
+    color: color-mix(in srgb, var(--color-text) 84%, transparent);
+  }
+  .card-focus.untitled { color: color-mix(in srgb, var(--color-text) 38%, transparent); }
+  .card-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  }
+  .card-meta span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-variant-numeric: tabular-nums;
+  }
+  .card-desc {
+    font-size: 11px;
+    line-height: 1.45;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  }
+  .card-foot {
+    border-top: 1px solid var(--color-divider);
+    padding-top: 6px;
+    margin-top: 1px;
+  }
+  .done-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    font-size: 11px;
+    color: color-mix(in srgb, var(--color-text) 48%, transparent);
+    border: 0;
+    background: transparent;
+    padding: 0;
+    font-family: var(--font-body);
+    transition: color 0.12s ease;
+  }
+  .done-toggle:hover { color: var(--color-text); }
+  .done-toggle.is-done { color: var(--color-accent-300); }
+  .done-toggle i { font-size: 15px; }
+
+  .rest-zone {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    border: 1px dashed color-mix(in srgb, var(--color-text) 14%, transparent);
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    color: color-mix(in srgb, var(--color-text) 34%, transparent);
+    padding: 12px;
+    min-height: 84px;
+  }
+  .add-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    border: 1px dashed color-mix(in srgb, var(--color-text) 18%, transparent);
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    font-size: 12px;
+    font-family: var(--font-heading);
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.12s ease, color 0.12s ease;
+  }
+  .add-btn:hover { border-color: var(--color-accent); color: var(--color-accent); }
+
+  /* ---- Chart ---- */
+
+  .im-chartcard {
+    margin-top: 22px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-surface) 45%, transparent);
+    padding: 18px 20px;
+  }
+  .chart-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .chart-title {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  }
+  .chart-head .right {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .chart-completed {
+    font-size: 12px;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  }
+  .chart-completed b {
+    font-weight: 400;
+    color: var(--color-accent-300);
+    font-family: var(--font-heading);
+  }
+  .im-chartscroll { position: relative; }
+  .im-chartsvg { width: 100%; height: auto; display: block; }
+  .chart-tip {
+    position: absolute;
+    top: 4px;
+    pointer-events: none;
+    background: var(--color-bg);
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 8px 10px;
+    min-width: 130px;
+    z-index: 5;
+  }
+  .chart-tip .tip-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 4px;
+  }
+  .chart-tip .tip-week {
+    font-family: var(--font-heading);
+    font-weight: 400;
+    font-size: 12px;
+    color: var(--color-text);
+  }
+  .chart-tip .tip-phase {
+    font-size: 10px;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+  }
+  .chart-tip .tip-date {
+    font-size: 10px;
+    color: color-mix(in srgb, var(--color-text) 50%, transparent);
+    margin-bottom: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chart-tip .tip-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 11px;
+    line-height: 1.7;
+  }
+  .chart-tip .tip-row .name {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: color-mix(in srgb, var(--color-text) 72%, transparent);
+  }
+  .chart-tip .tip-row .swatch {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+  }
+  .chart-tip .tip-row .val {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text);
+  }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  .legend-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    padding: 4px 9px;
+    border: 1px solid var(--color-divider);
+    border-radius: 999px;
+    background: transparent;
+    cursor: pointer;
+    color: color-mix(in srgb, var(--color-text) 72%, transparent);
+    font-family: var(--font-body);
+    transition: border-color 0.12s ease, opacity 0.12s ease;
+  }
+  .legend-pill:hover { border-color: var(--color-accent); }
+  .legend-pill .swatch { width: 14px; height: 3px; border-radius: 2px; }
+  .legend-pill .amt { opacity: 0.6; }
+
+  .foot-note {
+    font-size: 12px;
+    line-height: 1.6;
+    margin: 20px 0 0;
+    color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  }
+
+  /* ---- Edit modal ---- */
+
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: color-mix(in srgb, var(--color-neutral-900) 58%, transparent);
+  }
+  .dialog {
+    width: min(460px, 100%);
+    display: flex;
+    flex-direction: column;
+    gap: 13px;
+    padding: 22px;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-lg);
+  }
+  .dialog-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .dialog-head h3 { font-size: 19px; margin: 0; color: var(--color-text); }
+  .dialog .row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .dialog-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 2px;
+  }
+  .dialog-foot .right { display: flex; gap: 8px; }
+  .dialog-foot .del-btn { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+  .dialog-foot .del-btn:hover { color: var(--color-accent); }
+
+  /* ---- Responsive ---- */
+
+  @media (max-width: 680px) {
+    .im-h1 { font-size: 26px; }
+    .im-actions { margin-left: 0; }
+    .im-boardwrap { overflow-x: visible; }
+    .im-board { grid-template-columns: 1fr; min-width: 0; }
+    .im-col { min-height: 0; }
+    .im-chartcard { padding: 16px 12px; }
+    .im-chartscroll { overflow-x: auto; overflow-y: hidden; }
+    .im-chartsvg { min-width: 600px; }
+    .plan-bar { gap: 10px; }
+    .pb-left, .pb-right { width: 100%; justify-content: space-between; }
+    .pb-plan { flex: 1; }
+    .pb-plan .input { flex: 1; max-width: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="page">
+
+    <a class="back-link" href="https://www.gzarruk.com/"><i class="ph ph-arrow-left" aria-hidden="true"></i> gzarruk.com</a>
+
+    <header>
+      <span class="kicker">Season plan</span>
+      <h1 class="im-h1">Ironman 70.3 Training</h1>
+      <p class="im-sub" id="subtitle"></p>
+    </header>
+
+    <div class="plan-bar">
+      <div class="pb-left">
+        <label class="pb-plan">Plan
+          <select class="input" id="plan-select" aria-label="Select plan"></select>
+        </label>
+        <button type="button" class="btn btn-ghost btn-icon" id="plan-new" title="New plan" aria-label="New plan"><i class="ph ph-plus"></i></button>
+        <button type="button" class="btn btn-ghost btn-icon" id="plan-dup" title="Duplicate plan" aria-label="Duplicate plan"><i class="ph ph-copy"></i></button>
+        <button type="button" class="btn btn-ghost btn-icon" id="plan-rename" title="Rename plan" aria-label="Rename plan"><i class="ph ph-pencil-simple"></i></button>
+        <button type="button" class="btn btn-ghost btn-icon" id="plan-delete" title="Delete plan" aria-label="Delete plan"><i class="ph ph-trash"></i></button>
+      </div>
+      <div class="pb-right">
+        <button type="button" class="btn btn-secondary" id="export-btn"><i class="ph ph-download-simple"></i> Export</button>
+        <button type="button" class="btn btn-secondary" id="import-btn"><i class="ph ph-upload-simple"></i> Import</button>
+        <input type="file" id="import-file" accept="application/json,.json" hidden />
+        <span id="account"></span>
+      </div>
+    </div>
+
+    <div class="overview">
+      <div class="ov-row">
+        <span class="ov-label">Plan overview</span>
+        <span class="ov-right">
+          <label class="ov-start">Starts<input type="date" id="start-input" class="input" /></label>
+          <span class="ov-weeks"><b id="total-weeks"></b> weeks</span>
+        </span>
+      </div>
+      <div class="ov-phases" id="phase-timeline"></div>
+      <div class="ov-track"><div class="ov-fill" id="season-fill"></div></div>
+      <div class="ov-foot">
+        <span>Season progress</span>
+        <span class="pos" id="season-pos"></span>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="seg" role="tablist" aria-label="Training phase" id="phase-seg">
+        <label class="seg-opt"><input type="radio" name="phase" value="Base" />Base</label>
+        <label class="seg-opt"><input type="radio" name="phase" value="Build" />Build</label>
+        <label class="seg-opt"><input type="radio" name="phase" value="Peak" />Peak</label>
+        <label class="seg-opt"><input type="radio" name="phase" value="Taper" />Taper</label>
+      </div>
+
+      <div class="wk-nav">
+        <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ph ph-caret-left"></i></button>
+        <span class="wk-pos"><span class="top" id="week-pos"></span><span class="range" id="week-range"></span></span>
+        <button type="button" class="btn btn-secondary btn-icon" id="next-week" aria-label="Next week"><i class="ph ph-caret-right"></i></button>
+      </div>
+
+      <div class="im-actions">
+        <span class="sync-status" id="status"></span>
+        <button type="button" class="btn btn-secondary" id="sync-btn"><i class="ph ph-arrow-clockwise" id="sync-icon"></i> Sync</button>
+        <button type="button" class="btn btn-ghost" id="reset-btn"><i class="ph ph-arrow-counter-clockwise"></i> Reset week</button>
+      </div>
+    </div>
+
+    <div class="summary" id="summary"></div>
+
+    <div class="im-boardwrap">
+      <div class="im-board" id="board"></div>
+    </div>
+
+    <div class="im-chartcard">
+      <div class="chart-head">
+        <span class="chart-title">Season training load</span>
+        <span class="right">
+          <span class="chart-completed" id="chart-completed"></span>
+          <span class="seg" role="group" aria-label="Chart mode" id="chartmode-seg">
+            <label class="seg-opt"><input type="radio" name="chartmode" value="weekly" />Weekly</label>
+            <label class="seg-opt"><input type="radio" name="chartmode" value="cumulative" />Cumulative</label>
+          </span>
+        </span>
+      </div>
+      <div class="im-chartscroll" id="chart-scroll">
+        <svg class="im-chartsvg" id="chart-svg" viewBox="0 0 900 220"></svg>
+        <div class="chart-tip hidden" id="chart-tip"></div>
+      </div>
+      <div class="chart-legend" id="chart-legend"></div>
+    </div>
+
+    <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. The original sample plan stays as the template behind every week (Reset week reveals it).</p>
+
+    <div id="modal-root"></div>
+    <div id="dialog-root"></div>
+  </div>
+
+  <script>
+  'use strict';
+
+  /* =========================================================================
+     Data model — static sample plan. Swap this (and the storage layer below)
+     for a live database/API fetch when wiring real data.
+     ========================================================================= */
+
+  const planData = {
+    Base: { duration: 6, weeks: [
+      { label: 'Base · Week 1', focus: 'Aerobic base', days: [
+        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
+        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
+        { d: 'Tue', disc: 'Swim', focus: 'Technique drills', dur: '0:45', zone: 'Z2' },
+        { d: 'Wed', disc: 'Bike', focus: 'Endurance spin', dur: '1:15', zone: 'Z2' },
+        { d: 'Thu', disc: 'Run', focus: 'Easy aerobic', dur: '0:40', zone: 'Z2' },
+        { d: 'Fri', disc: 'Swim', focus: 'Endurance sets', dur: '1:00', zone: 'Z2–Z3' },
+        { d: 'Sat', disc: 'Bike', focus: 'Long ride', dur: '2:00', zone: 'Z2' },
+        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:10', zone: 'Z2' },
+      ]},
+      { label: 'Base · Week 2', focus: 'Volume build', days: [
+        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
+        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
+        { d: 'Tue', disc: 'Swim', focus: 'Threshold sets', dur: '0:50', zone: 'Z3' },
+        { d: 'Wed', disc: 'Bike', focus: 'Tempo intervals', dur: '1:20', zone: 'Z3' },
+        { d: 'Thu', disc: 'Run', focus: 'Aerobic + strides', dur: '0:45', zone: 'Z2–Z4' },
+        { d: 'Fri', disc: 'Strength', focus: 'Core & stability', dur: '0:40', zone: '—' },
+        { d: 'Sat', disc: 'Bike', focus: 'Long ride', dur: '2:30', zone: 'Z2' },
+        { d: 'Sun', disc: 'Brick', focus: 'Ride + transition run', dur: '1:45', zone: 'Z2–Z3' },
+      ]},
+    ]},
+    Build: { duration: 5, weeks: [
+      { label: 'Build · Week 1', focus: 'Threshold', days: [
+        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
+        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
+        { d: 'Tue', disc: 'Swim', focus: 'VO2 sets', dur: '0:55', zone: 'Z4' },
+        { d: 'Wed', disc: 'Bike', focus: 'Threshold 2×20', dur: '1:30', zone: 'Z4' },
+        { d: 'Thu', disc: 'Run', focus: 'Tempo', dur: '0:55', zone: 'Z3–Z4' },
+        { d: 'Fri', disc: 'Swim', focus: 'Endurance', dur: '1:05', zone: 'Z2' },
+        { d: 'Sat', disc: 'Bike', focus: 'Long ride + efforts', dur: '3:00', zone: 'Z2–Z3' },
+        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:30', zone: 'Z2' },
+      ]},
+      { label: 'Build · Week 2', focus: 'Race specificity', days: [
+        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
+        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
+        { d: 'Tue', disc: 'Swim', focus: 'Race-pace sets', dur: '1:00', zone: 'Z3–Z4' },
+        { d: 'Wed', disc: 'Bike', focus: 'Over-unders', dur: '1:40', zone: 'Z3–Z4' },
+        { d: 'Thu', disc: 'Run', focus: 'Hill repeats', dur: '1:00', zone: 'Z4' },
+        { d: 'Fri', disc: 'Strength', focus: 'Power & durability', dur: '0:40', zone: '—' },
+        { d: 'Sat', disc: 'Brick', focus: 'Long ride + run', dur: '3:30', zone: 'Z2–Z3' },
+        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:40', zone: 'Z2' },
+      ]},
+    ]},
+    Peak: { duration: 3, weeks: [
+      { label: 'Peak · Week 1', focus: 'Race simulation', days: [
+        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
+        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
+        { d: 'Tue', disc: 'Swim', focus: 'Race simulation', dur: '1:10', zone: 'Z3' },
+        { d: 'Wed', disc: 'Bike', focus: 'Race-pace hold', dur: '2:00', zone: 'Z3' },
+        { d: 'Thu', disc: 'Run', focus: 'Tempo', dur: '1:05', zone: 'Z3–Z4' },
+        { d: 'Fri', disc: 'Swim', focus: 'Sharpen', dur: '0:50', zone: 'Z2' },
+        { d: 'Sat', disc: 'Brick', focus: '70.3 simulation', dur: '4:00', zone: 'Z2–Z3' },
+        { d: 'Sun', disc: 'Run', focus: 'Long steady', dur: '1:45', zone: 'Z2' },
+      ]},
+    ]},
+    Taper: { duration: 2, weeks: [
+      { label: 'Taper · Race week', focus: 'Freshen & sharpen', days: [
+        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
+        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
+        { d: 'Tue', disc: 'Swim', focus: 'Sharpen', dur: '0:35', zone: 'Z2–Z3' },
+        { d: 'Wed', disc: 'Bike', focus: 'Openers', dur: '0:50', zone: 'Z2–Z4' },
+        { d: 'Thu', disc: 'Run', focus: 'Easy + strides', dur: '0:30', zone: 'Z2' },
+        { d: 'Fri', disc: 'Rest', focus: 'Travel & prep', dur: '—', zone: '—' },
+        { d: 'Sat', disc: 'Bike', focus: 'Short openers', dur: '0:30', zone: 'Z2–Z3' },
+        { d: 'Sun', disc: 'Run', focus: 'Race-day shakeout', dur: '0:20', zone: 'Z1–Z2' },
+      ]},
+    ]},
+  };
+
+  const DISC = {
+    Swim: { icon: 'ph-person-simple-swim', color: '#5fb1cb' },
+    Bike: { icon: 'ph-bicycle', color: '#d8a75f' },
+    Run: { icon: 'ph-person-simple-run', color: '#e08a6c' },
+    Strength: { icon: 'ph-barbell', color: '#9aa0ba' },
+    Yoga: { icon: 'ph-flower-lotus', color: '#84c08f' },
+    Brick: { icon: 'ph-link-simple', color: '#b884d6' },
+    Rest: { icon: 'ph-bed', color: '#7b8299' },
+  };
+
+  const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const PHASES = ['Base', 'Build', 'Peak', 'Taper'];
+  const STORE = 'im703_v2';
+  const LEGACY = 'im703_v1';
+  const AXIS_GREY = '#b2b6ca';
+
+  /* ---- Storage: localStorage is the always-on working store. When signed in,
+     each plan also syncs to Firestore (see the module script at the end). ---- */
+
+  const load = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
+  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  const remove = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
+
+  /* ---- Plan helpers ---- */
+
+  const phaseWeeks = (p) => planData[p].duration || planData[p].weeks.length;
+  const template = (p, w) => { const ws = planData[p].weeks; return ws[w % ws.length]; };
+  const clampWeek = (p, w) => Math.max(0, Math.min(Number(w) || 0, phaseWeeks(p) - 1));
+  const freshSessions = (p, w) => template(p, w).days.map((s, i) => ({ ...s, day: s.d, id: p + '-' + w + '-' + i }));
+  const sessionsFor = (p, w) => {
+    const saved = plan && plan.weeks ? plan.weeks[p + '_' + w] : null;
+    return Array.isArray(saved) && saved.length ? saved.map((s) => ({ ...s })) : freshSessions(p, w);
+  };
+  const totalWeeks = () => PHASES.reduce((a, p) => a + phaseWeeks(p), 0);
+  const weeksBefore = (phase) => PHASES.slice(0, PHASES.indexOf(phase)).reduce((a, p) => a + phaseWeeks(p), 0);
+  const phaseAt = (ai) => {
+    let acc = 0;
+    for (const p of PHASES) { const n = phaseWeeks(p); if (ai < acc + n) return [p, ai - acc]; acc += n; }
+    return [PHASES[PHASES.length - 1], 0];
+  };
+
+  /* ---- Date & duration helpers ---- */
+
+  const parseISO = (s) => { const p = String(s || '').split('-').map(Number); return new Date(p[0], (p[1] || 1) - 1, p[2] || 1); };
+  const toISO = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  const fmtDate = (d) => d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const defaultStart = () => { const d = new Date(); const since = (d.getDay() + 6) % 7; return toISO(addDays(d, -since)); };
+
+  const durToMin = (x) => {
+    if (!x || x === '—') return 0;
+    const t = String(x).trim();
+    if (t.includes(':')) { const p = t.split(':'); return (Number(p[0]) || 0) * 60 + (Number(p[1]) || 0); }
+    return Number(t) || 0;
+  };
+  const fmtTotal = (mins) => {
+    if (!mins) return '';
+    const h = Math.floor(mins / 60), m = mins % 60;
+    return h ? (h + 'h' + (m ? ' ' + m + 'm' : '')) : (m + 'm');
+  };
+
+  const esc = (v) => String(v ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  /* =========================================================================
+     Plans — a named plan is the unit of persistence. `planData` (the template
+     above) stays pristine; a plan stores only the weeks you've edited as an
+     overlay, plus done / start / view / chart prefs. A new plan starts empty,
+     so it renders as the pure template until you change something, and
+     "Reset week" just drops that week's overlay to reveal the template again.
+     ========================================================================= */
+
+  const uid4 = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  const now = () => Date.now();
+  const planKey = (id) => STORE + '_plan_' + id;
+  const loadIndex = () => load(STORE + '_plans') || [];
+  const saveIndex = (ix) => save(STORE + '_plans', ix);
+  const loadPlanLocal = (id) => load(planKey(id));
+  const savePlanLocal = (p) => save(planKey(p.id), p);
+  const currentId = () => load(STORE + '_current');
+  const setCurrentId = (id) => save(STORE + '_current', id);
+
+  let plans = [];   // index: [{ id, name }]
+  let plan = null;  // the current plan object
+
+  const blankPlan = (name) => ({
+    id: 'p-' + uid4(), name: name || 'My plan', start: defaultStart(),
+    weeks: {}, done: {}, chartmode: 'weekly', charthidden: {},
+    view: { phase: 'Base', week: 0 }, updatedAt: now(),
+  });
+
+  // One-time migration of the older single-plan im703_v1_* keys into a plan.
+  function migrateLegacy() {
+    const weeks = {};
+    for (const p of PHASES) for (let w = 0; w < phaseWeeks(p); w++) {
+      const v = load(LEGACY + '_week_' + p + '_' + w);
+      if (Array.isArray(v) && v.length) weeks[p + '_' + w] = v;
+    }
+    const view = load(LEGACY + '_view') || {};
+    return {
+      id: 'p-' + uid4(), name: 'My plan',
+      start: load(LEGACY + '_start') || defaultStart(),
+      weeks, done: load(LEGACY + '_done') || {},
+      chartmode: load(LEGACY + '_chartmode') || 'weekly',
+      charthidden: load(LEGACY + '_charthidden') || {},
+      view: { phase: (view.phase && planData[view.phase]) ? view.phase : 'Base', week: Number(view.week) || 0 },
+      updatedAt: now(),
+    };
+  }
+
+  function hasLegacy() {
+    if (load(LEGACY + '_done') || load(LEGACY + '_view') || load(LEGACY + '_start')) return true;
+    for (const p of PHASES) for (let w = 0; w < phaseWeeks(p); w++) if (load(LEGACY + '_week_' + p + '_' + w)) return true;
+    return false;
+  }
+
+  function ensurePlans() {
+    plans = loadIndex();
+    if (!plans.length) {
+      const p = hasLegacy() ? migrateLegacy() : blankPlan('My plan');
+      savePlanLocal(p);
+      plans = [{ id: p.id, name: p.name }];
+      saveIndex(plans);
+      setCurrentId(p.id);
+    }
+    let cur = loadPlanLocal(currentId());
+    if (!cur) { cur = loadPlanLocal(plans[0].id); setCurrentId(plans[0].id); }
+    return cur;
+  }
+
+  /* ---- Working state: UI flags + a live mirror of the current plan ---- */
+
+  const state = {
+    phase: 'Base', week: 0, sessions: [],
+    done: {}, start: defaultStart(),
+    chartMode: 'weekly', chartHidden: {},
+    dragId: null, editingId: null, hoverIdx: null,
+    status: 'Saved on this device',
+  };
+
+  // Copy a plan's persistent fields into the working state.
+  function adoptPlan(p) {
+    plan = p;
+    const vw = p.view || {};
+    state.phase = (vw.phase && planData[vw.phase]) ? vw.phase : 'Base';
+    state.week = clampWeek(state.phase, vw.week);
+    state.start = p.start || defaultStart();
+    state.done = p.done || {};
+    state.chartMode = p.chartmode || 'weekly';
+    state.chartHidden = p.charthidden || {};
+    state.sessions = sessionsFor(state.phase, state.week);
+    state.dragId = null; state.editingId = null; state.hoverIdx = null;
+  }
+
+  // Fold the working state back into the current plan, persist, and sync.
+  function persistPlan() {
+    plan.start = state.start;
+    plan.done = state.done;
+    plan.chartmode = state.chartMode;
+    plan.charthidden = state.chartHidden;
+    plan.view = { phase: state.phase, week: state.week };
+    plan.updatedAt = now();
+    savePlanLocal(plan);
+    schedulePush();
+  }
+
+  const setWeekSessions = (p, w, sessions) => { plan.weeks[p + '_' + w] = sessions; };
+  const clearWeekSessions = (p, w) => { delete plan.weeks[p + '_' + w]; };
+
+  adoptPlan(ensurePlans());
+
+  /* ---- DOM refs ---- */
+
+  const $ = (id) => document.getElementById(id);
+  const els = {
+    subtitle: $('subtitle'), startInput: $('start-input'), totalWeeks: $('total-weeks'),
+    timeline: $('phase-timeline'), seasonFill: $('season-fill'), seasonPos: $('season-pos'),
+    phaseSeg: $('phase-seg'), prevWeek: $('prev-week'), nextWeek: $('next-week'),
+    weekPos: $('week-pos'), weekRange: $('week-range'),
+    status: $('status'), syncBtn: $('sync-btn'), syncIcon: $('sync-icon'), resetBtn: $('reset-btn'),
+    summary: $('summary'), board: $('board'),
+    chartCompleted: $('chart-completed'), chartmodeSeg: $('chartmode-seg'),
+    chartScroll: $('chart-scroll'), chartSvg: $('chart-svg'), chartTip: $('chart-tip'),
+    chartLegend: $('chart-legend'), modalRoot: $('modal-root'), dialogRoot: $('dialog-root'),
+    planSelect: $('plan-select'), planNew: $('plan-new'), planDup: $('plan-dup'),
+    planRename: $('plan-rename'), planDelete: $('plan-delete'),
+    exportBtn: $('export-btn'), importBtn: $('import-btn'), importFile: $('import-file'),
+    account: $('account'),
+  };
+
+  /* =========================================================================
+     Rendering
+     ========================================================================= */
+
+  function renderHeader() {
+    els.subtitle.textContent = state.phase + ' · Week ' + (state.week + 1) + ' · ' + template(state.phase, state.week).focus;
+  }
+
+  function renderOverview() {
+    const N = totalWeeks();
+    els.startInput.value = state.start;
+    els.totalWeeks.textContent = N;
+
+    els.timeline.innerHTML = PHASES.map((p) => {
+      const w = phaseWeeks(p);
+      return '<button type="button" class="ov-phase' + (p === state.phase ? ' active' : '') + '"' +
+        ' data-phase="' + p + '" style="flex: ' + w + ' 1 0;">' +
+        '<span class="name">' + p + '</span><span class="wk">' + w + ' wk</span></button>';
+    }).join('');
+
+    const abs = weeksBefore(state.phase) + state.week + 1;
+    const pct = Math.round((abs / N) * 100);
+    els.seasonFill.style.width = pct + '%';
+    els.seasonPos.innerHTML = 'Week <b>' + abs + '</b> of ' + N + ' · ' + pct + '%';
+  }
+
+  function renderToolbar() {
+    els.phaseSeg.querySelectorAll('input[name="phase"]').forEach((r) => { r.checked = r.value === state.phase; });
+    els.weekPos.textContent = 'Week ' + (state.week + 1) + ' of ' + phaseWeeks(state.phase);
+    const wkMon = addDays(parseISO(state.start), (weeksBefore(state.phase) + state.week) * 7);
+    els.weekRange.textContent = fmtDate(wkMon) + ' – ' + fmtDate(addDays(wkMon, 6));
+  }
+
+  function renderStatus() {
+    els.status.textContent = state.status;
+  }
+
+  function renderSummary() {
+    const { sessions, done } = state;
+    const durOf = (s) => durToMin(s.dur);
+    const workouts = sessions.filter((s) => durOf(s) > 0);
+    const totalMin = sessions.reduce((a, s) => a + durOf(s), 0);
+    const discMin = (name) => sessions.filter((s) => s.disc === name).reduce((a, s) => a + durOf(s), 0);
+    const doneWork = workouts.filter((s) => done[s.id]).length;
+    const pct = workouts.length ? Math.round((doneWork / workouts.length) * 100) : 0;
+
+    const cell = (label, value, opts = {}) =>
+      '<div class="sum-cell' + (opts.wide ? ' wide' : '') + '">' +
+      '<span class="sum-label">' + label + '</span>' +
+      '<span class="sum-value' + (opts.accent ? ' accent' : '') + '">' + value + '</span>' +
+      (opts.meter != null ? '<div class="sum-meter"><div style="width: ' + opts.meter + '%;"></div></div>' : '') +
+      '</div>';
+
+    const icon = (name) => '<i class="ph ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
+
+    els.summary.innerHTML =
+      cell('Total volume', fmtTotal(totalMin) || '0m', { accent: true }) +
+      cell('Sessions', workouts.length) +
+      cell(icon('Swim'), fmtTotal(discMin('Swim')) || '—') +
+      cell(icon('Bike'), fmtTotal(discMin('Bike') + Math.round(discMin('Brick') / 2)) || '—') +
+      cell(icon('Run'), fmtTotal(discMin('Run') + Math.round(discMin('Brick') / 2)) || '—') +
+      cell('Completed', doneWork + ' / ' + workouts.length + ' <span class="sub">· ' + pct + '%</span>', { wide: true, meter: pct });
+  }
+
+  function sessionCardHTML(s) {
+    const meta = DISC[s.disc] || {};
+    const color = meta.color || 'var(--color-neutral-500)';
+    const hasTitle = !!(s.focus && s.focus.trim());
+    const isDone = !!state.done[s.id];
+    const zone = s.zone || '';
+    return (
+      '<div class="im-card" draggable="true" data-id="' + esc(s.id) + '" style="--disc-color: ' + color + ';">' +
+        '<div class="card-top">' +
+          '<span class="disc-tag" style="background: color-mix(in srgb, ' + color + ' 20%, transparent); color: color-mix(in srgb, ' + color + ' 82%, white);">' +
+            '<i class="ph ' + (meta.icon || 'ph-circle') + '"></i>' + esc(s.disc) + '</span>' +
+          '<span class="card-acts">' +
+            '<button type="button" class="icon-btn" data-act="edit" data-id="' + esc(s.id) + '" title="Edit session"><i class="ph ph-pencil-simple"></i></button>' +
+            '<button type="button" class="icon-btn del" data-act="delete" data-id="' + esc(s.id) + '" title="Delete session"><i class="ph ph-trash"></i></button>' +
+          '</span>' +
+        '</div>' +
+        '<div class="card-focus' + (hasTitle ? '' : ' untitled') + '">' + (hasTitle ? esc(s.focus) : 'Untitled session') + '</div>' +
+        '<div class="card-meta">' +
+          '<span><i class="ph ph-clock"></i>' + esc(s.dur) + '</span>' +
+          (zone ? '<span><i class="ph ph-gauge"></i>' + esc(zone) + '</span>' : '') +
+        '</div>' +
+        (s.desc && s.desc.trim() ? '<div class="card-desc">' + esc(s.desc) + '</div>' : '') +
+        '<div class="card-foot">' +
+          (isDone
+            ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ph ph-check-circle"></i>Done</button>'
+            : '<button type="button" class="done-toggle" data-act="done" data-id="' + esc(s.id) + '"><i class="ph ph-circle"></i>Mark done</button>') +
+        '</div>' +
+      '</div>'
+    );
+  }
+
+  function renderBoard() {
+    const startDate = parseISO(state.start);
+    const weekStart0 = weeksBefore(state.phase) + state.week;
+    const todayISO = toISO(new Date());
+
+    els.board.innerHTML = DAYS.map((day, di) => {
+      const date = addDays(startDate, weekStart0 * 7 + di);
+      const isToday = toISO(date) === todayISO;
+      const dayItems = state.sessions.filter((s) => s.day === day);
+      const mins = dayItems.reduce((a, s) => a + durToMin(s.dur), 0);
+      return (
+        '<div class="im-col' + (isToday ? ' today' : '') + '" data-day="' + day + '">' +
+          '<div class="col-head">' +
+            '<span class="left"><span class="day">' + day + '</span><span class="date">' + fmtDate(date) + '</span>' +
+            (isToday ? '<span class="today-pill">Today</span>' : '') + '</span>' +
+            '<span class="total">' + fmtTotal(mins) + '</span>' +
+          '</div>' +
+          dayItems.map(sessionCardHTML).join('') +
+          (dayItems.length === 0 ? '<div class="rest-zone">Rest day — drag or add a session</div>' : '') +
+          '<button type="button" class="add-btn" data-day="' + day + '"><i class="ph ph-plus"></i>Add session</button>' +
+        '</div>'
+      );
+    }).join('');
+  }
+
+  /* ---- Chart ---- */
+
+  const SPORTS = ['Swim', 'Bike', 'Run', 'Strength', 'Yoga', 'Brick'];
+  let chartGeo = null;   // geometry + values cached for hover rendering
+  let chartData = null;
+
+  // The chart draws in user units that map 1:1 to CSS pixels, so labels and strokes keep
+  // their intended size at any page width instead of scaling with the viewBox. Below 900
+  // the viewBox stays put and the SVG scales down, as the mobile scroll behaviour expects.
+  function chartWidth() {
+    return Math.max(900, Math.round(els.chartScroll.clientWidth) || 900);
+  }
+
+  function computeChart() {
+    const N = totalWeeks();
+    const wmins = [];
+    let compMin = 0, planMin = 0;
+    for (let ai = 0; ai < N; ai++) {
+      const [p, w] = phaseAt(ai);
+      const days = sessionsFor(p, w);
+      const by = {};
+      let tot = 0;
+      for (const s of days) {
+        const m = durToMin(s.dur);
+        tot += m; by[s.disc] = (by[s.disc] || 0) + m; planMin += m;
+        if (state.done[s.id]) compMin += m;
+      }
+      wmins.push({ tot, by });
+    }
+
+    const cumulative = state.chartMode === 'cumulative';
+    const hidden = state.chartHidden || {};
+    const roll = (getW) => {
+      if (!cumulative) return wmins.map((_, i) => getW(i));
+      let a = 0;
+      return wmins.map((_, i) => { a += getW(i); return a; });
+    };
+    const totalVals = roll((i) => wmins[i].tot);
+    const sportSeason = {}, sportVals = {};
+    SPORTS.forEach((name) => {
+      sportSeason[name] = wmins.reduce((a, x) => a + (x.by[name] || 0), 0);
+      sportVals[name] = roll((i) => wmins[i].by[name] || 0);
+    });
+
+    let vis = [];
+    if (!hidden.Total) vis = vis.concat(totalVals);
+    SPORTS.forEach((name) => { if (sportSeason[name] > 0 && !hidden[name]) vis = vis.concat(sportVals[name]); });
+    const rawMax = Math.max(60, ...vis);
+    const stepsMin = [15, 30, 60, 120, 180, 300, 600, 900, 1800, 3600];
+    const yStep = stepsMin.find((s) => rawMax / s <= 5) || 3600;
+    const maxY = Math.max(yStep, Math.ceil(rawMax / yStep) * yStep);
+
+    const CpL = 54, CpR = 14, CpT = 12, CpB = 34;
+    const W = chartWidth();
+    const plotW = W - CpL - CpR, plotH = 220 - CpT - CpB;
+    const xAt = (i) => CpL + (N > 1 ? (i * plotW) / (N - 1) : plotW / 2);
+    const yAt = (v) => CpT + plotH * (1 - v / maxY);
+
+    chartGeo = { CpL, plotW, N, W, xAt, yAt };
+    chartData = { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep };
+    return { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep, W, xAt, yAt };
+  }
+
+  function renderChart() {
+    const c = computeChart();
+    const { N, hidden, totalVals, sportVals, sportSeason, W, xAt, yAt, maxY, yStep } = c;
+    const baseY = yAt(0).toFixed(1);
+    const rightX = W - 14;
+    els.chartSvg.setAttribute('viewBox', '0 0 ' + W + ' 220');
+    const hourLabel = (v) => (v === 0 ? '0' : (v % 60 === 0 ? (v / 60) + 'h' : (v / 60).toFixed(1) + 'h'));
+    const ptsArr = (arr) => arr.map((v, i) => xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1)).join(' ');
+    const faint = 'color-mix(in srgb, var(--color-text) 8%, transparent)';
+    const tickCol = 'color-mix(in srgb, var(--color-text) 48%, transparent)';
+    const axisCol = 'color-mix(in srgb, var(--color-text) 22%, transparent)';
+
+    let svg = '';
+
+    // Y gridlines + ticks + labels (labels are real <text> nodes with a solid fill)
+    for (let v = 0; v <= maxY + 0.5; v += yStep) {
+      const y = yAt(v).toFixed(1);
+      svg += '<line x1="54" x2="' + rightX + '" y1="' + y + '" y2="' + y + '" style="stroke: ' + faint + ';" stroke-width="1"/>';
+      svg += '<line x1="49" x2="54" y1="' + y + '" y2="' + y + '" style="stroke: ' + tickCol + ';" stroke-width="1"/>';
+      svg += '<text x="45" y="' + y + '" text-anchor="end" dominant-baseline="middle" font-size="11" fill="' + AXIS_GREY + '">' + hourLabel(v) + '</text>';
+    }
+
+    // Axes
+    svg += '<line x1="54" x2="54" y1="12" y2="' + baseY + '" style="stroke: ' + axisCol + ';" stroke-width="1"/>';
+    svg += '<line x1="54" x2="' + rightX + '" y1="' + baseY + '" y2="' + baseY + '" style="stroke: ' + axisCol + ';" stroke-width="1"/>';
+    svg += '<text x="15" y="103" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 15 103)" font-size="11" style="fill: color-mix(in srgb, var(--color-text) 55%, transparent);">Time (hours)</text>';
+
+    // Phase boundaries
+    let acc = 0;
+    for (const p of PHASES) {
+      if (acc > 0 && acc < N) {
+        const x = xAt(acc).toFixed(1);
+        svg += '<line x1="' + x + '" x2="' + x + '" y1="12" y2="' + baseY + '" style="stroke: color-mix(in srgb, var(--color-text) 9%, transparent);" stroke-width="1"/>';
+      }
+      acc += phaseWeeks(p);
+    }
+
+    // Current-week marker
+    const curX = xAt(weeksBefore(state.phase) + state.week).toFixed(1);
+    svg += '<line x1="' + curX + '" x2="' + curX + '" y1="12" y2="' + baseY + '" style="stroke: var(--color-accent);" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>';
+
+    // X ticks + week-number labels
+    const tickBot = (yAt(0) + 4).toFixed(1);
+    for (let i = 0; i < N; i++) {
+      const x = xAt(i).toFixed(1);
+      svg += '<line x1="' + x + '" x2="' + x + '" y1="' + baseY + '" y2="' + tickBot + '" style="stroke: color-mix(in srgb, var(--color-text) 45%, transparent);" stroke-width="1"/>';
+      svg += '<text x="' + x + '" y="203" text-anchor="middle" font-size="10.5" fill="' + AXIS_GREY + '">' + (i + 1) + '</text>';
+    }
+    svg += '<text x="' + ((54 + rightX) / 2).toFixed(1) + '" y="217" text-anchor="middle" font-size="11" style="fill: color-mix(in srgb, var(--color-text) 55%, transparent);">Week</text>';
+
+    // Series polylines
+    SPORTS.forEach((name) => {
+      if (sportSeason[name] > 0 && !hidden[name]) {
+        svg += '<polyline points="' + ptsArr(sportVals[name]) + '" fill="none" style="stroke: ' + DISC[name].color + ';" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>';
+      }
+    });
+    if (!hidden.Total) {
+      svg += '<polyline points="' + ptsArr(totalVals) + '" fill="none" style="stroke: var(--color-accent);" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>';
+    }
+
+    svg += '<g id="hover-g"></g>';
+    els.chartSvg.innerHTML = svg;
+
+    // Header stats
+    els.chartCompleted.innerHTML =
+      'Completed <b>' + (fmtTotal(c.compMin) || '0m') + '</b> / ' + (fmtTotal(c.planMin) || '0m') +
+      ' · ' + (c.planMin ? Math.round((c.compMin / c.planMin) * 100) : 0) + '%';
+    els.chartmodeSeg.querySelectorAll('input[name="chartmode"]').forEach((r) => { r.checked = r.value === state.chartMode; });
+
+    // Legend
+    let legend =
+      '<button type="button" class="legend-pill" data-series="Total" style="opacity: ' + (hidden.Total ? '0.4' : '1') + ';">' +
+      '<span class="swatch" style="background: var(--color-accent);"></span>Total <span class="amt">' + (fmtTotal(c.planMin) || '0m') + '</span></button>';
+    SPORTS.forEach((name) => {
+      if (sportSeason[name] > 0) {
+        legend += '<button type="button" class="legend-pill" data-series="' + name + '" style="opacity: ' + (hidden[name] ? '0.4' : '1') + ';">' +
+          '<span class="swatch" style="background: ' + DISC[name].color + ';"></span>' + name +
+          ' <span class="amt">' + fmtTotal(sportSeason[name]) + '</span></button>';
+      }
+    });
+    els.chartLegend.innerHTML = legend;
+
+    renderHover();
+  }
+
+  function renderHover() {
+    const g = els.chartSvg.querySelector('#hover-g');
+    const hi = state.hoverIdx;
+    if (!g || !chartGeo || !chartData) return;
+    if (hi == null || hi < 0 || hi >= chartGeo.N) {
+      g.innerHTML = '';
+      els.chartTip.classList.add('hidden');
+      return;
+    }
+    const { xAt, yAt, N, W } = chartGeo;
+    const { hidden, totalVals, sportVals, sportSeason } = chartData;
+    const x = xAt(hi).toFixed(1);
+    const baseY = yAt(0).toFixed(1);
+
+    let inner = '<line x1="' + x + '" x2="' + x + '" y1="12" y2="' + baseY + '" style="stroke: color-mix(in srgb, var(--color-text) 45%, transparent);" stroke-width="1"/>';
+    const rows = [];
+    if (!hidden.Total) {
+      rows.push({ name: 'Total', color: 'var(--color-accent)', val: fmtTotal(totalVals[hi]) || '0' });
+      inner += '<circle cx="' + x + '" cy="' + yAt(totalVals[hi]).toFixed(1) + '" r="3.2" style="fill: var(--color-accent); stroke: var(--color-bg);" stroke-width="1.5"/>';
+    }
+    SPORTS.forEach((name) => {
+      if (sportSeason[name] > 0 && !hidden[name]) {
+        const v = sportVals[name][hi];
+        rows.push({ name, color: DISC[name].color, val: fmtTotal(v) || '0' });
+        inner += '<circle cx="' + x + '" cy="' + yAt(v).toFixed(1) + '" r="3.2" style="fill: ' + DISC[name].color + '; stroke: var(--color-bg);" stroke-width="1.5"/>';
+      }
+    });
+    g.innerHTML = inner;
+
+    const hMon = addDays(parseISO(state.start), hi * 7);
+    els.chartTip.innerHTML =
+      '<div class="tip-head"><span class="tip-week">Week ' + (hi + 1) + '</span><span class="tip-phase">' + phaseAt(hi)[0] + '</span></div>' +
+      '<div class="tip-date">' + fmtDate(hMon) + ' – ' + fmtDate(addDays(hMon, 6)) + '</div>' +
+      rows.map((r) =>
+        '<div class="tip-row"><span class="name"><span class="swatch" style="background: ' + r.color + ';"></span>' + r.name + '</span>' +
+        '<span class="val">' + r.val + '</span></div>').join('');
+    els.chartTip.style.left = ((xAt(hi) / W) * 100).toFixed(2) + '%';
+    els.chartTip.style.transform = 'translateX(' + (hi <= 1 ? '0' : (hi >= N - 2 ? '-100%' : '-50%')) + ')';
+    els.chartTip.classList.remove('hidden');
+  }
+
+  /* ---- Edit modal ---- */
+
+  function renderModal() {
+    const id = state.editingId;
+    if (id == null) { els.modalRoot.innerHTML = ''; return; }
+    const s = state.sessions.find((x) => x.id === id);
+    if (!s) { els.modalRoot.innerHTML = ''; return; }
+    const opts = Object.keys(DISC).map((d) =>
+      '<option value="' + d + '"' + (d === s.disc ? ' selected' : '') + '>' + d + '</option>').join('');
+    els.modalRoot.innerHTML =
+      '<div class="modal-backdrop" id="modal-backdrop">' +
+        '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">' +
+          '<div class="dialog-head">' +
+            '<h3 id="dialog-title">Edit session</h3>' +
+            '<button type="button" class="btn btn-icon btn-ghost" data-act="cancel" aria-label="Close"><i class="ph ph-x"></i></button>' +
+          '</div>' +
+          '<div class="field"><label for="ed-disc">Discipline</label><select class="input" id="ed-disc">' + opts + '</select></div>' +
+          '<div class="field"><label for="ed-focus">Title</label><input type="text" class="input" id="ed-focus" value="' + esc(s.focus || '') + '" placeholder="e.g. Endurance spin" /></div>' +
+          '<div class="row-2">' +
+            '<div class="field"><label for="ed-dur">Duration</label><input type="text" class="input" id="ed-dur" value="' + esc(s.dur || '') + '" placeholder="1:00 or 45" /></div>' +
+            '<div class="field"><label for="ed-zone">Intensity</label><input type="text" class="input" id="ed-zone" value="' + esc(s.zone || '') + '" placeholder="Z2" /></div>' +
+          '</div>' +
+          '<div class="field"><label for="ed-desc">Description</label><textarea class="input" id="ed-desc" placeholder="Sets, cues, notes…">' + esc(s.desc || '') + '</textarea></div>' +
+          '<div class="dialog-foot">' +
+            '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ph ph-trash"></i> Delete</button>' +
+            '<span class="right">' +
+              '<button type="button" class="btn btn-secondary" data-act="cancel">Cancel</button>' +
+              '<button type="button" class="btn btn-primary" data-act="save">Save changes</button>' +
+            '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    els.modalRoot.querySelector('#ed-focus')?.focus();
+  }
+
+  function renderAll() {
+    renderHeader();
+    renderOverview();
+    renderToolbar();
+    renderStatus();
+    renderSummary();
+    renderBoard();
+    renderChart();
+  }
+
+  /* =========================================================================
+     State transitions
+     ========================================================================= */
+
+  function select(phase, wi) {
+    state.phase = phase;
+    state.week = clampWeek(phase, wi);
+    state.sessions = sessionsFor(state.phase, state.week);
+    state.dragId = null;
+    persistPlan();
+    renderAll();
+  }
+
+  function persistSessions(sessions) {
+    state.sessions = sessions;
+    setWeekSessions(state.phase, state.week, sessions);
+    persistPlan();
+    renderSummary();
+    renderBoard();
+    renderChart();
+  }
+
+  /* ---- Status ---- */
+
+  const timeStr = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  function setStatus(text, isError) {
+    state.status = text;
+    els.status.classList.toggle('error', !!isError);
+    renderStatus();
+  }
+
+  /* =========================================================================
+     Cloud sync bridge — talks to the optional Firebase module (window.imCloud).
+     Everything is guarded, so the planner works fully with no cloud at all.
+     Strategy: last-write-wins by updatedAt; localStorage is never blocked on
+     the network.
+     ========================================================================= */
+
+  let authUser = null;
+  let pushTimer = null;
+
+  const cloudReady = () => !!(window.imCloud && window.imCloud.configured);
+
+  function schedulePush() {
+    if (!cloudReady() || !authUser) return;
+    setStatus('Saving…');
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => pushPlan(plan), 900);
+  }
+  async function pushPlan(p) {
+    if (!cloudReady() || !authUser) return;
+    try { await window.imCloud.savePlan(p); setStatus('Synced ' + timeStr()); }
+    catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
+  }
+  async function cloudDelete(id) {
+    if (!cloudReady() || !authUser) return;
+    try { await window.imCloud.deletePlan(id); } catch (e) { console.error(e); }
+  }
+
+  // Union local + cloud plans by id; newer updatedAt wins. Pull cloud→local,
+  // then push anything the cloud is missing or that changed locally.
+  function mergeCloudPlans(cloudPlans) {
+    const idx = {};
+    plans.forEach((e) => { idx[e.id] = e; });
+    const cloudById = {};
+    cloudPlans.forEach((cp) => { if (cp && cp.id) cloudById[cp.id] = cp; });
+
+    cloudPlans.forEach((cp) => {
+      if (!cp || !cp.id) return;
+      const lp = loadPlanLocal(cp.id);
+      if (!lp || (cp.updatedAt || 0) >= (lp.updatedAt || 0)) {
+        savePlanLocal(cp);
+        if (!idx[cp.id]) { const e = { id: cp.id, name: cp.name }; plans.push(e); idx[cp.id] = e; }
+        else idx[cp.id].name = cp.name;
+      }
+    });
+    plans.forEach((e) => {
+      const lp = loadPlanLocal(e.id);
+      const cp = cloudById[e.id];
+      if (lp && (!cp || (lp.updatedAt || 0) > (cp.updatedAt || 0))) pushPlan(lp);
+    });
+    saveIndex(plans);
+
+    let cur = loadPlanLocal(currentId());
+    if (!cur) { cur = loadPlanLocal(plans[0].id); setCurrentId(plans[0].id); }
+    adoptPlan(cur);
+  }
+
+  async function pullFromCloud() {
+    setStatus('Syncing…');
+    try {
+      const cloudPlans = await window.imCloud.loadPlans();
+      mergeCloudPlans(cloudPlans);
+      setStatus('Synced ' + timeStr());
+      renderAll();
+      renderPlanBar();
+    } catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
+  }
+
+  async function onAuth(user) {
+    authUser = user;
+    renderPlanBar();
+    if (user) await pullFromCloud();
+    else setStatus('Saved on this device');
+  }
+
+  function bindCloud() {
+    renderPlanBar();
+    if (cloudReady()) window.imCloud.onAuth(onAuth);
+  }
+
+  /* =========================================================================
+     Plans: create / switch / rename / duplicate / delete
+     ========================================================================= */
+
+  function switchPlan(id) {
+    const p = loadPlanLocal(id);
+    if (!p) return;
+    setCurrentId(id);
+    adoptPlan(p);
+    renderAll();
+    renderPlanBar();
+  }
+
+  function addPlan(p) {
+    savePlanLocal(p);
+    plans.push({ id: p.id, name: p.name });
+    saveIndex(plans);
+    setCurrentId(p.id);
+    adoptPlan(p);
+    if (cloudReady() && authUser) pushPlan(p);
+    renderAll();
+    renderPlanBar();
+  }
+
+  function renamePlan(id, name) {
+    const p = loadPlanLocal(id);
+    if (!p) return;
+    p.name = name; p.updatedAt = now();
+    savePlanLocal(p);
+    const e = plans.find((x) => x.id === id); if (e) e.name = name;
+    saveIndex(plans);
+    if (plan.id === id) plan.name = name;
+    if (cloudReady() && authUser) pushPlan(p);
+    renderPlanBar();
+  }
+
+  function duplicatePlan(name) {
+    const copy = JSON.parse(JSON.stringify(plan));
+    copy.id = 'p-' + uid4();
+    copy.name = name;
+    copy.updatedAt = now();
+    addPlan(copy);
+  }
+
+  function deletePlan(id) {
+    plans = plans.filter((x) => x.id !== id);
+    saveIndex(plans);
+    remove(planKey(id));
+    cloudDelete(id);
+    if (!plans.length) {
+      const p = blankPlan('My plan');
+      savePlanLocal(p);
+      plans = [{ id: p.id, name: p.name }];
+      saveIndex(plans);
+      setCurrentId(p.id);
+      adoptPlan(p);
+      if (cloudReady() && authUser) pushPlan(p);
+    } else if (currentId() === id) {
+      setCurrentId(plans[0].id);
+      adoptPlan(loadPlanLocal(plans[0].id));
+    }
+    renderAll();
+    renderPlanBar();
+  }
+
+  /* ---- Export / Import (a saved file is a reusable template) ---- */
+
+  function exportPlan() {
+    const payload = { _type: 'im703-plan', version: 1, exportedFrom: 'yootri.gzarruk.com', plan: plan };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = (plan.name || 'plan').replace(/[^\w-]+/g, '_').toLowerCase() + '.json';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  function importPlanFile(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      let src;
+      try { const parsed = JSON.parse(reader.result); src = parsed.plan || parsed; }
+      catch (e) { setStatus('Import failed — not a valid plan file', true); return; }
+      if (!src || typeof src !== 'object') { setStatus('Import failed — not a valid plan file', true); return; }
+      const p = blankPlan(src.name || file.name.replace(/\.json$/i, ''));
+      p.start = src.start || defaultStart();
+      p.weeks = (src.weeks && typeof src.weeks === 'object') ? src.weeks : {};
+      p.done = (src.done && typeof src.done === 'object') ? src.done : {};
+      p.chartmode = src.chartmode === 'cumulative' ? 'cumulative' : 'weekly';
+      p.charthidden = (src.charthidden && typeof src.charthidden === 'object') ? src.charthidden : {};
+      p.view = (src.view && planData[src.view.phase]) ? { phase: src.view.phase, week: Number(src.view.week) || 0 } : { phase: 'Base', week: 0 };
+      p.updatedAt = now();
+      addPlan(p);
+      setStatus('Imported "' + p.name + '"');
+    };
+    reader.readAsText(file);
+  }
+
+  /* ---- Small dialogs (name entry / confirm) reusing the modal styles ---- */
+
+  function nameDialog(title, initial, okLabel) {
+    return new Promise((resolve) => {
+      els.dialogRoot.innerHTML =
+        '<div class="modal-backdrop" id="nd-backdrop">' +
+          '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="nd-title" style="width: min(400px, 100%);">' +
+            '<div class="dialog-head"><h3 id="nd-title">' + esc(title) + '</h3>' +
+              '<button type="button" class="btn btn-icon btn-ghost" data-nd="cancel" aria-label="Close"><i class="ph ph-x"></i></button></div>' +
+            '<div class="field"><label for="nd-input">Name</label><input type="text" class="input" id="nd-input" value="' + esc(initial || '') + '" maxlength="60" /></div>' +
+            '<div class="dialog-foot" style="justify-content: flex-end;">' +
+              '<span class="right"><button type="button" class="btn btn-secondary" data-nd="cancel">Cancel</button>' +
+              '<button type="button" class="btn btn-primary" data-nd="ok">' + esc(okLabel || 'Save') + '</button></span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      const input = els.dialogRoot.querySelector('#nd-input');
+      input.focus();
+      input.select();
+      const close = (val) => { els.dialogRoot.innerHTML = ''; els.dialogRoot.onclick = null; resolve(val); };
+      els.dialogRoot.onclick = (e) => {
+        if (e.target.id === 'nd-backdrop') return close(null);
+        const b = e.target.closest('[data-nd]');
+        if (!b) return;
+        if (b.dataset.nd === 'cancel') close(null);
+        else close(input.value.trim() || null);
+      };
+      input.onkeydown = (e) => {
+        if (e.key === 'Enter') close(input.value.trim() || null);
+        else if (e.key === 'Escape') close(null);
+      };
+    });
+  }
+
+  function confirmDialog(title, message, okLabel) {
+    return new Promise((resolve) => {
+      els.dialogRoot.innerHTML =
+        '<div class="modal-backdrop" id="cf-backdrop">' +
+          '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="cf-title" style="width: min(400px, 100%);">' +
+            '<div class="dialog-head"><h3 id="cf-title">' + esc(title) + '</h3></div>' +
+            '<p style="font-size: 14px; line-height: 1.5; margin: 0; color: color-mix(in srgb, var(--color-text) 66%, transparent);">' + esc(message) + '</p>' +
+            '<div class="dialog-foot" style="justify-content: flex-end;">' +
+              '<span class="right"><button type="button" class="btn btn-secondary" data-cf="cancel">Cancel</button>' +
+              '<button type="button" class="btn btn-primary" data-cf="ok">' + esc(okLabel || 'Confirm') + '</button></span>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      const close = (val) => { els.dialogRoot.innerHTML = ''; els.dialogRoot.onclick = null; resolve(val); };
+      els.dialogRoot.onclick = (e) => {
+        if (e.target.id === 'cf-backdrop') return close(false);
+        const b = e.target.closest('[data-cf]');
+        if (b) close(b.dataset.cf === 'ok');
+      };
+    });
+  }
+
+  /* ---- Plan bar rendering ---- */
+
+  function renderPlanBar() {
+    els.planSelect.innerHTML = plans.map((e) =>
+      '<option value="' + esc(e.id) + '"' + (plan && e.id === plan.id ? ' selected' : '') + '>' + esc(e.name) + '</option>').join('');
+    els.planDelete.disabled = plans.length <= 1;
+    if (!cloudReady()) {
+      els.account.innerHTML = '<span class="account-note" title="Cloud sync unavailable — saved on this device">Local only</span>';
+    } else if (authUser) {
+      els.account.innerHTML =
+        '<span class="account-email"><i class="ph ph-cloud-check"></i>' + esc(authUser.email || 'Signed in') + '</span>' +
+        '<button type="button" class="btn btn-ghost" data-acct="signout">Sign out</button>';
+    } else {
+      els.account.innerHTML = '<button type="button" class="btn btn-secondary" data-acct="signin"><i class="ph ph-google-logo"></i> Sign in to sync</button>';
+    }
+  }
+
+  /* =========================================================================
+     Events
+     ========================================================================= */
+
+  // Plan bar
+  els.planSelect.addEventListener('change', (e) => switchPlan(e.target.value));
+  els.planNew.addEventListener('click', async () => {
+    const name = await nameDialog('New plan', 'My plan ' + (plans.length + 1), 'Create');
+    if (name) addPlan(blankPlan(name));
+  });
+  els.planDup.addEventListener('click', async () => {
+    const name = await nameDialog('Duplicate plan', (plan.name || 'Plan') + ' copy', 'Duplicate');
+    if (name) duplicatePlan(name);
+  });
+  els.planRename.addEventListener('click', async () => {
+    const name = await nameDialog('Rename plan', plan.name || '', 'Rename');
+    if (name) renamePlan(plan.id, name);
+  });
+  els.planDelete.addEventListener('click', async () => {
+    if (plans.length <= 1) return;
+    const ok = await confirmDialog('Delete plan',
+      'Delete "' + (plan.name || 'this plan') + '"? This removes it from this device' + (authUser ? ' and the cloud' : '') + '.', 'Delete');
+    if (ok) deletePlan(plan.id);
+  });
+  els.exportBtn.addEventListener('click', exportPlan);
+  els.importBtn.addEventListener('click', () => els.importFile.click());
+  els.importFile.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) importPlanFile(f);
+    e.target.value = '';
+  });
+  els.account.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-acct]');
+    if (!b || !cloudReady()) return;
+    if (b.dataset.acct === 'signin') window.imCloud.signIn().catch((err) => { console.error(err); setStatus('Sign-in failed', true); });
+    else if (b.dataset.acct === 'signout') window.imCloud.signOut();
+  });
+
+  // Plan overview
+  els.startInput.addEventListener('change', (e) => {
+    const v = e.target.value;
+    if (!v) return;
+    state.start = v;
+    persistPlan();
+    renderAll();
+  });
+  els.timeline.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-phase]');
+    if (btn) select(btn.dataset.phase, 0);
+  });
+
+  // Toolbar
+  els.phaseSeg.addEventListener('change', (e) => {
+    if (e.target.name === 'phase') select(e.target.value, 0);
+  });
+  els.prevWeek.addEventListener('click', () => { if (state.week > 0) select(state.phase, state.week - 1); });
+  els.nextWeek.addEventListener('click', () => { if (state.week < phaseWeeks(state.phase) - 1) select(state.phase, state.week + 1); });
+  els.syncBtn.addEventListener('click', () => {
+    if (cloudReady() && authUser) {
+      els.syncIcon.classList.add('spinning');
+      pullFromCloud().finally(() => els.syncIcon.classList.remove('spinning'));
+    } else if (cloudReady()) {
+      window.imCloud.signIn().catch((err) => { console.error(err); setStatus('Sign-in failed', true); });
+    } else {
+      setStatus('Saved on this device');
+    }
+  });
+  els.resetBtn.addEventListener('click', () => {
+    clearWeekSessions(state.phase, state.week);
+    state.sessions = freshSessions(state.phase, state.week);
+    state.dragId = null;
+    persistPlan();
+    renderSummary();
+    renderBoard();
+    renderChart();
+  });
+
+  // Board: clicks (edit / delete / done / add)
+  els.board.addEventListener('click', (e) => {
+    const act = e.target.closest('[data-act]');
+    if (act) {
+      const id = act.dataset.id;
+      if (act.dataset.act === 'edit') {
+        state.editingId = id;
+        renderModal();
+      } else if (act.dataset.act === 'delete') {
+        persistSessions(state.sessions.filter((s) => s.id !== id));
+      } else if (act.dataset.act === 'done') {
+        state.done = { ...state.done, [id]: !state.done[id] };
+        persistPlan();
+        renderSummary();
+        renderBoard();
+        renderChart();
+      }
+      return;
+    }
+    const add = e.target.closest('.add-btn');
+    if (add) {
+      const day = add.dataset.day;
+      const id = 'cus-' + uid4();
+      const sessions = [...state.sessions, { d: day, day, disc: 'Swim', focus: '', dur: '0:30', zone: 'Z2', desc: '', id, custom: true }];
+      state.sessions = sessions;
+      setWeekSessions(state.phase, state.week, sessions);
+      persistPlan();
+      state.editingId = id;
+      renderSummary();
+      renderBoard();
+      renderChart();
+      renderModal();
+    }
+  });
+
+  // Board: drag & drop. Columns are highlighted by toggling classes directly
+  // (no re-render mid-drag — replacing the dragged node would cancel the drag).
+  els.board.addEventListener('dragstart', (e) => {
+    const card = e.target.closest('.im-card');
+    if (!card) return;
+    state.dragId = card.dataset.id;
+    card.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    try { e.dataTransfer.setData('text/plain', card.dataset.id); } catch (err) {}
+  });
+  els.board.addEventListener('dragend', () => {
+    state.dragId = null;
+    els.board.querySelectorAll('.drag-over').forEach((c) => c.classList.remove('drag-over'));
+    els.board.querySelectorAll('.dragging').forEach((c) => c.classList.remove('dragging'));
+  });
+  els.board.addEventListener('dragover', (e) => {
+    const col = e.target.closest('.im-col');
+    if (!col || !state.dragId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (!col.classList.contains('drag-over')) {
+      els.board.querySelectorAll('.drag-over').forEach((c) => c.classList.remove('drag-over'));
+      col.classList.add('drag-over');
+    }
+  });
+  els.board.addEventListener('drop', (e) => {
+    const col = e.target.closest('.im-col');
+    if (!col) return;
+    e.preventDefault();
+    const id = state.dragId || e.dataTransfer.getData('text/plain');
+    state.dragId = null;
+    if (!id) return;
+    persistSessions(state.sessions.map((s) => (s.id === id ? { ...s, day: col.dataset.day } : s)));
+  });
+
+  // Chart: hover, mode toggle, legend
+  function hoverFromEvent(e) {
+    if (!chartGeo) return;
+    const r = els.chartSvg.getBoundingClientRect();
+    const { CpL, plotW, N, W } = chartGeo;
+    const vbX = ((e.clientX - r.left) / r.width) * W;
+    let idx = Math.round((vbX - CpL) / (N > 1 ? plotW / (N - 1) : 1));
+    idx = Math.max(0, Math.min(N - 1, idx));
+    if (state.hoverIdx !== idx) { state.hoverIdx = idx; renderHover(); }
+  }
+  function hoverClear() {
+    if (state.hoverIdx != null) { state.hoverIdx = null; renderHover(); }
+  }
+  els.chartSvg.addEventListener('mousemove', hoverFromEvent);
+  els.chartSvg.addEventListener('mouseleave', hoverClear);
+  // The viewBox is derived from the rendered width, so it has to follow the container.
+  let chartResizeTimer = null;
+  new ResizeObserver(() => {
+    clearTimeout(chartResizeTimer);
+    chartResizeTimer = setTimeout(() => { if (chartWidth() !== chartGeo?.W) renderChart(); }, 80);
+  }).observe(els.chartScroll);
+  // Touch/pen support: tap or drag over the plot shows the guide + tooltip.
+  els.chartSvg.addEventListener('pointerdown', (e) => { if (e.pointerType !== 'mouse') hoverFromEvent(e); });
+  els.chartSvg.addEventListener('pointermove', (e) => { if (e.pointerType !== 'mouse') hoverFromEvent(e); });
+  els.chartSvg.addEventListener('pointercancel', hoverClear);
+
+  els.chartmodeSeg.addEventListener('change', (e) => {
+    if (e.target.name !== 'chartmode') return;
+    state.chartMode = e.target.value;
+    persistPlan();
+    renderChart();
+  });
+  els.chartLegend.addEventListener('click', (e) => {
+    const pill = e.target.closest('[data-series]');
+    if (!pill) return;
+    const n = pill.dataset.series;
+    state.chartHidden = { ...state.chartHidden, [n]: !state.chartHidden[n] };
+    persistPlan();
+    renderChart();
+  });
+
+  // Modal
+  els.modalRoot.addEventListener('click', (e) => {
+    if (e.target.id === 'modal-backdrop') { state.editingId = null; renderModal(); return; }
+    const act = e.target.closest('[data-act]');
+    if (!act) return;
+    if (act.dataset.act === 'cancel') {
+      state.editingId = null;
+      renderModal();
+    } else if (act.dataset.act === 'save') {
+      const id = state.editingId;
+      const get = (sel) => els.modalRoot.querySelector(sel)?.value ?? '';
+      const dur = get('#ed-dur').trim() || '—';
+      const zone = get('#ed-zone').trim() || '—';
+      const next = state.sessions.map((s) => (s.id === id
+        ? { ...s, disc: get('#ed-disc'), focus: get('#ed-focus'), dur, zone, desc: get('#ed-desc') }
+        : s));
+      state.editingId = null;
+      renderModal();
+      persistSessions(next);
+    } else if (act.dataset.act === 'modal-delete') {
+      const id = state.editingId;
+      state.editingId = null;
+      renderModal();
+      persistSessions(state.sessions.filter((s) => s.id !== id));
+    }
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.editingId != null) {
+      state.editingId = null;
+      renderModal();
+    }
+  });
+
+  /* ---- Init ---- */
+
+  renderAll();
+  renderPlanBar();
+
+  // The Firebase module (below) is a deferred module, so it loads after this
+  // classic script. Bind when it signals ready; if it never loads, stay local.
+  if (window.imCloud) bindCloud();
+  else window.addEventListener('imcloud:ready', bindCloud, { once: true });
+  </script>
+
+  <!-- Optional cloud sync: Firebase Auth (Google) + Firestore. Loaded as an ES
+       module from the gstatic CDN. If it fails to load or isn't configured, the
+       planner above runs fully on localStorage. Firebase web API keys are safe
+       to ship publicly — access is enforced by the Firestore security rules
+       (see firestore.rules); deploy those before relying on sync. -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
+    import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey: 'AIzaSyDeJrxAeHHIBRTdfYBFBToDV8djv-p1nfo',
+      authDomain: 'local-terminus-467316-m8.firebaseapp.com',
+      projectId: 'local-terminus-467316-m8',
+      storageBucket: 'local-terminus-467316-m8.firebasestorage.app',
+      messagingSenderId: '623680058729',
+      appId: '1:623680058729:web:53a37a15ef2363692139f8',
+    };
+
+    try {
+      const app = initializeApp(firebaseConfig);
+      const auth = getAuth(app);
+      const db = getFirestore(app);
+      const provider = new GoogleAuthProvider();
+
+      let uid = null;
+      let lastUser = null;
+      let fired = false;
+      const authCbs = [];
+
+      onAuthStateChanged(auth, (user) => {
+        uid = user ? user.uid : null;
+        lastUser = user;
+        fired = true;
+        authCbs.forEach((cb) => { try { cb(user); } catch (e) { console.error(e); } });
+      });
+
+      // Each user's plans live at users/{uid}/plans/{planId}; the whole plan is
+      // stored as one JSON string field to sidestep Firestore's type quirks.
+      window.imCloud = {
+        configured: true,
+        onAuth(cb) { authCbs.push(cb); if (fired) cb(lastUser); },
+        signIn() { return signInWithPopup(auth, provider); },
+        signOut() { return signOut(auth); },
+        async loadPlans() {
+          if (!uid) throw new Error('Not signed in');
+          const snap = await getDocs(collection(db, 'users', uid, 'plans'));
+          return snap.docs.map((d) => { try { return JSON.parse(d.data().data); } catch (e) { return null; } }).filter(Boolean);
+        },
+        async savePlan(p) {
+          if (!uid) throw new Error('Not signed in');
+          await setDoc(doc(db, 'users', uid, 'plans', p.id), {
+            name: p.name || 'Plan',
+            updatedAt: p.updatedAt || Date.now(),
+            data: JSON.stringify(p),
+          });
+        },
+        async deletePlan(id) {
+          if (!uid) return;
+          await deleteDoc(doc(db, 'users', uid, 'plans', id));
+        },
+      };
+    } catch (e) {
+      console.error('Cloud sync unavailable; running local-only.', e);
+      window.imCloud = { configured: false };
+    }
+    window.dispatchEvent(new Event('imcloud:ready'));
+  </script>
+</body>
+</html>

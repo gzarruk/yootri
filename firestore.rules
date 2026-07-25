@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Security rules for yootri, the Ironman 70.3 training planner (index.html).
+// Each signed-in user can read and write ONLY their own plans, stored at
+// users/{uid}/plans/{planId}. Everything else is denied by default.
+//
+// Deploy from the Firebase console (Firestore Database → Rules → paste → Publish)
+// or with the Firebase CLI: `firebase deploy --only firestore:rules`.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId}/plans/{planId} {
+      allow read, write: if request.auth != null
+                         && request.auth.uid == userId;
+    }
+
+    // Default deny for any other path (including the old `trainingPlan`
+    // sheet-mirror collection, which the new planner no longer uses).
+  }
+}
