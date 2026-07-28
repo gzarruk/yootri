@@ -1,0 +1,9 @@
+# Personal, machine-local Claude Code settings — never commit.
+# This repo is served publicly at its root by GitHub Pages.
+.claude/settings.local.json
+
+# Multi-root workspace pointing at ../yootri-rnd — only valid on this machine.
+yootri.code-workspace
+
+# Editor/OS noise
+.DS_Store
