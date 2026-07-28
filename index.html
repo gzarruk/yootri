@@ -981,7 +981,10 @@
      each plan also syncs to Firestore (see the module script at the end). ---- */
 
   const load = (k) => { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } };
-  const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+  const save = (k, v) => {
+    try { localStorage.setItem(k, JSON.stringify(v)); return true; }
+    catch (e) { return false; }
+  };
   const remove = (k) => { try { localStorage.removeItem(k); } catch (e) {} };
 
   /* ---- Plan helpers ---- */
@@ -1040,7 +1043,12 @@
   const loadIndex = () => load(STORE + '_plans') || [];
   const saveIndex = (ix) => save(STORE + '_plans', ix);
   const loadPlanLocal = (id) => load(planKey(id));
-  const savePlanLocal = (p) => save(planKey(p.id), p);
+  // The plan record carries the training data, so its outcome is what "is my work
+  // saved?" actually means — the index and current-id keys are tiny metadata that
+  // still fit when the record doesn't, and would otherwise mask the failure.
+  // Never touches the DOM: this runs in ensurePlans(), before the els map exists.
+  let storageFailed = false;
+  const savePlanLocal = (p) => { storageFailed = !save(planKey(p.id), p); return !storageFailed; };
   const currentId = () => load(STORE + '_current');
   const setCurrentId = (id) => save(STORE + '_current', id);
 
@@ -1080,15 +1088,23 @@
 
   function ensurePlans() {
     plans = loadIndex();
+    let made = null;
     if (!plans.length) {
-      const p = hasLegacy() ? migrateLegacy() : blankPlan('My plan');
-      savePlanLocal(p);
-      plans = [{ id: p.id, name: p.name }];
+      made = hasLegacy() ? migrateLegacy() : blankPlan('My plan');
+      savePlanLocal(made);
+      plans = [{ id: made.id, name: made.name }];
       saveIndex(plans);
-      setCurrentId(p.id);
+      setCurrentId(made.id);
     }
     let cur = loadPlanLocal(currentId());
     if (!cur) { cur = loadPlanLocal(plans[0].id); setCurrentId(plans[0].id); }
+    // If storage is full or blocked the write above never landed, so nothing reads
+    // back. Fall through to the in-memory copy — returning null here would throw in
+    // adoptPlan() and leave a blank page instead of a usable, unsaved session.
+    if (!cur) {
+      cur = made || blankPlan('My plan');
+      if (!plans.length) plans = [{ id: cur.id, name: cur.name }];
+    }
     return cur;
   }
 
@@ -1099,7 +1115,7 @@
     done: {}, start: defaultStart(),
     chartMode: 'weekly', chartHidden: {},
     dragId: null, editingId: null, hoverIdx: null,
-    status: 'Saved on this device',
+    status: 'Saved on this device', statusError: false,
   };
 
   // Copy a plan's persistent fields into the working state.
@@ -1125,6 +1141,7 @@
     plan.view = { phase: state.phase, week: state.week };
     plan.updatedAt = now();
     savePlanLocal(plan);
+    renderStatus();
     schedulePush();
   }
 
@@ -1189,8 +1206,16 @@
     els.weekRange.textContent = fmtDate(wkMon) + ' – ' + fmtDate(addDays(wkMon, 6));
   }
 
+  // A failed local write outranks every routine message — otherwise the very next
+  // schedulePush()/sync would paint a reassuring "Saved" over the warning.
   function renderStatus() {
-    els.status.textContent = state.status;
+    els.status.textContent = storageFailed
+      ? 'Not saved — browser storage is full or blocked'
+      : state.status;
+    els.status.title = storageFailed
+      ? 'Changes are not being saved on this device. Free up browser storage, or sign in to sync and export your plan as a backup.'
+      : '';
+    els.status.classList.toggle('error', storageFailed || !!state.statusError);
   }
 
   function renderSummary() {
@@ -1537,7 +1562,7 @@
   const timeStr = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   function setStatus(text, isError) {
     state.status = text;
-    els.status.classList.toggle('error', !!isError);
+    state.statusError = !!isError;
     renderStatus();
   }
 
@@ -1653,6 +1678,7 @@
     if (plan.id === id) plan.name = name;
     if (cloudReady() && authUser) pushPlan(p);
     renderHeader();
+    renderStatus();
   }
 
   function duplicatePlan(name) {
