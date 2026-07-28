@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>yootri — Ironman 70.3 Training Planner</title>
+<title>yootri — Triathlon training planner</title>
 
 <!-- Favicons: SVG for modern browsers, .ico for legacy + the implicit favicon.ico request.
      Paths are relative because the app is served from the /yootri/ project sub-path. -->
@@ -42,7 +42,15 @@
   .back-link:hover { color: var(--color-text); }
 
   header { margin-bottom: 26px; }
-  header .kicker { margin-bottom: 12px; }
+  .hdr-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 14px;
+    margin-bottom: 12px;
+  }
+  .hdr-top #account { display: inline-flex; align-items: center; gap: 8px; }
   .im-h1 {
     font-size: 36px;
     letter-spacing: -0.02em;
@@ -53,6 +61,127 @@
     font-size: 15px;
     margin: 0;
     color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  }
+
+  /* ---- Plan title (doubles as the plan menu trigger) ---- */
+
+  .plan-title-wrap { position: relative; }
+  .plan-title {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 10px;
+    max-width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    letter-spacing: inherit;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: color 0.12s ease;
+  }
+  .plan-title .ph {
+    flex: none;
+    font-size: 0.55em;
+    color: color-mix(in srgb, var(--color-text) 34%, transparent);
+    transition: color 0.12s ease, transform 0.12s ease;
+  }
+  .plan-title:hover .ph,
+  .plan-title:focus-visible .ph { color: var(--color-accent); }
+  .plan-title[aria-expanded="true"] .ph {
+    color: var(--color-accent);
+    transform: rotate(180deg);
+  }
+  .im-h1-input {
+    display: block;
+    width: 100%;
+    max-width: 640px;
+    padding: 0;
+    border: 0;
+    border-bottom: 1px solid var(--color-accent);
+    border-radius: 0;
+    outline: none;
+    background: none;
+    font-family: var(--font-heading);
+    font-size: 36px;
+    font-weight: 500;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+  }
+
+  /* ---- Plan menu ---- */
+
+  .pmenu {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 0;
+    z-index: 50;
+    min-width: 244px;
+    max-width: min(320px, calc(100vw - 40px));
+    padding: 6px;
+    border-radius: var(--radius-lg);
+    background: var(--color-surface);
+    box-shadow: var(--shadow-md);
+  }
+  .pmenu-list { max-height: 220px; overflow-y: auto; }
+  .pmenu-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font-size: 13px;
+    color: color-mix(in srgb, var(--color-text) 82%, transparent);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .pmenu-item .ph {
+    flex: none;
+    width: 15px;
+    font-size: 15px;
+    color: color-mix(in srgb, var(--color-text) 45%, transparent);
+    transition: color 0.12s ease;
+  }
+  .pmenu-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Ring drawn inside the box so the scrolling plan list can't clip it. */
+  .pmenu-item:focus-visible { outline-offset: -2px; }
+  .pmenu-item:hover,
+  .pmenu-item:focus-visible {
+    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
+    color: var(--color-text);
+  }
+  .pmenu-item:hover .ph, .pmenu-item:focus-visible .ph { color: var(--color-accent); }
+  .pmenu-item[aria-checked="true"] { color: var(--color-text); }
+  .pmenu-item[aria-checked="true"] .ph { color: var(--color-accent); }
+  .pmenu-item.danger:hover, .pmenu-item.danger:focus-visible {
+    background: color-mix(in srgb, #e08a6c 14%, transparent);
+    color: #e08a6c;
+  }
+  .pmenu-item.danger:hover .ph, .pmenu-item.danger:focus-visible .ph { color: #e08a6c; }
+  .pmenu-item[aria-disabled="true"] {
+    opacity: 0.38;
+    cursor: default;
+  }
+  .pmenu-item[aria-disabled="true"]:hover,
+  .pmenu-item[aria-disabled="true"]:focus-visible {
+    background: transparent;
+    color: color-mix(in srgb, var(--color-text) 82%, transparent);
+  }
+  .pmenu-item[aria-disabled="true"]:hover .ph {
+    color: color-mix(in srgb, var(--color-text) 45%, transparent);
+  }
+  .pmenu-sep {
+    height: 1px;
+    margin: 6px 10px;
+    background: var(--color-divider);
   }
 
   /* ---- Plan overview ---- */
@@ -212,32 +341,8 @@
     box-shadow: 0 0 0 3px color-mix(in srgb, #e08a6c 25%, transparent);
   }
 
-  /* ---- Plan bar ---- */
+  /* ---- Account chip ---- */
 
-  .plan-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px 14px;
-    margin-bottom: 20px;
-  }
-  .pb-left, .pb-right { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-  .pb-plan {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    color: color-mix(in srgb, var(--color-text) 55%, transparent);
-  }
-  .pb-plan .input {
-    min-height: 34px;
-    width: auto;
-    min-width: 156px;
-    max-width: 240px;
-    padding: 6px 30px 6px 11px;
-    font-size: 13px;
-  }
   .account-email {
     display: inline-flex;
     align-items: center;
@@ -681,10 +786,7 @@
     .im-chartcard { padding: 16px 12px; }
     .im-chartscroll { overflow-x: auto; overflow-y: hidden; }
     .im-chartsvg { min-width: 600px; }
-    .plan-bar { gap: 10px; }
-    .pb-left, .pb-right { width: 100%; justify-content: space-between; }
-    .pb-plan { flex: 1; }
-    .pb-plan .input { flex: 1; max-width: none; }
+    .im-h1-input { font-size: 26px; }
   }
 </style>
 </head>
@@ -694,28 +796,23 @@
     <a class="back-link" href="https://www.gzarruk.com/"><i class="ph ph-arrow-left" aria-hidden="true"></i> gzarruk.com</a>
 
     <header>
-      <span class="kicker">Season plan</span>
-      <h1 class="im-h1">Ironman 70.3 Training</h1>
+      <div class="hdr-top">
+        <span class="kicker">Season plan</span>
+        <span id="account"></span>
+      </div>
+      <div class="plan-title-wrap">
+        <h1 class="im-h1">
+          <button type="button" class="plan-title" id="plan-title" aria-haspopup="menu" aria-expanded="false">
+            <span id="plan-title-text"></span>
+            <i class="ph ph-caret-down" aria-hidden="true"></i>
+          </button>
+        </h1>
+        <div id="menu-root"></div>
+      </div>
       <p class="im-sub" id="subtitle"></p>
     </header>
 
-    <div class="plan-bar">
-      <div class="pb-left">
-        <label class="pb-plan">Plan
-          <select class="input" id="plan-select" aria-label="Select plan"></select>
-        </label>
-        <button type="button" class="btn btn-ghost btn-icon" id="plan-new" title="New plan" aria-label="New plan"><i class="ph ph-plus"></i></button>
-        <button type="button" class="btn btn-ghost btn-icon" id="plan-dup" title="Duplicate plan" aria-label="Duplicate plan"><i class="ph ph-copy"></i></button>
-        <button type="button" class="btn btn-ghost btn-icon" id="plan-rename" title="Rename plan" aria-label="Rename plan"><i class="ph ph-pencil-simple"></i></button>
-        <button type="button" class="btn btn-ghost btn-icon" id="plan-delete" title="Delete plan" aria-label="Delete plan"><i class="ph ph-trash"></i></button>
-      </div>
-      <div class="pb-right">
-        <button type="button" class="btn btn-secondary" id="export-btn"><i class="ph ph-download-simple"></i> Export</button>
-        <button type="button" class="btn btn-secondary" id="import-btn"><i class="ph ph-upload-simple"></i> Import</button>
-        <input type="file" id="import-file" accept="application/json,.json" hidden />
-        <span id="account"></span>
-      </div>
-    </div>
+    <input type="file" id="import-file" accept="application/json,.json" hidden />
 
     <div class="overview">
       <div class="ov-row">
@@ -749,6 +846,7 @@
 
       <div class="im-actions">
         <span class="sync-status" id="status"></span>
+        <button type="button" class="btn btn-ghost hidden" id="undo-btn"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i> Undo</button>
         <button type="button" class="btn btn-secondary" id="sync-btn"><i class="ph ph-arrow-clockwise" id="sync-icon"></i> Sync</button>
         <button type="button" class="btn btn-ghost" id="reset-btn"><i class="ph ph-arrow-counter-clockwise"></i> Reset week</button>
       </div>
@@ -1044,22 +1142,26 @@
     phaseSeg: $('phase-seg'), prevWeek: $('prev-week'), nextWeek: $('next-week'),
     weekPos: $('week-pos'), weekRange: $('week-range'),
     status: $('status'), syncBtn: $('sync-btn'), syncIcon: $('sync-icon'), resetBtn: $('reset-btn'),
+    undoBtn: $('undo-btn'),
     summary: $('summary'), board: $('board'),
     chartCompleted: $('chart-completed'), chartmodeSeg: $('chartmode-seg'),
     chartScroll: $('chart-scroll'), chartSvg: $('chart-svg'), chartTip: $('chart-tip'),
     chartLegend: $('chart-legend'), modalRoot: $('modal-root'), dialogRoot: $('dialog-root'),
-    planSelect: $('plan-select'), planNew: $('plan-new'), planDup: $('plan-dup'),
-    planRename: $('plan-rename'), planDelete: $('plan-delete'),
-    exportBtn: $('export-btn'), importBtn: $('import-btn'), importFile: $('import-file'),
-    account: $('account'),
+    planTitle: $('plan-title'), planTitleText: $('plan-title-text'), menuRoot: $('menu-root'),
+    importFile: $('import-file'), account: $('account'),
   };
 
   /* =========================================================================
      Rendering
      ========================================================================= */
 
+  // The <h1> is the plan's name — it is the only place the name is shown.
   function renderHeader() {
-    els.subtitle.textContent = state.phase + ' · Week ' + (state.week + 1) + ' · ' + template(state.phase, state.week).focus;
+    const name = (plan && plan.name) || 'My plan';
+    els.planTitleText.textContent = name;
+    document.title = 'yootri — ' + name;
+    els.subtitle.textContent = totalWeeks() + ' weeks · from ' + fmtDate(parseISO(state.start)) +
+      ' · ' + state.phase + ' · Week ' + (state.week + 1) + ' · ' + template(state.phase, state.week).focus;
   }
 
   function renderOverview() {
@@ -1503,19 +1605,19 @@
       mergeCloudPlans(cloudPlans);
       setStatus('Synced ' + timeStr());
       renderAll();
-      renderPlanBar();
+      renderAccount();
     } catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
   }
 
   async function onAuth(user) {
     authUser = user;
-    renderPlanBar();
+    renderAccount();
     if (user) await pullFromCloud();
     else setStatus('Saved on this device');
   }
 
   function bindCloud() {
-    renderPlanBar();
+    renderAccount();
     if (cloudReady()) window.imCloud.onAuth(onAuth);
   }
 
@@ -1529,7 +1631,6 @@
     setCurrentId(id);
     adoptPlan(p);
     renderAll();
-    renderPlanBar();
   }
 
   function addPlan(p) {
@@ -1540,7 +1641,6 @@
     adoptPlan(p);
     if (cloudReady() && authUser) pushPlan(p);
     renderAll();
-    renderPlanBar();
   }
 
   function renamePlan(id, name) {
@@ -1552,7 +1652,7 @@
     saveIndex(plans);
     if (plan.id === id) plan.name = name;
     if (cloudReady() && authUser) pushPlan(p);
-    renderPlanBar();
+    renderHeader();
   }
 
   function duplicatePlan(name) {
@@ -1563,7 +1663,26 @@
     addPlan(copy);
   }
 
+  /* Deleting a plan throws away a whole season, so it stays recoverable for a
+     short window: the full plan object is stashed and re-pushed on undo. The
+     cloud write is a setDoc at a fixed id, so restoring recreates it exactly. */
+  const UNDO_MS = 10000;
+  let pendingUndo = null;
+  let undoTimer = null;
+
+  function clearUndo() {
+    clearTimeout(undoTimer);
+    undoTimer = null;
+    pendingUndo = null;
+    els.undoBtn.classList.add('hidden');
+  }
+
   function deletePlan(id) {
+    const doomed = loadPlanLocal(id);
+    if (!doomed) return;
+    clearUndo();
+    pendingUndo = { plan: doomed, index: plans.findIndex((x) => x.id === id), wasCurrent: currentId() === id };
+
     plans = plans.filter((x) => x.id !== id);
     saveIndex(plans);
     remove(planKey(id));
@@ -1576,12 +1695,40 @@
       setCurrentId(p.id);
       adoptPlan(p);
       if (cloudReady() && authUser) pushPlan(p);
+      pendingUndo.autoCreatedId = p.id;
     } else if (currentId() === id) {
       setCurrentId(plans[0].id);
       adoptPlan(loadPlanLocal(plans[0].id));
     }
     renderAll();
-    renderPlanBar();
+
+    setStatus('Deleted "' + (doomed.name || 'plan') + '"');
+    els.undoBtn.classList.remove('hidden');
+    undoTimer = setTimeout(clearUndo, UNDO_MS);
+  }
+
+  function undoDelete() {
+    if (!pendingUndo) return;
+    const { plan: p, index, wasCurrent, autoCreatedId } = pendingUndo;
+    clearUndo();
+    savePlanLocal(p);
+    if (!plans.some((x) => x.id === p.id)) {
+      plans.splice(index < 0 ? plans.length : index, 0, { id: p.id, name: p.name });
+    }
+    // Deleting the last plan spawns a blank stand-in; drop it again on undo.
+    if (autoCreatedId) {
+      const stand = loadPlanLocal(autoCreatedId);
+      if (stand && !Object.keys(stand.weeks || {}).length && !Object.keys(stand.done || {}).length) {
+        plans = plans.filter((x) => x.id !== autoCreatedId);
+        remove(planKey(autoCreatedId));
+        cloudDelete(autoCreatedId);
+      }
+    }
+    saveIndex(plans);
+    if (wasCurrent || !loadPlanLocal(currentId())) { setCurrentId(p.id); adoptPlan(p); }
+    if (cloudReady() && authUser) pushPlan(p);
+    renderAll();
+    setStatus('Restored "' + (p.name || 'plan') + '"');
   }
 
   /* ---- Export / Import (a saved file is a reusable template) ---- */
@@ -1676,12 +1823,9 @@
     });
   }
 
-  /* ---- Plan bar rendering ---- */
+  /* ---- Account chip rendering ---- */
 
-  function renderPlanBar() {
-    els.planSelect.innerHTML = plans.map((e) =>
-      '<option value="' + esc(e.id) + '"' + (plan && e.id === plan.id ? ' selected' : '') + '>' + esc(e.name) + '</option>').join('');
-    els.planDelete.disabled = plans.length <= 1;
+  function renderAccount() {
     if (!cloudReady()) {
       els.account.innerHTML = '<span class="account-note" title="Cloud sync unavailable — saved on this device">Local only</span>';
     } else if (authUser) {
@@ -1694,31 +1838,150 @@
   }
 
   /* =========================================================================
+     Plan menu — the <h1> is the trigger, so the plan's name and every action
+     on it live in one place.
+     ========================================================================= */
+
+  const menuOpen = () => !!els.menuRoot.firstChild;
+  const menuItems = () => Array.from(els.menuRoot.querySelectorAll('.pmenu-item:not([aria-disabled="true"])'));
+
+  function menuRow(act, icon, label) {
+    return '<button type="button" role="menuitem" class="pmenu-item" data-pm="' + act + '">' +
+      '<i class="ph ph-' + icon + '" aria-hidden="true"></i><span class="pmenu-label">' + esc(label) + '</span></button>';
+  }
+
+  function openPlanMenu() {
+    const soleplan = plans.length <= 1;
+    els.menuRoot.innerHTML =
+      '<div class="pmenu" role="menu" aria-labelledby="plan-title">' +
+        '<div class="pmenu-list">' +
+          plans.map((e) => {
+            const cur = plan && e.id === plan.id;
+            return '<button type="button" role="menuitemradio" aria-checked="' + (cur ? 'true' : 'false') + '" ' +
+              'class="pmenu-item" data-pm="switch" data-id="' + esc(e.id) + '">' +
+              '<i class="ph ph-check" aria-hidden="true"' + (cur ? '' : ' style="visibility: hidden;"') + '></i>' +
+              '<span class="pmenu-label">' + esc(e.name) + '</span></button>';
+          }).join('') +
+        '</div>' +
+        '<div class="pmenu-sep" role="separator"></div>' +
+        menuRow('rename', 'pencil-simple', 'Rename') +
+        menuRow('dup', 'copy', 'Duplicate') +
+        menuRow('export', 'download-simple', 'Export this plan') +
+        '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="delete"' +
+          (soleplan ? ' aria-disabled="true"' : '') + '>' +
+          '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
+        '<div class="pmenu-sep" role="separator"></div>' +
+        menuRow('new', 'plus', 'New plan') +
+        menuRow('import', 'upload-simple', 'Import plan…') +
+      '</div>';
+    els.planTitle.setAttribute('aria-expanded', 'true');
+    document.addEventListener('keydown', onMenuKey, true);
+    document.addEventListener('mousedown', onMenuOutside, true);
+    window.addEventListener('blur', closePlanMenu);
+    const first = els.menuRoot.querySelector('[aria-checked="true"]') || menuItems()[0];
+    if (first) first.focus();
+  }
+
+  function closePlanMenu(refocus) {
+    if (!menuOpen()) return;
+    els.menuRoot.innerHTML = '';
+    els.planTitle.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', onMenuKey, true);
+    document.removeEventListener('mousedown', onMenuOutside, true);
+    window.removeEventListener('blur', closePlanMenu);
+    if (refocus !== false) els.planTitle.focus();
+  }
+
+  function onMenuOutside(e) {
+    if (!els.menuRoot.contains(e.target) && !els.planTitle.contains(e.target)) closePlanMenu(false);
+  }
+
+  function onMenuKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); return closePlanMenu(); }
+    if (e.key === 'Tab') return closePlanMenu(false);
+    const items = menuItems();
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+    else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+  }
+
+  // Menu actions that open a dialog must close the menu first — #menu-root and
+  // #dialog-root are separate roots and must not be live at the same time.
+  async function runMenuAction(act, id) {
+    if (act === 'switch') { closePlanMenu(false); if (id !== plan.id) switchPlan(id); return; }
+    closePlanMenu(act !== 'rename');
+    if (act === 'rename') return startRename();
+    if (act === 'export') return exportPlan();
+    if (act === 'import') return els.importFile.click();
+    if (act === 'new') {
+      const name = await nameDialog('New plan', 'My plan ' + (plans.length + 1), 'Create');
+      if (name) addPlan(blankPlan(name));
+    } else if (act === 'dup') {
+      const name = await nameDialog('Duplicate plan', (plan.name || 'Plan') + ' copy', 'Duplicate');
+      if (name) duplicatePlan(name);
+    } else if (act === 'delete') {
+      if (plans.length <= 1) return;
+      const ok = await confirmDialog('Delete plan',
+        'Delete "' + (plan.name || 'this plan') + '"? This removes it from this device' + (authUser ? ' and the cloud' : '') + '.', 'Delete');
+      if (ok) deletePlan(plan.id);
+    }
+  }
+
+  /* ---- Inline rename: the title edits itself in place ---- */
+
+  let renaming = false;
+
+  function startRename() {
+    if (renaming) return;
+    closePlanMenu(false);
+    renaming = true;
+    const before = (plan && plan.name) || '';
+    els.planTitle.classList.add('hidden');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'im-h1-input';
+    input.maxLength = 60;
+    input.value = before;
+    input.setAttribute('aria-label', 'Plan name');
+    els.planTitle.parentNode.appendChild(input);
+    input.focus();
+    input.select();
+
+    const finish = (commit) => {
+      if (!renaming) return;
+      renaming = false;
+      const next = input.value.trim();
+      input.remove();
+      els.planTitle.classList.remove('hidden');
+      els.planTitle.focus();
+      if (commit && next && next !== before) renamePlan(plan.id, next);
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+      else if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    };
+    input.onblur = () => finish(true);
+  }
+
+  /* =========================================================================
      Events
      ========================================================================= */
 
-  // Plan bar
-  els.planSelect.addEventListener('change', (e) => switchPlan(e.target.value));
-  els.planNew.addEventListener('click', async () => {
-    const name = await nameDialog('New plan', 'My plan ' + (plans.length + 1), 'Create');
-    if (name) addPlan(blankPlan(name));
+  // Plan title + menu
+  els.planTitle.addEventListener('click', () => { if (menuOpen()) closePlanMenu(); else openPlanMenu(); });
+  els.planTitle.addEventListener('dblclick', startRename);
+  els.planTitle.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' && !menuOpen()) { e.preventDefault(); openPlanMenu(); }
   });
-  els.planDup.addEventListener('click', async () => {
-    const name = await nameDialog('Duplicate plan', (plan.name || 'Plan') + ' copy', 'Duplicate');
-    if (name) duplicatePlan(name);
+  els.menuRoot.addEventListener('click', (e) => {
+    const b = e.target.closest('.pmenu-item');
+    if (!b || b.getAttribute('aria-disabled') === 'true') return;
+    runMenuAction(b.dataset.pm, b.dataset.id);
   });
-  els.planRename.addEventListener('click', async () => {
-    const name = await nameDialog('Rename plan', plan.name || '', 'Rename');
-    if (name) renamePlan(plan.id, name);
-  });
-  els.planDelete.addEventListener('click', async () => {
-    if (plans.length <= 1) return;
-    const ok = await confirmDialog('Delete plan',
-      'Delete "' + (plan.name || 'this plan') + '"? This removes it from this device' + (authUser ? ' and the cloud' : '') + '.', 'Delete');
-    if (ok) deletePlan(plan.id);
-  });
-  els.exportBtn.addEventListener('click', exportPlan);
-  els.importBtn.addEventListener('click', () => els.importFile.click());
+  els.undoBtn.addEventListener('click', undoDelete);
   els.importFile.addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];
     if (f) importPlanFile(f);
@@ -1917,7 +2180,7 @@
   /* ---- Init ---- */
 
   renderAll();
-  renderPlanBar();
+  renderAccount();
 
   // The Firebase module (below) is a deferred module, so it loads after this
   // classic script. Bind when it signals ready; if it never loads, stay local.
