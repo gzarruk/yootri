@@ -788,6 +788,42 @@
     .im-chartsvg { min-width: 600px; }
     .im-h1-input { font-size: 26px; }
   }
+  /* ---- Plan setup panel & change preview ---- */
+  .pnl-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex;
+    align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 60; overflow: auto; }
+  .pnl { background: var(--color-surface, #1b1e2b); color: var(--color-text, #e8e9f0);
+    border: 1px solid color-mix(in srgb, var(--color-text) 14%, transparent);
+    border-radius: 14px; width: min(720px, 100%); padding: 1.25rem 1.35rem 1.1rem; }
+  .pnl h2 { margin: 0 0 .15rem; font-size: 1.05rem; }
+  .pnl .pnl-sub { margin: 0 0 1rem; font-size: .82rem;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .pnl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .7rem 1rem; }
+  .pnl-f { display: flex; flex-direction: column; gap: .28rem; font-size: .8rem; }
+  .pnl-f > span { color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+  .pnl-hint { font-size: .74rem; line-height: 1.45;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 0; }
+  .pnl-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: .4rem; }
+  .pnl-days label { display: flex; flex-direction: column; gap: .25rem; font-size: .72rem; text-align: center; }
+  .pnl-days input { width: 100%; text-align: center; padding: .35rem .2rem; }
+  .pnl-sec { margin-top: 1.1rem; padding-top: .9rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent); }
+  .pnl-act { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1.15rem; flex-wrap: wrap; }
+  .pnl-act .spacer { margin-right: auto; }
+  .diff-sum { font-size: .86rem; margin: 0 0 .6rem; }
+  .diff-list { max-height: 40vh; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  .diff-row { display: grid; grid-template-columns: 1fr auto auto; gap: .6rem; align-items: baseline;
+    padding: .4rem .1rem; font-size: .82rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
+  .diff-row .wk { color: color-mix(in srgb, var(--color-text) 72%, transparent); }
+  .diff-row .vol { font-variant-numeric: tabular-nums; }
+  .diff-row .delta { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .diff-row .delta.up { color: #84c08f; }
+  .diff-row .delta.down { color: #e08a6c; }
+  .diff-issues { margin: .8rem 0 0; padding: .6rem .75rem; border-radius: 9px; font-size: .78rem;
+    background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+  .diff-issues ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+  .diff-issues .err { color: #e08a6c; }
+  .diff-empty { font-size: .85rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
 </style>
 </head>
 <body>
@@ -831,12 +867,9 @@
     </div>
 
     <div class="toolbar">
-      <div class="seg" role="tablist" aria-label="Training phase" id="phase-seg">
-        <label class="seg-opt"><input type="radio" name="phase" value="Base" />Base</label>
-        <label class="seg-opt"><input type="radio" name="phase" value="Build" />Build</label>
-        <label class="seg-opt"><input type="radio" name="phase" value="Peak" />Peak</label>
-        <label class="seg-opt"><input type="radio" name="phase" value="Taper" />Taper</label>
-      </div>
+      <button type="button" class="btn btn-secondary" id="setup-btn">
+        <i class="ph ph-sliders-horizontal" aria-hidden="true"></i> Plan setup
+      </button>
 
       <div class="wk-nav">
         <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ph ph-caret-left"></i></button>
@@ -876,90 +909,31 @@
       <div class="chart-legend" id="chart-legend"></div>
     </div>
 
-    <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. The original sample plan stays as the template behind every week (Reset week reveals it).</p>
+    <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. <b>Plan setup</b> fits the whole season to the hours you actually have; it always shows you the changes before anything is written, and <b>Reset week</b> rebuilds a single week from that fit.</p>
 
     <div id="modal-root"></div>
     <div id="dialog-root"></div>
+    <div id="panel-root"></div>
   </div>
 
-  <script>
+  <script type="module">
   'use strict';
+
+  /* The training-load model, session generator, validator and plan operations
+     live in assets/coach/ as plain ES modules so they can be unit-tested without
+     a browser (`npm test`). This file keeps the markup, styles and DOM. */
+  import {
+    loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft,
+  } from './assets/coach/plan.js';
+  import { normalizeProfile } from './assets/coach/profile.js';
+  import { generateWeek } from './assets/coach/generate.js';
+  import { fitToRace } from './assets/coach/season.js';
+  import { LEGACY_PHASES } from './assets/coach/migrate.js';
 
   /* =========================================================================
      Data model — static sample plan. Swap this (and the storage layer below)
      for a live database/API fetch when wiring real data.
      ========================================================================= */
-
-  const planData = {
-    Base: { duration: 6, weeks: [
-      { label: 'Base · Week 1', focus: 'Aerobic base', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Technique drills', dur: '0:45', zone: 'Z2' },
-        { d: 'Wed', disc: 'Bike', focus: 'Endurance spin', dur: '1:15', zone: 'Z2' },
-        { d: 'Thu', disc: 'Run', focus: 'Easy aerobic', dur: '0:40', zone: 'Z2' },
-        { d: 'Fri', disc: 'Swim', focus: 'Endurance sets', dur: '1:00', zone: 'Z2–Z3' },
-        { d: 'Sat', disc: 'Bike', focus: 'Long ride', dur: '2:00', zone: 'Z2' },
-        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:10', zone: 'Z2' },
-      ]},
-      { label: 'Base · Week 2', focus: 'Volume build', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Threshold sets', dur: '0:50', zone: 'Z3' },
-        { d: 'Wed', disc: 'Bike', focus: 'Tempo intervals', dur: '1:20', zone: 'Z3' },
-        { d: 'Thu', disc: 'Run', focus: 'Aerobic + strides', dur: '0:45', zone: 'Z2–Z4' },
-        { d: 'Fri', disc: 'Strength', focus: 'Core & stability', dur: '0:40', zone: '—' },
-        { d: 'Sat', disc: 'Bike', focus: 'Long ride', dur: '2:30', zone: 'Z2' },
-        { d: 'Sun', disc: 'Brick', focus: 'Ride + transition run', dur: '1:45', zone: 'Z2–Z3' },
-      ]},
-    ]},
-    Build: { duration: 5, weeks: [
-      { label: 'Build · Week 1', focus: 'Threshold', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'VO2 sets', dur: '0:55', zone: 'Z4' },
-        { d: 'Wed', disc: 'Bike', focus: 'Threshold 2×20', dur: '1:30', zone: 'Z4' },
-        { d: 'Thu', disc: 'Run', focus: 'Tempo', dur: '0:55', zone: 'Z3–Z4' },
-        { d: 'Fri', disc: 'Swim', focus: 'Endurance', dur: '1:05', zone: 'Z2' },
-        { d: 'Sat', disc: 'Bike', focus: 'Long ride + efforts', dur: '3:00', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:30', zone: 'Z2' },
-      ]},
-      { label: 'Build · Week 2', focus: 'Race specificity', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Race-pace sets', dur: '1:00', zone: 'Z3–Z4' },
-        { d: 'Wed', disc: 'Bike', focus: 'Over-unders', dur: '1:40', zone: 'Z3–Z4' },
-        { d: 'Thu', disc: 'Run', focus: 'Hill repeats', dur: '1:00', zone: 'Z4' },
-        { d: 'Fri', disc: 'Strength', focus: 'Power & durability', dur: '0:40', zone: '—' },
-        { d: 'Sat', disc: 'Brick', focus: 'Long ride + run', dur: '3:30', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:40', zone: 'Z2' },
-      ]},
-    ]},
-    Peak: { duration: 3, weeks: [
-      { label: 'Peak · Week 1', focus: 'Race simulation', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Race simulation', dur: '1:10', zone: 'Z3' },
-        { d: 'Wed', disc: 'Bike', focus: 'Race-pace hold', dur: '2:00', zone: 'Z3' },
-        { d: 'Thu', disc: 'Run', focus: 'Tempo', dur: '1:05', zone: 'Z3–Z4' },
-        { d: 'Fri', disc: 'Swim', focus: 'Sharpen', dur: '0:50', zone: 'Z2' },
-        { d: 'Sat', disc: 'Brick', focus: '70.3 simulation', dur: '4:00', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Long steady', dur: '1:45', zone: 'Z2' },
-      ]},
-    ]},
-    Taper: { duration: 2, weeks: [
-      { label: 'Taper · Race week', focus: 'Freshen & sharpen', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Sharpen', dur: '0:35', zone: 'Z2–Z3' },
-        { d: 'Wed', disc: 'Bike', focus: 'Openers', dur: '0:50', zone: 'Z2–Z4' },
-        { d: 'Thu', disc: 'Run', focus: 'Easy + strides', dur: '0:30', zone: 'Z2' },
-        { d: 'Fri', disc: 'Rest', focus: 'Travel & prep', dur: '—', zone: '—' },
-        { d: 'Sat', disc: 'Bike', focus: 'Short openers', dur: '0:30', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Race-day shakeout', dur: '0:20', zone: 'Z1–Z2' },
-      ]},
-    ]},
-  };
 
   const DISC = {
     Swim: { icon: 'ph-person-simple-swim', color: '#5fb1cb' },
@@ -972,7 +946,6 @@
   };
 
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const PHASES = ['Base', 'Build', 'Peak', 'Taper'];
   const STORE = 'im703_v2';
   const LEGACY = 'im703_v1';
   const AXIS_GREY = '#b2b6ca';
@@ -989,20 +962,30 @@
 
   /* ---- Plan helpers ---- */
 
-  const phaseWeeks = (p) => planData[p].duration || planData[p].weeks.length;
-  const template = (p, w) => { const ws = planData[p].weeks; return ws[w % ws.length]; };
-  const clampWeek = (p, w) => Math.max(0, Math.min(Number(w) || 0, phaseWeeks(p) - 1));
-  const freshSessions = (p, w) => template(p, w).days.map((s, i) => ({ ...s, day: s.d, id: p + '-' + w + '-' + i }));
-  const sessionsFor = (p, w) => {
-    const saved = plan && plan.weeks ? plan.weeks[p + '_' + w] : null;
-    return Array.isArray(saved) && saved.length ? saved.map((s) => ({ ...s })) : freshSessions(p, w);
+  /* A plan carries its own resolved season, so a week is addressed by a single
+     absolute index instead of a (phase, week) pair. That is what lets the season
+     be re-fitted — block lengths can change without silently moving your edits
+     onto different calendar weeks. */
+  const totalWeeks = () => weekCount(plan);
+  const clampWeek = (w) => Math.max(0, Math.min(Number(w) || 0, totalWeeks() - 1));
+  const weekInfo = (w) => blockAt(plan, w);
+  const sessionsFor = (w) => sessionsAt(plan, w);
+  const freshSessions = (w) => {
+    const info = weekInfo(w);
+    return generateWeek({
+      hours: info.hours, block: info.block, profile: plan.profile,
+      idPrefix: 'w' + info.absWeek,
+    }).sessions;
   };
-  const totalWeeks = () => PHASES.reduce((a, p) => a + phaseWeeks(p), 0);
-  const weeksBefore = (phase) => PHASES.slice(0, PHASES.indexOf(phase)).reduce((a, p) => a + phaseWeeks(p), 0);
-  const phaseAt = (ai) => {
-    let acc = 0;
-    for (const p of PHASES) { const n = phaseWeeks(p); if (ai < acc + n) return [p, ai - acc]; acc += n; }
-    return [PHASES[PHASES.length - 1], 0];
+  /* Consecutive weeks sharing a block name, for the overview timeline. */
+  const blockRuns = () => {
+    const runs = [];
+    for (const w of plan.season) {
+      const last = runs[runs.length - 1];
+      if (last && last.block === w.block) last.weeks++;
+      else runs.push({ block: w.block, weeks: 1, start: w.absWeek });
+    }
+    return runs;
   };
 
   /* ---- Date & duration helpers ---- */
@@ -1030,11 +1013,10 @@
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
   /* =========================================================================
-     Plans — a named plan is the unit of persistence. `planData` (the template
-     above) stays pristine; a plan stores only the weeks you've edited as an
-     overlay, plus done / start / view / chart prefs. A new plan starts empty,
-     so it renders as the pure template until you change something, and
-     "Reset week" just drops that week's overlay to reveal the template again.
+     Plans — a named plan is the unit of persistence. A plan carries its own
+     resolved season and every week's sessions, so it is self-contained: the
+     engine can change without reshaping a season somebody is midway through.
+     "Reset week" regenerates one week from that stored season.
      ========================================================================= */
 
   const uid4 = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1055,16 +1037,29 @@
   let plans = [];   // index: [{ id, name }]
   let plan = null;  // the current plan object
 
-  const blankPlan = (name) => ({
-    id: 'p-' + uid4(), name: name || 'My plan', start: defaultStart(),
-    weeks: {}, done: {}, chartmode: 'weekly', charthidden: {},
-    view: { phase: 'Base', week: 0 }, updatedAt: now(),
-  });
+  const DEFAULT_SEASON_WEEKS = 16;
+
+  const blankPlan = (name) => {
+    const profile = normalizeProfile({});
+    const season = fitToRace({ annualHours: profile.annualHours, weeks: DEFAULT_SEASON_WEEKS });
+    const weeks = {};
+    for (const w of season) {
+      weeks['w' + w.absWeek] = generateWeek({
+        hours: w.hours, block: w.block, profile, idPrefix: 'w' + w.absWeek,
+      }).sessions;
+    }
+    return {
+      id: 'p-' + uid4(), name: name || 'My plan', schema: 3, start: defaultStart(),
+      profile, season, weeks, done: {}, actuals: {}, chat: [],
+      chartmode: 'weekly', charthidden: {}, view: { week: 0 }, updatedAt: now(),
+    };
+  };
 
   // One-time migration of the older single-plan im703_v1_* keys into a plan.
   function migrateLegacy() {
     const weeks = {};
-    for (const p of PHASES) for (let w = 0; w < phaseWeeks(p); w++) {
+    for (const ph of LEGACY_PHASES) for (let w = 0; w < ph.weeks; w++) {
+      const p = ph.name;
       const v = load(LEGACY + '_week_' + p + '_' + w);
       if (Array.isArray(v) && v.length) weeks[p + '_' + w] = v;
     }
@@ -1075,14 +1070,14 @@
       weeks, done: load(LEGACY + '_done') || {},
       chartmode: load(LEGACY + '_chartmode') || 'weekly',
       charthidden: load(LEGACY + '_charthidden') || {},
-      view: { phase: (view.phase && planData[view.phase]) ? view.phase : 'Base', week: Number(view.week) || 0 },
+      view: { phase: view.phase || 'Base', week: Number(view.week) || 0 },
       updatedAt: now(),
     };
   }
 
   function hasLegacy() {
     if (load(LEGACY + '_done') || load(LEGACY + '_view') || load(LEGACY + '_start')) return true;
-    for (const p of PHASES) for (let w = 0; w < phaseWeeks(p); w++) if (load(LEGACY + '_week_' + p + '_' + w)) return true;
+    for (const ph of LEGACY_PHASES) for (let w = 0; w < ph.weeks; w++) if (load(LEGACY + '_week_' + ph.name + '_' + w)) return true;
     return false;
   }
 
@@ -1111,7 +1106,7 @@
   /* ---- Working state: UI flags + a live mirror of the current plan ---- */
 
   const state = {
-    phase: 'Base', week: 0, sessions: [],
+    week: 0, sessions: [],
     done: {}, start: defaultStart(),
     chartMode: 'weekly', chartHidden: {},
     dragId: null, editingId: null, hoverIdx: null,
@@ -1119,16 +1114,22 @@
   };
 
   // Copy a plan's persistent fields into the working state.
+  // Every entry point — startup, plan switch, import, cloud merge, undo — comes
+  // through here, so it is also where an older record gets brought forward. The
+  // upgrade is written back immediately rather than waiting for the athlete to
+  // edit something: leaving storage on the old shape means a later cloud sync
+  // could push a pre-migration plan over a migrated one.
   function adoptPlan(p) {
-    plan = p;
-    const vw = p.view || {};
-    state.phase = (vw.phase && planData[vw.phase]) ? vw.phase : 'Base';
-    state.week = clampWeek(state.phase, vw.week);
-    state.start = p.start || defaultStart();
-    state.done = p.done || {};
-    state.chartMode = p.chartmode || 'weekly';
-    state.chartHidden = p.charthidden || {};
-    state.sessions = sessionsFor(state.phase, state.week);
+    const needsUpgrade = p && p.schema !== 3;
+    plan = loadPlan(p);
+    if (needsUpgrade) savePlanLocal(plan);
+    const vw = plan.view || {};
+    state.week = clampWeek(vw.week);
+    state.start = plan.start || defaultStart();
+    state.done = plan.done || {};
+    state.chartMode = plan.chartmode || 'weekly';
+    state.chartHidden = plan.charthidden || {};
+    state.sessions = sessionsFor(state.week);
     state.dragId = null; state.editingId = null; state.hoverIdx = null;
   }
 
@@ -1138,15 +1139,14 @@
     plan.done = state.done;
     plan.chartmode = state.chartMode;
     plan.charthidden = state.chartHidden;
-    plan.view = { phase: state.phase, week: state.week };
+    plan.view = { week: state.week };
     plan.updatedAt = now();
     savePlanLocal(plan);
     renderStatus();
     schedulePush();
   }
 
-  const setWeekSessions = (p, w, sessions) => { plan.weeks[p + '_' + w] = sessions; };
-  const clearWeekSessions = (p, w) => { delete plan.weeks[p + '_' + w]; };
+  const setWeekSessions = (w, sessions) => { plan.weeks['w' + w] = sessions; };
 
   adoptPlan(ensurePlans());
 
@@ -1156,7 +1156,8 @@
   const els = {
     subtitle: $('subtitle'), startInput: $('start-input'), totalWeeks: $('total-weeks'),
     timeline: $('phase-timeline'), seasonFill: $('season-fill'), seasonPos: $('season-pos'),
-    phaseSeg: $('phase-seg'), prevWeek: $('prev-week'), nextWeek: $('next-week'),
+    setupBtn: $('setup-btn'), panelRoot: $('panel-root'),
+    prevWeek: $('prev-week'), nextWeek: $('next-week'),
     weekPos: $('week-pos'), weekRange: $('week-range'),
     status: $('status'), syncBtn: $('sync-btn'), syncIcon: $('sync-icon'), resetBtn: $('reset-btn'),
     undoBtn: $('undo-btn'),
@@ -1177,8 +1178,11 @@
     const name = (plan && plan.name) || 'My plan';
     els.planTitleText.textContent = name;
     document.title = 'yootri — ' + name;
+    const info = weekInfo(state.week);
     els.subtitle.textContent = totalWeeks() + ' weeks · from ' + fmtDate(parseISO(state.start)) +
-      ' · ' + state.phase + ' · Week ' + (state.week + 1) + ' · ' + template(state.phase, state.week).focus;
+      ' · ' + info.block + ' · Week ' + (state.week + 1) +
+      ' · ' + fmtTotal(Math.round(info.hours * 60)) + ' planned' +
+      (info.recovery ? ' · recovery week' : '');
   }
 
   function renderOverview() {
@@ -1186,23 +1190,24 @@
     els.startInput.value = state.start;
     els.totalWeeks.textContent = N;
 
-    els.timeline.innerHTML = PHASES.map((p) => {
-      const w = phaseWeeks(p);
-      return '<button type="button" class="ov-phase' + (p === state.phase ? ' active' : '') + '"' +
-        ' data-phase="' + p + '" style="flex: ' + w + ' 1 0;">' +
-        '<span class="name">' + p + '</span><span class="wk">' + w + ' wk</span></button>';
+    const here = weekInfo(state.week);
+    els.timeline.innerHTML = blockRuns().map((r) => {
+      const active = r.block === here.block;
+      return '<button type="button" class="ov-phase' + (active ? ' active' : '') + '"' +
+        ' data-week="' + r.start + '" style="flex: ' + r.weeks + ' 1 0;">' +
+        '<span class="name">' + esc(r.block) + '</span>' +
+        '<span class="wk">' + r.weeks + ' wk</span></button>';
     }).join('');
 
-    const abs = weeksBefore(state.phase) + state.week + 1;
+    const abs = state.week + 1;
     const pct = Math.round((abs / N) * 100);
     els.seasonFill.style.width = pct + '%';
     els.seasonPos.innerHTML = 'Week <b>' + abs + '</b> of ' + N + ' · ' + pct + '%';
   }
 
   function renderToolbar() {
-    els.phaseSeg.querySelectorAll('input[name="phase"]').forEach((r) => { r.checked = r.value === state.phase; });
-    els.weekPos.textContent = 'Week ' + (state.week + 1) + ' of ' + phaseWeeks(state.phase);
-    const wkMon = addDays(parseISO(state.start), (weeksBefore(state.phase) + state.week) * 7);
+    els.weekPos.textContent = 'Week ' + (state.week + 1) + ' of ' + totalWeeks();
+    const wkMon = addDays(parseISO(state.start), state.week * 7);
     els.weekRange.textContent = fmtDate(wkMon) + ' – ' + fmtDate(addDays(wkMon, 6));
   }
 
@@ -1278,7 +1283,7 @@
 
   function renderBoard() {
     const startDate = parseISO(state.start);
-    const weekStart0 = weeksBefore(state.phase) + state.week;
+    const weekStart0 = state.week;
     const todayISO = toISO(new Date());
 
     els.board.innerHTML = DAYS.map((day, di) => {
@@ -1319,8 +1324,7 @@
     const wmins = [];
     let compMin = 0, planMin = 0;
     for (let ai = 0; ai < N; ai++) {
-      const [p, w] = phaseAt(ai);
-      const days = sessionsFor(p, w);
+      const days = sessionsFor(ai);
       const by = {};
       let tot = 0;
       for (const s of days) {
@@ -1392,17 +1396,15 @@
     svg += '<text x="15" y="103" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 15 103)" font-size="11" style="fill: color-mix(in srgb, var(--color-text) 55%, transparent);">Time (hours)</text>';
 
     // Phase boundaries
-    let acc = 0;
-    for (const p of PHASES) {
-      if (acc > 0 && acc < N) {
-        const x = xAt(acc).toFixed(1);
+    for (const r of blockRuns()) {
+      if (r.start > 0 && r.start < N) {
+        const x = xAt(r.start).toFixed(1);
         svg += '<line x1="' + x + '" x2="' + x + '" y1="12" y2="' + baseY + '" style="stroke: color-mix(in srgb, var(--color-text) 9%, transparent);" stroke-width="1"/>';
       }
-      acc += phaseWeeks(p);
     }
 
     // Current-week marker
-    const curX = xAt(weeksBefore(state.phase) + state.week).toFixed(1);
+    const curX = xAt(state.week).toFixed(1);
     svg += '<line x1="' + curX + '" x2="' + curX + '" y1="12" y2="' + baseY + '" style="stroke: var(--color-accent);" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>';
 
     // X ticks + week-number labels
@@ -1480,7 +1482,7 @@
 
     const hMon = addDays(parseISO(state.start), hi * 7);
     els.chartTip.innerHTML =
-      '<div class="tip-head"><span class="tip-week">Week ' + (hi + 1) + '</span><span class="tip-phase">' + phaseAt(hi)[0] + '</span></div>' +
+      '<div class="tip-head"><span class="tip-week">Week ' + (hi + 1) + '</span><span class="tip-phase">' + esc(weekInfo(hi).block) + '</span></div>' +
       '<div class="tip-date">' + fmtDate(hMon) + ' – ' + fmtDate(addDays(hMon, 6)) + '</div>' +
       rows.map((r) =>
         '<div class="tip-row"><span class="name"><span class="swatch" style="background: ' + r.color + ';"></span>' + r.name + '</span>' +
@@ -1536,13 +1538,177 @@
   }
 
   /* =========================================================================
+     Plan setup — a profile goes in, a previewed re-fit comes out.
+
+     Nothing in here writes to the plan. Editing builds a *draft*; the draft is
+     diffed against what you have and validated; only Apply commits it, and even
+     then the previous plan is kept for a short undo window. That ceremony looks
+     heavy for a form, but it is the same path the coach agent will take — the
+     safety has to live here, not in the caller.
+     ========================================================================= */
+
+  let draft = null;
+
+  function closePanel() {
+    draft = null;
+    els.panelRoot.innerHTML = '';
+    document.removeEventListener('keydown', onPanelKey);
+  }
+
+  function onPanelKey(e) { if (e.key === 'Escape') closePanel(); }
+
+  function panelShell(inner) {
+    els.panelRoot.innerHTML =
+      '<div class="pnl-back"><div class="pnl" role="dialog" aria-modal="true" aria-label="Plan setup">' +
+      inner + '</div></div>';
+    document.addEventListener('keydown', onPanelKey);
+    els.panelRoot.querySelector('.pnl-back').addEventListener('mousedown', (e) => {
+      if (e.target.classList.contains('pnl-back')) closePanel();
+    });
+  }
+
+  const field = (label, control) =>
+    '<label class="pnl-f"><span>' + label + '</span>' + control + '</label>';
+
+  function openSetupPanel() {
+    const p = plan.profile;
+    const swimCap = (p.constraints.find((c) => c.disc === 'Swim' && c.rule === 'maxPerWeek') || {}).value;
+    const planned = plan.season.reduce((a, w) => a + Math.round(w.hours * 60), 0);
+    const opts = ['sprint', 'olympic', '70.3', 'ironman']
+      .map((o) => '<option value="' + o + '"' + (o === p.raceType ? ' selected' : '') + '>' + o + '</option>')
+      .join('');
+
+    panelShell(
+      '<h2>Plan setup</h2>' +
+      '<p class="pnl-sub">Fit the season to the time you actually have. Nothing changes until you review it.</p>' +
+      '<div class="pnl-grid">' +
+        field('Annual hours', '<input type="number" class="input" id="f-annual" min="50" max="2000" step="10" value="' + Math.round(p.annualHours) + '" />') +
+        field('Race date', '<input type="date" class="input" id="f-race" value="' + esc(p.raceDate || '') + '" />') +
+        field('Race distance', '<select class="input" id="f-race-type">' + opts + '</select>') +
+        field('Max swims / week', '<input type="number" class="input" id="f-swimcap" min="0" max="7" step="1" value="' + (swimCap ?? '') + '" placeholder="no limit" />') +
+      '</div>' +
+      '<p class="pnl-hint">Annual hours is a <b>scale</b>, not a total this plan adds up to. A typical week is annual ÷ 52, and a season covers only part of the year — this one prescribes <b>' +
+        (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
+      '<div class="pnl-sec">' +
+        '<span class="pnl-sub" style="display:block">Time available each day (minutes)</span>' +
+        '<div class="pnl-days">' +
+          DAYS.map((d) => '<label>' + d +
+            '<input type="number" class="input" data-day="' + d + '" min="0" max="600" step="15" value="' +
+            (p.availability[d] || 0) + '" /></label>').join('') +
+        '</div>' +
+        '<p class="pnl-hint">A day set to 0 is a rest day — nothing will be scheduled on it.</p>' +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" id="f-preview">Preview changes</button>' +
+      '</div>',
+    );
+    $('f-cancel').addEventListener('click', closePanel);
+    $('f-preview').addEventListener('click', previewRefit);
+  }
+
+  function previewRefit() {
+    const availability = {};
+    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => {
+      availability[i.dataset.day] = Number(i.value) || 0;
+    });
+
+    const cap = $('f-swimcap').value;
+    const constraints = plan.profile.constraints
+      .filter((c) => !(c.disc === 'Swim' && c.rule === 'maxPerWeek'));
+    if (cap !== '') constraints.push({ disc: 'Swim', rule: 'maxPerWeek', value: Number(cap) });
+
+    const profile = normalizeProfile({
+      ...plan.profile,
+      annualHours: Number($('f-annual').value) || plan.profile.annualHours,
+      raceDate: $('f-race').value || null,
+      raceType: $('f-race-type').value,
+      availability,
+      constraints,
+    });
+
+    draft = refit(plan, { profile });
+    renderDiff(diffPlans(plan, draft));
+  }
+
+  function renderDiff(d) {
+    const rows = d.weeks.map((w) => {
+      const dir = w.deltaMinutes > 0 ? 'up' : (w.deltaMinutes < 0 ? 'down' : '');
+      const sign = w.deltaMinutes > 0 ? '+' : '−';
+      return '<li class="diff-row">' +
+        '<span class="wk">Week ' + (w.absWeek + 1) + ' · ' + esc(w.block) + '</span>' +
+        '<span class="vol">' + (fmtTotal(w.beforeMinutes) || '0m') + ' → ' + (fmtTotal(w.afterMinutes) || '0m') + '</span>' +
+        '<span class="delta ' + dir + '">' +
+          (w.deltaMinutes ? sign + fmtTotal(Math.abs(w.deltaMinutes)) : '—') + '</span></li>';
+    }).join('');
+
+    const errs = d.issues.filter((i) => i.level === 'error');
+    const warns = d.issues.filter((i) => i.level === 'warn');
+    const list = (items, cls) => items.slice(0, 6)
+      .map((i) => '<li class="' + cls + '">Week ' + (i.weekIndex + 1) + ': ' + esc(i.message) + '</li>').join('');
+
+    const issues = d.issues.length
+      ? '<div class="diff-issues">' +
+          (errs.length
+            ? '<b class="err">' + errs.length + ' problem' + (errs.length === 1 ? '' : 's') +
+              ' — these weeks would not be possible, so this cannot be applied.</b><ul>' + list(errs, 'err') + '</ul>'
+            : '') +
+          (warns.length
+            ? '<b>' + warns.length + ' thing' + (warns.length === 1 ? '' : 's') + ' worth a look</b><ul>' +
+              list(warns, '') + '</ul>'
+            : '') +
+        '</div>'
+      : '';
+
+    const delta = d.totalDeltaMinutes;
+    panelShell(
+      '<h2>Review changes</h2>' +
+      '<p class="pnl-sub">' +
+        (d.weeks.length
+          ? d.weeks.length + ' of ' + totalWeeks() + ' weeks change' +
+            (delta ? ', season volume ' + (delta > 0 ? '+' : '−') + fmtTotal(Math.abs(delta)) : '')
+          : 'Nothing changes') + '.</p>' +
+      (d.weeks.length
+        ? '<ul class="diff-list">' + rows + '</ul>'
+        : '<p class="diff-empty">This fit produces the plan you already have.</p>') +
+      issues +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="d-back">Back</button>' +
+        '<button type="button" class="btn btn-ghost" id="d-cancel">Discard</button>' +
+        '<button type="button" class="btn btn-primary" id="d-apply"' +
+          (d.blocked || !d.weeks.length ? ' disabled' : '') + '>Apply</button>' +
+      '</div>',
+    );
+    $('d-back').addEventListener('click', openSetupPanel);
+    $('d-cancel').addEventListener('click', closePanel);
+    if (!d.blocked && d.weeks.length) $('d-apply').addEventListener('click', applyRefit);
+  }
+
+  function applyRefit() {
+    if (!draft) return;
+    const snapshot = JSON.parse(JSON.stringify(plan));
+    const next = applyDraft(plan, draft, { now: now() });
+    closePanel();
+
+    adoptPlan(next);
+    persistPlan();
+
+    clearUndo();
+    pendingUndo = { kind: 'refit', plan: snapshot };
+    els.undoBtn.classList.remove('hidden');
+    undoTimer = setTimeout(clearUndo, UNDO_MS);
+
+    renderAll();
+    setStatus('Plan re-fitted');
+  }
+
+  /* =========================================================================
      State transitions
      ========================================================================= */
 
-  function select(phase, wi) {
-    state.phase = phase;
-    state.week = clampWeek(phase, wi);
-    state.sessions = sessionsFor(state.phase, state.week);
+  function select(wi) {
+    state.week = clampWeek(wi);
+    state.sessions = sessionsFor(state.week);
     state.dragId = null;
     persistPlan();
     renderAll();
@@ -1550,7 +1716,7 @@
 
   function persistSessions(sessions) {
     state.sessions = sessions;
-    setWeekSessions(state.phase, state.week, sessions);
+    setWeekSessions(state.week, sessions);
     persistPlan();
     renderSummary();
     renderBoard();
@@ -1735,6 +1901,15 @@
 
   function undoDelete() {
     if (!pendingUndo) return;
+    if (pendingUndo.kind === 'refit') {
+      const prev = pendingUndo.plan;
+      clearUndo();
+      adoptPlan(prev);
+      persistPlan();
+      renderAll();
+      setStatus('Re-fit undone');
+      return;
+    }
     const { plan: p, index, wasCurrent, autoCreatedId } = pendingUndo;
     clearUndo();
     savePlanLocal(p);
@@ -1785,7 +1960,7 @@
       p.done = (src.done && typeof src.done === 'object') ? src.done : {};
       p.chartmode = src.chartmode === 'cumulative' ? 'cumulative' : 'weekly';
       p.charthidden = (src.charthidden && typeof src.charthidden === 'object') ? src.charthidden : {};
-      p.view = (src.view && planData[src.view.phase]) ? { phase: src.view.phase, week: Number(src.view.week) || 0 } : { phase: 'Base', week: 0 };
+      p.view = src.view || { phase: 'Base', week: 0 };
       p.updatedAt = now();
       addPlan(p);
       setStatus('Imported "' + p.name + '"');
@@ -2029,16 +2204,14 @@
     renderAll();
   });
   els.timeline.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-phase]');
-    if (btn) select(btn.dataset.phase, 0);
+    const btn = e.target.closest('[data-week]');
+    if (btn) select(Number(btn.dataset.week) || 0);
   });
 
   // Toolbar
-  els.phaseSeg.addEventListener('change', (e) => {
-    if (e.target.name === 'phase') select(e.target.value, 0);
-  });
-  els.prevWeek.addEventListener('click', () => { if (state.week > 0) select(state.phase, state.week - 1); });
-  els.nextWeek.addEventListener('click', () => { if (state.week < phaseWeeks(state.phase) - 1) select(state.phase, state.week + 1); });
+  els.setupBtn.addEventListener('click', openSetupPanel);
+  els.prevWeek.addEventListener('click', () => { if (state.week > 0) select(state.week - 1); });
+  els.nextWeek.addEventListener('click', () => { if (state.week < totalWeeks() - 1) select(state.week + 1); });
   els.syncBtn.addEventListener('click', () => {
     if (cloudReady() && authUser) {
       els.syncIcon.classList.add('spinning');
@@ -2050,8 +2223,8 @@
     }
   });
   els.resetBtn.addEventListener('click', () => {
-    clearWeekSessions(state.phase, state.week);
-    state.sessions = freshSessions(state.phase, state.week);
+    state.sessions = freshSessions(state.week);
+    setWeekSessions(state.week, state.sessions);
     state.dragId = null;
     persistPlan();
     renderSummary();
@@ -2084,7 +2257,7 @@
       const id = 'cus-' + uid4();
       const sessions = [...state.sessions, { d: day, day, disc: 'Swim', focus: '', dur: '0:30', zone: 'Z2', desc: '', id, custom: true }];
       state.sessions = sessions;
-      setWeekSessions(state.phase, state.week, sessions);
+      setWeekSessions(state.week, sessions);
       persistPlan();
       state.editingId = id;
       renderSummary();
