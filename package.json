@@ -1,0 +1,9 @@
+{
+  "name": "yootri",
+  "private": true,
+  "type": "module",
+  "description": "Dev-only manifest: lets `node --test` run the coach engine modules. The app itself has no build step and no dependencies.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
