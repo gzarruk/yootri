@@ -1044,7 +1044,8 @@
   import { newPlan, FALLBACK_WEEKS } from './assets/coach/plan.js';
   import { weeksUntil } from './assets/coach/dates.js';
   import { suggest } from './assets/coach/adapt.js';
-  import { runTurn, KEY_STORAGE } from './assets/coach/agent.js';
+  import { runTurn } from './assets/coach/agent.js';
+  import { PROVIDERS, getProvider, resolveModel } from './assets/coach/providers.js';
   import { LEGACY_PHASES } from './assets/coach/migrate.js';
 
   /* =========================================================================
@@ -1872,8 +1873,31 @@
 
   let coach = null;      // { session, busy }
   const chatOf = () => (plan.chat = plan.chat ?? []);
-  const getKey = () => { try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; } };
-  const setKey = (v) => { try { v ? localStorage.setItem(KEY_STORAGE, v) : localStorage.removeItem(KEY_STORAGE); } catch (e) {} };
+
+  /* Coach settings live in localStorage, not in the plan: they are about this
+     browser, not about this season. Each provider keeps its key under its own
+     name so switching provider does not destroy the other one. */
+  const SETTINGS_KEY = 'yootri_coach_settings';
+  const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
+
+  function coachSettings() {
+    let raw = {};
+    try { raw = JSON.parse(lsGet(SETTINGS_KEY) || '{}') || {}; } catch (e) { raw = {}; }
+    const provider = getProvider(raw.providerId);
+    return {
+      provider,
+      model: resolveModel(provider, raw.model),
+      baseUrl: (provider.allowBaseUrlOverride && raw.baseUrl) || provider.defaultBaseUrl,
+    };
+  }
+
+  function saveCoachSettings({ providerId, model, baseUrl }) {
+    lsSet(SETTINGS_KEY, JSON.stringify({ providerId, model, baseUrl }));
+  }
+
+  const getKey = (provider) => lsGet((provider || coachSettings().provider).keyStorageKey);
+  const setKey = (provider, v) => lsSet((provider || coachSettings().provider).keyStorageKey, v);
 
   function openCoach() {
     if (!coach) coach = { session: createSession(plan), busy: false };
@@ -1882,27 +1906,92 @@
     renderCoach();
   }
 
-  function renderKeyForm() {
+  function renderKeyForm(pending) {
+    const cur = pending || coachSettings();
+    const provider = cur.provider;
+    const key = getKey(provider);
+    const listed = provider.models.some((m) => m.id === cur.model);
+    const custom = provider.allowCustomModel && !listed;
+
+    const provOpts = PROVIDERS.map((p) =>
+      '<option value="' + p.id + '"' + (p.id === provider.id ? ' selected' : '') + '>' + esc(p.label) + '</option>').join('');
+
+    const modelOpts = provider.models.map((m) =>
+      '<option value="' + esc(m.id) + '"' + (m.id === cur.model && !custom ? ' selected' : '') + '>' +
+      esc(m.label) + ' — ' + esc(m.note) + '</option>').join('') +
+      (provider.allowCustomModel
+        ? '<option value="__custom"' + (custom ? ' selected' : '') + '>Another model…</option>'
+        : '');
+
     panelShell(
-      '<h2>Connect the coach</h2>' +
-      '<p class="pnl-sub">yootri has no server, so it uses your own Anthropic API key and talks to the API directly from this page.</p>' +
-      '<div class="field"><label for="k-key">Anthropic API key</label>' +
-        '<input type="password" class="input" id="k-key" placeholder="sk-ant-…" autocomplete="off" /></div>' +
+      '<h2>Coach settings</h2>' +
+      '<p class="pnl-sub">yootri has no server, so it uses your own API key and talks to the provider directly from this page.</p>' +
+      '<div class="pnl-grid">' +
+        field('Provider', '<select class="input" id="k-prov">' + provOpts + '</select>') +
+        field('Model', '<select class="input" id="k-model">' + modelOpts + '</select>') +
+      '</div>' +
+      (custom
+        ? '<div class="field"><label for="k-model-custom">Model name</label>' +
+          '<input type="text" class="input" id="k-model-custom" value="' + esc(cur.model) + '" ' +
+          'placeholder="llama3.1:70b" autocomplete="off" /></div>'
+        : '') +
+      (provider.allowBaseUrlOverride
+        ? '<div class="field"><label for="k-base">Base URL</label>' +
+          '<input type="text" class="input" id="k-base" value="' + esc(cur.baseUrl) + '" ' +
+          'placeholder="' + esc(provider.defaultBaseUrl) + '" autocomplete="off" /></div>'
+        : '') +
+      '<div class="field"><label for="k-key">' + esc(provider.label) + ' API key</label>' +
+        '<input type="password" class="input" id="k-key" placeholder="' + esc(provider.keyPlaceholder) + '" ' +
+        'value="' + esc(key) + '" autocomplete="off" /></div>' +
+      (provider.keyHint ? '<p class="pnl-hint">' + esc(provider.keyHint) + '</p>' : '') +
       '<p class="key-warn">The key is stored in this browser only. It is never written into a plan, never exported, and never synced — but anything that can run script on this page could read it. Use a key you are willing to rotate, and remove it below when you are done.</p>' +
+      '<p class="key-warn">Coach conversations use your own API credits. What a turn costs depends on the model you pick — the list is ordered cheapest first.</p>' +
       '<div class="pnl-act">' +
-        (getKey() ? '<button type="button" class="btn btn-ghost spacer" id="k-forget">Remove key</button>' : '') +
+        (key ? '<button type="button" class="btn btn-ghost spacer" id="k-forget">Remove key</button>' : '') +
         '<button type="button" class="btn btn-ghost" id="k-cancel">Cancel</button>' +
         '<button type="button" class="btn btn-primary" id="k-save">Save</button>' +
       '</div>',
+      'Coach settings',
     );
+
+    // Changing provider or picking "another model" redraws the form, keeping
+    // what has been typed so far. Each provider's key is read from its own slot.
+    const redraw = () => {
+      const nextProvider = getProvider($('k-prov').value);
+      const picked = $('k-model').value;
+      const sameProvider = nextProvider.id === provider.id;
+      renderKeyForm({
+        provider: nextProvider,
+        model: !sameProvider ? nextProvider.defaultModel
+          : picked === '__custom' ? (custom ? readCustomModel() : '')
+          : picked,
+        baseUrl: sameProvider && $('k-base') ? $('k-base').value.trim() : nextProvider.defaultBaseUrl,
+      });
+    };
+    const readCustomModel = () => ($('k-model-custom') ? $('k-model-custom').value.trim() : '');
+
+    $('k-prov').addEventListener('change', redraw);
+    $('k-model').addEventListener('change', redraw);
     $('k-cancel').addEventListener('click', closePanel);
     $('k-save').addEventListener('click', () => {
+      const picked = $('k-model').value;
+      const model = picked === '__custom' ? readCustomModel() : picked;
+      if (picked === '__custom' && !model) return;
       const v = $('k-key').value.trim();
       if (!v) return;
-      setKey(v);
+      setKey(provider, v);
+      saveCoachSettings({
+        providerId: provider.id,
+        model,
+        baseUrl: $('k-base') ? $('k-base').value.trim() : undefined,
+      });
       renderCoach();
     });
-    $('k-forget')?.addEventListener('click', () => { setKey(''); closePanel(); setStatus('Coach key removed'); });
+    $('k-forget')?.addEventListener('click', () => {
+      setKey(provider, '');
+      closePanel();
+      setStatus('Coach key removed');
+    });
   }
 
   function renderCoach() {
@@ -1943,7 +2032,7 @@
         '<button type="button" class="btn btn-primary" id="c-send"' + (coach.busy ? ' disabled' : '') + '>Send</button>' +
       '</div>' +
       '<div class="pnl-act">' +
-        '<button type="button" class="btn btn-ghost spacer" id="c-key">API key</button>' +
+        '<button type="button" class="btn btn-ghost spacer" id="c-key">Settings</button>' +
         (log.length ? '<button type="button" class="btn btn-ghost" id="c-clear">Clear chat</button>' : '') +
         '<button type="button" class="btn btn-secondary" id="c-close">Close</button>' +
       '</div>',
@@ -1952,7 +2041,7 @@
     const logEl = $('c-log');
     logEl.scrollTop = logEl.scrollHeight;
     $('c-close').addEventListener('click', closePanel);
-    $('c-key').addEventListener('click', renderKeyForm);
+    $('c-key').addEventListener('click', () => renderKeyForm());
     $('c-clear')?.addEventListener('click', () => { plan.chat = []; persistPlan(); renderCoach(); });
     $('c-send').addEventListener('click', sendToCoach);
     $('c-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendToCoach(); });
@@ -1985,8 +2074,12 @@
 
     let out;
     try {
+      const cfg = coachSettings();
       out = await runTurn({
-        apiKey: getKey(),
+        apiKey: getKey(cfg.provider),
+        provider: cfg.provider,
+        model: cfg.model,
+        baseUrl: cfg.baseUrl,
         session: coach.session,
         messages: coach.wire,
         effort: 'medium',

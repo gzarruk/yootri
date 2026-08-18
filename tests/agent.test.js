@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  MODEL, buildRequest, describeHttpError, runTurn, polishWeek,
+  buildRequest, describeHttpError, runTurn, polishWeek, getProvider,
 } from '../assets/coach/agent.js';
+
+const anthropic = getProvider('anthropic');
 import { createSession } from '../assets/coach/tools.js';
 import { loadPlan } from '../assets/coach/plan.js';
 
@@ -42,9 +44,18 @@ test('the request targets the documented browser-access endpoint', () => {
   assert.equal(headers['anthropic-dangerous-direct-browser-access'], 'true');
 });
 
-test('the request uses the current model', () => {
-  assert.equal(buildRequest({ apiKey: 'k', messages: [] }).body.model, MODEL);
-  assert.equal(MODEL, 'claude-opus-5');
+test('the request defaults to the cheapest model that can drive the tool loop', () => {
+  // Opus was the old default and produced bills nobody expected. The default is
+  // now the cheapest model in the list; anything else is an explicit choice.
+  const { body } = buildRequest({ apiKey: 'k', messages: [] });
+  assert.equal(body.model, anthropic.defaultModel);
+  assert.equal(body.model, anthropic.models[0].id);
+  assert.equal(body.model, 'claude-haiku-4-5-20251001');
+});
+
+test('an unknown model falls back rather than being sent as-is', () => {
+  const { body } = buildRequest({ apiKey: 'k', messages: [], model: 'no-such-model' });
+  assert.equal(body.model, anthropic.defaultModel);
 });
 
 test('thinking is left at its default rather than disabled', () => {
@@ -56,8 +67,10 @@ test('thinking is left at its default rather than disabled', () => {
 });
 
 test('max_tokens leaves room for thinking as well as the answer', () => {
+  // Lowered along with the default model: this is a side panel, not an essay,
+  // and the ceiling is what an unattended tool loop can spend per step.
   const { body } = buildRequest({ apiKey: 'k', messages: [] });
-  assert.ok(body.max_tokens >= 8000, `too tight at ${body.max_tokens}`);
+  assert.ok(body.max_tokens >= 2000, `too tight at ${body.max_tokens}`);
 });
 
 test('tools are only sent when there are tools to send', () => {
@@ -255,4 +268,77 @@ test('an http error includes what the API actually said', async () => {
     apiKey: 'k', session: createSession(plan()), messages: [{ role: 'user', content: 'hi' }], fetchImpl,
   });
   assert.match(out.text, /tools.0.name: invalid/, `lost the detail: ${out.text}`);
+});
+
+/* The same loop, driven through the other provider */
+
+test('the tool loop runs end to end on an openai-compatible endpoint', async () => {
+  const openai = getProvider('openai-compatible');
+  const calls = [];
+  const responses = [
+    { choices: [{ finish_reason: 'tool_calls', message: {
+      role: 'assistant', content: null,
+      tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'get_plan_summary', arguments: '{}' } }],
+    } }] },
+    { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Sixteen weeks.' } }] },
+  ];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, body: JSON.parse(init.body) });
+    return { ok: true, status: 200, json: async () => responses.shift() };
+  };
+
+  const out = await runTurn({
+    apiKey: 'k', provider: openai, session: createSession(plan()),
+    messages: [{ role: 'user', content: 'how long?' }], fetchImpl,
+  });
+
+  assert.equal(out.text, 'Sixteen weeks.');
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].url, /\/chat\/completions$/);
+
+  // The follow-up must carry the assistant's tool_calls and a matching tool
+  // message, or Chat Completions rejects the request outright.
+  const followUp = calls[1].body.messages;
+  const assistant = followUp.find((m) => m.role === 'assistant');
+  assert.equal(assistant.tool_calls[0].id, 'call_1');
+  const toolMsg = followUp.at(-1);
+  assert.equal(toolMsg.role, 'tool');
+  assert.equal(toolMsg.tool_call_id, 'call_1');
+  assert.ok(toolMsg.content.includes('totalWeeks'));
+});
+
+test('unparseable tool arguments are reported back to the model, not thrown', async () => {
+  const openai = getProvider('openai-compatible');
+  const responses = [
+    { choices: [{ finish_reason: 'tool_calls', message: {
+      role: 'assistant', content: null,
+      tool_calls: [{ id: 'c1', type: 'function', function: { name: 'get_week', arguments: '{"week":' } }],
+    } }] },
+    { choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Let me retry.' } }] },
+  ];
+  const sent = [];
+  const fetchImpl = async (url, init) => {
+    sent.push(JSON.parse(init.body));
+    return { ok: true, status: 200, json: async () => responses.shift() };
+  };
+
+  const out = await runTurn({
+    apiKey: 'k', provider: openai, session: createSession(plan()),
+    messages: [{ role: 'user', content: 'week 3?' }], fetchImpl,
+  });
+
+  assert.equal(out.text, 'Let me retry.');
+  const toolMsg = sent[1].messages.at(-1);
+  assert.equal(toolMsg.role, 'tool');
+  assert.match(toolMsg.content, /failed/i);
+});
+
+test('a request that never leaves the browser is explained, not swallowed', async () => {
+  const fetchImpl = async () => { throw new TypeError('Failed to fetch'); };
+  const out = await runTurn({
+    apiKey: 'k', session: createSession(plan()),
+    messages: [{ role: 'user', content: 'hi' }], fetchImpl,
+  });
+  assert.equal(out.error, true);
+  assert.match(out.text, /could not reach/i);
 });
