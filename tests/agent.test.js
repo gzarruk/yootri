@@ -59,11 +59,24 @@ test('an unknown model falls back rather than being sent as-is', () => {
 });
 
 test('thinking is left at its default rather than disabled', () => {
-  // On this model, disabling thinking can make a tool call arrive as plain text
-  // that silently never runs. Cost is controlled with effort instead.
-  const { body } = buildRequest({ apiKey: 'k', messages: [] });
+  // Disabling thinking can make a tool call arrive as plain text that silently
+  // never runs. Cost is controlled with effort instead, on models that take it.
+  const { body } = buildRequest({ apiKey: 'k', messages: [], model: 'claude-sonnet-5' });
   assert.equal(body.thinking, undefined);
   assert.ok(['low', 'medium', 'high'].includes(body.output_config.effort));
+});
+
+test('effort is only sent to models that accept it', () => {
+  // Found by a live call: the API rejects output_config with a 400 on a model
+  // that does not support the parameter, rather than ignoring it. Sending it
+  // unconditionally made the coach fail on its own default model.
+  const onDefault = buildRequest({ apiKey: 'k', messages: [] }).body;
+  assert.equal(onDefault.model, 'claude-haiku-4-5-20251001');
+  assert.equal(onDefault.output_config, undefined);
+
+  for (const model of ['claude-sonnet-5', 'claude-opus-5']) {
+    assert.equal(buildRequest({ apiKey: 'k', messages: [], model }).body.output_config.effort, 'medium');
+  }
 });
 
 test('max_tokens leaves room for thinking as well as the answer', () => {

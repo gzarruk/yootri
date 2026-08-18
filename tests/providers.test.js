@@ -67,7 +67,20 @@ test('the anthropic request keeps every detail the browser path depends on', () 
   assert.equal(headers['anthropic-dangerous-direct-browser-access'], 'true');
   assert.equal(body.system, 'SYS');
   assert.equal(body.thinking, undefined);
-  assert.ok(['low', 'medium', 'high'].includes(body.output_config.effort));
+});
+
+test('effort goes only to the models that accept the parameter', () => {
+  // The live API answers a 400 here, not a shrug, so this cannot be sent blind.
+  for (const m of anthropic.models) {
+    const { body } = req(anthropic, { model: m.id, effort: 'low' });
+    assert.equal(body.output_config?.effort, m.supportsEffort ? 'low' : undefined, m.id);
+  }
+});
+
+test('every anthropic model states whether it takes an effort parameter', () => {
+  for (const m of anthropic.models) {
+    assert.equal(typeof m.supportsEffort, 'boolean', `${m.id} must declare supportsEffort`);
+  }
 });
 
 test('the openai request is a chat completion with a bearer token', () => {
