@@ -78,6 +78,15 @@ export function refit(plan, { profile, from = 0, to = Infinity } = {}) {
     weeks: weekCount(plan),
   });
 
+  // Reapply any pinned per-week budgets on top. Without this, "make next week
+  // 4 hours" followed by any change that refits the season would silently undo
+  // itself — including two tool calls made by the coach in the same turn.
+  const pinned = draft.weekBudgets ?? {};
+  draft.season = draft.season.map((w) => {
+    const hours = Number(pinned[weekKey(w.absWeek)]);
+    return Number.isFinite(hours) && hours >= 0 ? { ...w, hours } : w;
+  });
+
   const first = Math.max(0, from);
   const last = Math.min(weekCount(draft) - 1, to);
 
@@ -169,6 +178,11 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
     Object.fromEntries(Object.entries(src ?? {}).filter(([id]) => live.has(id)));
   next.done = keep(plan.done);
   next.actuals = keep(plan.actuals);
+
+  // Chat is conversation state, not plan content. A draft is snapshotted when
+  // the coach makes its first tool call — before it has replied — so taking the
+  // transcript from the draft would rewind it and swallow the coach's own answer.
+  next.chat = plan.chat ?? [];
 
   return next;
 }
