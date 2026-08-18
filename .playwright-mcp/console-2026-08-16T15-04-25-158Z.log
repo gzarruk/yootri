@@ -1,0 +1,6 @@
+[ 2742405ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js:0
+[ 2742406ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js:0
+[ 2754413ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js:0
+[ 2754413ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.closed call. @ https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js:0
+[ 2755556ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.close call. @ https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js:0
+[ 2755556ms] [ERROR] Cross-Origin-Opener-Policy policy would block the window.close call. @ https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js:0

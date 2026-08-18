@@ -788,6 +788,93 @@
     .im-chartsvg { min-width: 600px; }
     .im-h1-input { font-size: 26px; }
   }
+  /* ---- Plan setup panel & change preview ---- */
+  .pnl-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex;
+    align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 60; overflow: auto; }
+  .pnl { background: var(--color-surface, #1b1e2b); color: var(--color-text, #e8e9f0);
+    border: 1px solid color-mix(in srgb, var(--color-text) 14%, transparent);
+    border-radius: 14px; width: min(720px, 100%); padding: 1.25rem 1.35rem 1.1rem; }
+  .pnl h2 { margin: 0 0 .15rem; font-size: 1.05rem; }
+  .pnl .pnl-sub { margin: 0 0 1rem; font-size: .82rem;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .pnl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .7rem 1rem; }
+  .pnl-f { display: flex; flex-direction: column; gap: .28rem; font-size: .8rem; }
+  .pnl-f > span { color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+  .pnl-hint { font-size: .74rem; line-height: 1.45;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 0; }
+  .pnl-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: .4rem; }
+  .pnl-days label { display: flex; flex-direction: column; gap: .25rem; font-size: .72rem; text-align: center; }
+  .pnl-days input { width: 100%; text-align: center; padding: .35rem .2rem; }
+  .pnl-sec { margin-top: 1.1rem; padding-top: .9rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent); }
+  .pnl-act { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1.15rem; flex-wrap: wrap; }
+  .pnl-act .spacer { margin-right: auto; }
+  .diff-sum { font-size: .86rem; margin: 0 0 .6rem; }
+  .diff-list { max-height: 40vh; overflow: auto; margin: 0; padding: 0; list-style: none; }
+  .diff-row { display: grid; grid-template-columns: 1fr auto auto; gap: .6rem; align-items: baseline;
+    padding: .4rem .1rem; font-size: .82rem;
+    border-bottom: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
+  .diff-row .wk { color: color-mix(in srgb, var(--color-text) 72%, transparent); }
+  .diff-row .vol { font-variant-numeric: tabular-nums; }
+  .diff-row .delta { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .diff-row .delta.up { color: #84c08f; }
+  .diff-row .delta.down { color: #e08a6c; }
+  .diff-issues { margin: .8rem 0 0; padding: .6rem .75rem; border-radius: 9px; font-size: .78rem;
+    background: color-mix(in srgb, var(--color-text) 6%, transparent); }
+  .diff-issues ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+  .diff-issues .err { color: #e08a6c; }
+  .diff-empty { font-size: .85rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+
+  /* ---- Logging what actually happened ---- */
+  .log-sec { margin-top: .2rem; padding-top: .85rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent); }
+  .log-sec > label { display: block; font-size: .78rem; margin-bottom: .45rem;
+    color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+  .log-seg { display: flex; gap: .3rem; flex-wrap: wrap; margin-bottom: .6rem; }
+  .log-seg button { flex: 1 1 auto; padding: .38rem .5rem; font-size: .76rem; cursor: pointer;
+    border-radius: 7px; background: transparent; color: inherit;
+    border: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent); }
+  .log-seg button.on { background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    border-color: var(--color-accent); font-weight: 600; }
+  .card-actual { display: block; margin-top: .2rem; font-size: .72rem; font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+  .card-actual.short { color: #e08a6c; }
+  .card-actual.miss { color: #e08a6c; font-style: italic; }
+  .sum-cell .sub.act { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+  /* ---- Coach ---- */
+  .chat-log { max-height: 46vh; overflow: auto; display: flex; flex-direction: column; gap: .55rem;
+    margin: .2rem 0 .9rem; padding-right: .2rem; }
+  .chat-msg { font-size: .85rem; line-height: 1.5; padding: .5rem .7rem; border-radius: 10px;
+    white-space: pre-wrap; overflow-wrap: anywhere; }
+  .chat-msg.user { background: color-mix(in srgb, var(--color-accent) 18%, transparent); align-self: flex-end;
+    max-width: 85%; }
+  .chat-msg.coach { background: color-mix(in srgb, var(--color-text) 7%, transparent); align-self: flex-start;
+    max-width: 92%; }
+  .chat-msg.err { background: color-mix(in srgb, #e08a6c 20%, transparent); align-self: flex-start; }
+  .chat-empty { font-size: .82rem; color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    padding: .4rem 0 .8rem; }
+  .chat-empty ul { margin: .45rem 0 0; padding-left: 1.1rem; }
+  .chat-row { display: flex; gap: .5rem; }
+  .chat-row input { flex: 1; }
+  .chat-draft { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    margin: 0 0 .8rem; padding: .55rem .75rem; border-radius: 9px; font-size: .8rem;
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent); }
+  .chat-draft .grow { flex: 1; }
+  .key-warn { font-size: .74rem; line-height: 1.5; margin: .5rem 0 0;
+    color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+  .advice { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1rem; }
+  .advice-card { display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .8rem;
+    border-radius: 10px; font-size: .82rem; line-height: 1.5;
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+    border-left: 3px solid color-mix(in srgb, var(--color-text) 30%, transparent); }
+  .advice-card.warn { border-left-color: #e08a6c;
+    background: color-mix(in srgb, #e08a6c 10%, transparent); }
+  .advice-card .grow { flex: 1; }
+  .advice-card .btn { flex: none; }
+  .chat-busy { font-size: .8rem; font-style: italic;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 </style>
 </head>
 <body>
@@ -831,12 +918,12 @@
     </div>
 
     <div class="toolbar">
-      <div class="seg" role="tablist" aria-label="Training phase" id="phase-seg">
-        <label class="seg-opt"><input type="radio" name="phase" value="Base" />Base</label>
-        <label class="seg-opt"><input type="radio" name="phase" value="Build" />Build</label>
-        <label class="seg-opt"><input type="radio" name="phase" value="Peak" />Peak</label>
-        <label class="seg-opt"><input type="radio" name="phase" value="Taper" />Taper</label>
-      </div>
+      <button type="button" class="btn btn-secondary" id="setup-btn">
+        <i class="ph ph-sliders-horizontal" aria-hidden="true"></i> Plan setup
+      </button>
+      <button type="button" class="btn btn-secondary" id="coach-btn">
+        <i class="ph ph-chat-teardrop-text" aria-hidden="true"></i> Coach
+      </button>
 
       <div class="wk-nav">
         <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ph ph-caret-left"></i></button>
@@ -852,11 +939,15 @@
       </div>
     </div>
 
+    <div id="advice-root"></div>
+
     <div class="summary" id="summary"></div>
 
     <div class="im-boardwrap">
       <div class="im-board" id="board"></div>
     </div>
+
+    <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. <b>Plan setup</b> fits the whole season to the hours you actually have; it always shows you the changes before anything is written, and <b>Reset week</b> rebuilds a single week from that fit.</p>
 
     <div class="im-chartcard">
       <div class="chart-head">
@@ -876,90 +967,36 @@
       <div class="chart-legend" id="chart-legend"></div>
     </div>
 
-    <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. The original sample plan stays as the template behind every week (Reset week reveals it).</p>
-
     <div id="modal-root"></div>
     <div id="dialog-root"></div>
+    <div id="panel-root"></div>
   </div>
 
-  <script>
+  <script type="module">
   'use strict';
+
+  /* The training-load model, session generator, validator and plan operations
+     live in assets/coach/ as plain ES modules so they can be unit-tested without
+     a browser (`npm test`). This file keeps the markup, styles and DOM. */
+  import {
+    loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft,
+  } from './assets/coach/plan.js';
+  import { normalizeProfile } from './assets/coach/profile.js';
+  import { generateWeek } from './assets/coach/generate.js';
+  import {
+    STATUSES, getActual, setActual, actualMinutes, weekCompliance, seasonActuals,
+  } from './assets/coach/actuals.js';
+  import { minToDur } from './assets/coach/duration.js';
+  import { createSession, sessionDiff, callTool } from './assets/coach/tools.js';
+  import { suggest } from './assets/coach/adapt.js';
+  import { runTurn, KEY_STORAGE } from './assets/coach/agent.js';
+  import { fitToRace } from './assets/coach/season.js';
+  import { LEGACY_PHASES } from './assets/coach/migrate.js';
 
   /* =========================================================================
      Data model — static sample plan. Swap this (and the storage layer below)
      for a live database/API fetch when wiring real data.
      ========================================================================= */
-
-  const planData = {
-    Base: { duration: 6, weeks: [
-      { label: 'Base · Week 1', focus: 'Aerobic base', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Technique drills', dur: '0:45', zone: 'Z2' },
-        { d: 'Wed', disc: 'Bike', focus: 'Endurance spin', dur: '1:15', zone: 'Z2' },
-        { d: 'Thu', disc: 'Run', focus: 'Easy aerobic', dur: '0:40', zone: 'Z2' },
-        { d: 'Fri', disc: 'Swim', focus: 'Endurance sets', dur: '1:00', zone: 'Z2–Z3' },
-        { d: 'Sat', disc: 'Bike', focus: 'Long ride', dur: '2:00', zone: 'Z2' },
-        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:10', zone: 'Z2' },
-      ]},
-      { label: 'Base · Week 2', focus: 'Volume build', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Threshold sets', dur: '0:50', zone: 'Z3' },
-        { d: 'Wed', disc: 'Bike', focus: 'Tempo intervals', dur: '1:20', zone: 'Z3' },
-        { d: 'Thu', disc: 'Run', focus: 'Aerobic + strides', dur: '0:45', zone: 'Z2–Z4' },
-        { d: 'Fri', disc: 'Strength', focus: 'Core & stability', dur: '0:40', zone: '—' },
-        { d: 'Sat', disc: 'Bike', focus: 'Long ride', dur: '2:30', zone: 'Z2' },
-        { d: 'Sun', disc: 'Brick', focus: 'Ride + transition run', dur: '1:45', zone: 'Z2–Z3' },
-      ]},
-    ]},
-    Build: { duration: 5, weeks: [
-      { label: 'Build · Week 1', focus: 'Threshold', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'VO2 sets', dur: '0:55', zone: 'Z4' },
-        { d: 'Wed', disc: 'Bike', focus: 'Threshold 2×20', dur: '1:30', zone: 'Z4' },
-        { d: 'Thu', disc: 'Run', focus: 'Tempo', dur: '0:55', zone: 'Z3–Z4' },
-        { d: 'Fri', disc: 'Swim', focus: 'Endurance', dur: '1:05', zone: 'Z2' },
-        { d: 'Sat', disc: 'Bike', focus: 'Long ride + efforts', dur: '3:00', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:30', zone: 'Z2' },
-      ]},
-      { label: 'Build · Week 2', focus: 'Race specificity', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Race-pace sets', dur: '1:00', zone: 'Z3–Z4' },
-        { d: 'Wed', disc: 'Bike', focus: 'Over-unders', dur: '1:40', zone: 'Z3–Z4' },
-        { d: 'Thu', disc: 'Run', focus: 'Hill repeats', dur: '1:00', zone: 'Z4' },
-        { d: 'Fri', disc: 'Strength', focus: 'Power & durability', dur: '0:40', zone: '—' },
-        { d: 'Sat', disc: 'Brick', focus: 'Long ride + run', dur: '3:30', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Long run', dur: '1:40', zone: 'Z2' },
-      ]},
-    ]},
-    Peak: { duration: 3, weeks: [
-      { label: 'Peak · Week 1', focus: 'Race simulation', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Race simulation', dur: '1:10', zone: 'Z3' },
-        { d: 'Wed', disc: 'Bike', focus: 'Race-pace hold', dur: '2:00', zone: 'Z3' },
-        { d: 'Thu', disc: 'Run', focus: 'Tempo', dur: '1:05', zone: 'Z3–Z4' },
-        { d: 'Fri', disc: 'Swim', focus: 'Sharpen', dur: '0:50', zone: 'Z2' },
-        { d: 'Sat', disc: 'Brick', focus: '70.3 simulation', dur: '4:00', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Long steady', dur: '1:45', zone: 'Z2' },
-      ]},
-    ]},
-    Taper: { duration: 2, weeks: [
-      { label: 'Taper · Race week', focus: 'Freshen & sharpen', days: [
-        { d: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '—', zone: '—' },
-        { d: 'Mon', disc: 'Yoga', focus: 'Yoga & stretching', dur: '0:30', zone: '—' },
-        { d: 'Tue', disc: 'Swim', focus: 'Sharpen', dur: '0:35', zone: 'Z2–Z3' },
-        { d: 'Wed', disc: 'Bike', focus: 'Openers', dur: '0:50', zone: 'Z2–Z4' },
-        { d: 'Thu', disc: 'Run', focus: 'Easy + strides', dur: '0:30', zone: 'Z2' },
-        { d: 'Fri', disc: 'Rest', focus: 'Travel & prep', dur: '—', zone: '—' },
-        { d: 'Sat', disc: 'Bike', focus: 'Short openers', dur: '0:30', zone: 'Z2–Z3' },
-        { d: 'Sun', disc: 'Run', focus: 'Race-day shakeout', dur: '0:20', zone: 'Z1–Z2' },
-      ]},
-    ]},
-  };
 
   const DISC = {
     Swim: { icon: 'ph-person-simple-swim', color: '#5fb1cb' },
@@ -972,7 +1009,6 @@
   };
 
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const PHASES = ['Base', 'Build', 'Peak', 'Taper'];
   const STORE = 'im703_v2';
   const LEGACY = 'im703_v1';
   const AXIS_GREY = '#b2b6ca';
@@ -989,20 +1025,30 @@
 
   /* ---- Plan helpers ---- */
 
-  const phaseWeeks = (p) => planData[p].duration || planData[p].weeks.length;
-  const template = (p, w) => { const ws = planData[p].weeks; return ws[w % ws.length]; };
-  const clampWeek = (p, w) => Math.max(0, Math.min(Number(w) || 0, phaseWeeks(p) - 1));
-  const freshSessions = (p, w) => template(p, w).days.map((s, i) => ({ ...s, day: s.d, id: p + '-' + w + '-' + i }));
-  const sessionsFor = (p, w) => {
-    const saved = plan && plan.weeks ? plan.weeks[p + '_' + w] : null;
-    return Array.isArray(saved) && saved.length ? saved.map((s) => ({ ...s })) : freshSessions(p, w);
+  /* A plan carries its own resolved season, so a week is addressed by a single
+     absolute index instead of a (phase, week) pair. That is what lets the season
+     be re-fitted — block lengths can change without silently moving your edits
+     onto different calendar weeks. */
+  const totalWeeks = () => weekCount(plan);
+  const clampWeek = (w) => Math.max(0, Math.min(Number(w) || 0, totalWeeks() - 1));
+  const weekInfo = (w) => blockAt(plan, w);
+  const sessionsFor = (w) => sessionsAt(plan, w);
+  const freshSessions = (w) => {
+    const info = weekInfo(w);
+    return generateWeek({
+      hours: info.hours, block: info.block, profile: plan.profile,
+      idPrefix: 'w' + info.absWeek,
+    }).sessions;
   };
-  const totalWeeks = () => PHASES.reduce((a, p) => a + phaseWeeks(p), 0);
-  const weeksBefore = (phase) => PHASES.slice(0, PHASES.indexOf(phase)).reduce((a, p) => a + phaseWeeks(p), 0);
-  const phaseAt = (ai) => {
-    let acc = 0;
-    for (const p of PHASES) { const n = phaseWeeks(p); if (ai < acc + n) return [p, ai - acc]; acc += n; }
-    return [PHASES[PHASES.length - 1], 0];
+  /* Consecutive weeks sharing a block name, for the overview timeline. */
+  const blockRuns = () => {
+    const runs = [];
+    for (const w of plan.season) {
+      const last = runs[runs.length - 1];
+      if (last && last.block === w.block) last.weeks++;
+      else runs.push({ block: w.block, weeks: 1, start: w.absWeek });
+    }
+    return runs;
   };
 
   /* ---- Date & duration helpers ---- */
@@ -1030,11 +1076,10 @@
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
   /* =========================================================================
-     Plans — a named plan is the unit of persistence. `planData` (the template
-     above) stays pristine; a plan stores only the weeks you've edited as an
-     overlay, plus done / start / view / chart prefs. A new plan starts empty,
-     so it renders as the pure template until you change something, and
-     "Reset week" just drops that week's overlay to reveal the template again.
+     Plans — a named plan is the unit of persistence. A plan carries its own
+     resolved season and every week's sessions, so it is self-contained: the
+     engine can change without reshaping a season somebody is midway through.
+     "Reset week" regenerates one week from that stored season.
      ========================================================================= */
 
   const uid4 = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
@@ -1055,16 +1100,29 @@
   let plans = [];   // index: [{ id, name }]
   let plan = null;  // the current plan object
 
-  const blankPlan = (name) => ({
-    id: 'p-' + uid4(), name: name || 'My plan', start: defaultStart(),
-    weeks: {}, done: {}, chartmode: 'weekly', charthidden: {},
-    view: { phase: 'Base', week: 0 }, updatedAt: now(),
-  });
+  const DEFAULT_SEASON_WEEKS = 16;
+
+  const blankPlan = (name) => {
+    const profile = normalizeProfile({});
+    const season = fitToRace({ annualHours: profile.annualHours, weeks: DEFAULT_SEASON_WEEKS });
+    const weeks = {};
+    for (const w of season) {
+      weeks['w' + w.absWeek] = generateWeek({
+        hours: w.hours, block: w.block, profile, idPrefix: 'w' + w.absWeek,
+      }).sessions;
+    }
+    return {
+      id: 'p-' + uid4(), name: name || 'My plan', schema: 3, start: defaultStart(),
+      profile, season, weeks, done: {}, actuals: {}, chat: [],
+      chartmode: 'weekly', charthidden: {}, view: { week: 0 }, updatedAt: now(),
+    };
+  };
 
   // One-time migration of the older single-plan im703_v1_* keys into a plan.
   function migrateLegacy() {
     const weeks = {};
-    for (const p of PHASES) for (let w = 0; w < phaseWeeks(p); w++) {
+    for (const ph of LEGACY_PHASES) for (let w = 0; w < ph.weeks; w++) {
+      const p = ph.name;
       const v = load(LEGACY + '_week_' + p + '_' + w);
       if (Array.isArray(v) && v.length) weeks[p + '_' + w] = v;
     }
@@ -1075,14 +1133,14 @@
       weeks, done: load(LEGACY + '_done') || {},
       chartmode: load(LEGACY + '_chartmode') || 'weekly',
       charthidden: load(LEGACY + '_charthidden') || {},
-      view: { phase: (view.phase && planData[view.phase]) ? view.phase : 'Base', week: Number(view.week) || 0 },
+      view: { phase: view.phase || 'Base', week: Number(view.week) || 0 },
       updatedAt: now(),
     };
   }
 
   function hasLegacy() {
     if (load(LEGACY + '_done') || load(LEGACY + '_view') || load(LEGACY + '_start')) return true;
-    for (const p of PHASES) for (let w = 0; w < phaseWeeks(p); w++) if (load(LEGACY + '_week_' + p + '_' + w)) return true;
+    for (const ph of LEGACY_PHASES) for (let w = 0; w < ph.weeks; w++) if (load(LEGACY + '_week_' + ph.name + '_' + w)) return true;
     return false;
   }
 
@@ -1111,7 +1169,7 @@
   /* ---- Working state: UI flags + a live mirror of the current plan ---- */
 
   const state = {
-    phase: 'Base', week: 0, sessions: [],
+    week: 0, sessions: [],
     done: {}, start: defaultStart(),
     chartMode: 'weekly', chartHidden: {},
     dragId: null, editingId: null, hoverIdx: null,
@@ -1119,16 +1177,22 @@
   };
 
   // Copy a plan's persistent fields into the working state.
+  // Every entry point — startup, plan switch, import, cloud merge, undo — comes
+  // through here, so it is also where an older record gets brought forward. The
+  // upgrade is written back immediately rather than waiting for the athlete to
+  // edit something: leaving storage on the old shape means a later cloud sync
+  // could push a pre-migration plan over a migrated one.
   function adoptPlan(p) {
-    plan = p;
-    const vw = p.view || {};
-    state.phase = (vw.phase && planData[vw.phase]) ? vw.phase : 'Base';
-    state.week = clampWeek(state.phase, vw.week);
-    state.start = p.start || defaultStart();
-    state.done = p.done || {};
-    state.chartMode = p.chartmode || 'weekly';
-    state.chartHidden = p.charthidden || {};
-    state.sessions = sessionsFor(state.phase, state.week);
+    const needsUpgrade = p && p.schema !== 3;
+    plan = loadPlan(p);
+    if (needsUpgrade) savePlanLocal(plan);
+    const vw = plan.view || {};
+    state.week = clampWeek(vw.week);
+    state.start = plan.start || defaultStart();
+    state.done = plan.done || {};
+    state.chartMode = plan.chartmode || 'weekly';
+    state.chartHidden = plan.charthidden || {};
+    state.sessions = sessionsFor(state.week);
     state.dragId = null; state.editingId = null; state.hoverIdx = null;
   }
 
@@ -1138,15 +1202,14 @@
     plan.done = state.done;
     plan.chartmode = state.chartMode;
     plan.charthidden = state.chartHidden;
-    plan.view = { phase: state.phase, week: state.week };
+    plan.view = { week: state.week };
     plan.updatedAt = now();
     savePlanLocal(plan);
     renderStatus();
     schedulePush();
   }
 
-  const setWeekSessions = (p, w, sessions) => { plan.weeks[p + '_' + w] = sessions; };
-  const clearWeekSessions = (p, w) => { delete plan.weeks[p + '_' + w]; };
+  const setWeekSessions = (w, sessions) => { plan.weeks['w' + w] = sessions; };
 
   adoptPlan(ensurePlans());
 
@@ -1156,7 +1219,9 @@
   const els = {
     subtitle: $('subtitle'), startInput: $('start-input'), totalWeeks: $('total-weeks'),
     timeline: $('phase-timeline'), seasonFill: $('season-fill'), seasonPos: $('season-pos'),
-    phaseSeg: $('phase-seg'), prevWeek: $('prev-week'), nextWeek: $('next-week'),
+    setupBtn: $('setup-btn'), coachBtn: $('coach-btn'), panelRoot: $('panel-root'),
+    adviceRoot: $('advice-root'),
+    prevWeek: $('prev-week'), nextWeek: $('next-week'),
     weekPos: $('week-pos'), weekRange: $('week-range'),
     status: $('status'), syncBtn: $('sync-btn'), syncIcon: $('sync-icon'), resetBtn: $('reset-btn'),
     undoBtn: $('undo-btn'),
@@ -1177,8 +1242,11 @@
     const name = (plan && plan.name) || 'My plan';
     els.planTitleText.textContent = name;
     document.title = 'yootri — ' + name;
+    const info = weekInfo(state.week);
     els.subtitle.textContent = totalWeeks() + ' weeks · from ' + fmtDate(parseISO(state.start)) +
-      ' · ' + state.phase + ' · Week ' + (state.week + 1) + ' · ' + template(state.phase, state.week).focus;
+      ' · ' + info.block + ' · Week ' + (state.week + 1) +
+      ' · ' + fmtTotal(Math.round(info.hours * 60)) + ' planned' +
+      (info.recovery ? ' · recovery week' : '');
   }
 
   function renderOverview() {
@@ -1186,23 +1254,24 @@
     els.startInput.value = state.start;
     els.totalWeeks.textContent = N;
 
-    els.timeline.innerHTML = PHASES.map((p) => {
-      const w = phaseWeeks(p);
-      return '<button type="button" class="ov-phase' + (p === state.phase ? ' active' : '') + '"' +
-        ' data-phase="' + p + '" style="flex: ' + w + ' 1 0;">' +
-        '<span class="name">' + p + '</span><span class="wk">' + w + ' wk</span></button>';
+    const here = weekInfo(state.week);
+    els.timeline.innerHTML = blockRuns().map((r) => {
+      const active = r.block === here.block;
+      return '<button type="button" class="ov-phase' + (active ? ' active' : '') + '"' +
+        ' data-week="' + r.start + '" style="flex: ' + r.weeks + ' 1 0;">' +
+        '<span class="name">' + esc(r.block) + '</span>' +
+        '<span class="wk">' + r.weeks + ' wk</span></button>';
     }).join('');
 
-    const abs = weeksBefore(state.phase) + state.week + 1;
+    const abs = state.week + 1;
     const pct = Math.round((abs / N) * 100);
     els.seasonFill.style.width = pct + '%';
     els.seasonPos.innerHTML = 'Week <b>' + abs + '</b> of ' + N + ' · ' + pct + '%';
   }
 
   function renderToolbar() {
-    els.phaseSeg.querySelectorAll('input[name="phase"]').forEach((r) => { r.checked = r.value === state.phase; });
-    els.weekPos.textContent = 'Week ' + (state.week + 1) + ' of ' + phaseWeeks(state.phase);
-    const wkMon = addDays(parseISO(state.start), (weeksBefore(state.phase) + state.week) * 7);
+    els.weekPos.textContent = 'Week ' + (state.week + 1) + ' of ' + totalWeeks();
+    const wkMon = addDays(parseISO(state.start), state.week * 7);
     els.weekRange.textContent = fmtDate(wkMon) + ' – ' + fmtDate(addDays(wkMon, 6));
   }
 
@@ -1236,13 +1305,34 @@
 
     const icon = (name) => '<i class="ph ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
 
+    const comp = weekCompliance(plan, state.week);
+    const volSub = comp.logged
+      ? ' <span class="sub act">did ' + (fmtTotal(comp.actualMinutes) || '0m') +
+        ' · ' + Math.round(comp.ratio * 100) + '%</span>'
+      : '';
+
     els.summary.innerHTML =
-      cell('Total volume', fmtTotal(totalMin) || '0m', { accent: true }) +
+      cell('Total volume', (fmtTotal(totalMin) || '0m') + volSub, { accent: true }) +
       cell('Sessions', workouts.length) +
       cell(icon('Swim'), fmtTotal(discMin('Swim')) || '—') +
       cell(icon('Bike'), fmtTotal(discMin('Bike') + Math.round(discMin('Brick') / 2)) || '—') +
       cell(icon('Run'), fmtTotal(discMin('Run') + Math.round(discMin('Brick') / 2)) || '—') +
       cell('Completed', doneWork + ' / ' + workouts.length + ' <span class="sub">· ' + pct + '%</span>', { wide: true, meter: pct });
+  }
+
+  function actualLineHTML(s) {
+    const planned = durToMin(s.dur);
+    if (!planned) return '';   // rest days carry no log, and none is offered
+    const a = getActual(plan, s.id);
+    if (!a) return '';
+    if (a.status === 'missed' || a.status === 'sick') {
+      return '<span class="card-actual miss">' + STATUS_LABEL[a.status].toLowerCase() + '</span>';
+    }
+    const did = actualMinutes(plan, s);
+    const rpe = a.rpe != null ? ' · RPE ' + a.rpe : '';
+    if (did === planned && a.min == null) return rpe ? '<span class="card-actual">as planned' + rpe + '</span>' : '';
+    const cls = did < planned ? ' short' : '';
+    return '<span class="card-actual' + cls + '">did ' + esc(fmtTotal(did) || '0m') + rpe + '</span>';
   }
 
   function sessionCardHTML(s) {
@@ -1266,6 +1356,7 @@
           '<span><i class="ph ph-clock"></i>' + esc(s.dur) + '</span>' +
           (zone ? '<span><i class="ph ph-gauge"></i>' + esc(zone) + '</span>' : '') +
         '</div>' +
+        actualLineHTML(s) +
         (s.desc && s.desc.trim() ? '<div class="card-desc">' + esc(s.desc) + '</div>' : '') +
         '<div class="card-foot">' +
           (isDone
@@ -1278,7 +1369,7 @@
 
   function renderBoard() {
     const startDate = parseISO(state.start);
-    const weekStart0 = weeksBefore(state.phase) + state.week;
+    const weekStart0 = state.week;
     const todayISO = toISO(new Date());
 
     els.board.innerHTML = DAYS.map((day, di) => {
@@ -1319,8 +1410,7 @@
     const wmins = [];
     let compMin = 0, planMin = 0;
     for (let ai = 0; ai < N; ai++) {
-      const [p, w] = phaseAt(ai);
-      const days = sessionsFor(p, w);
+      const days = sessionsFor(ai);
       const by = {};
       let tot = 0;
       for (const s of days) {
@@ -1339,6 +1429,12 @@
       return wmins.map((_, i) => { a += getW(i); return a; });
     };
     const totalVals = roll((i) => wmins[i].tot);
+    // What actually happened, plotted only as far as anything has been logged —
+    // drawing a flat zero line across a season nobody has trained yet would read
+    // as "you did nothing" rather than "there is nothing to say yet".
+    const compliance = seasonActuals(plan);
+    const lastLogged = compliance.reduce((last, r, i) => (r.logged > 0 ? i : last), -1);
+    const actualVals = roll((i) => compliance[i] ? compliance[i].actualMinutes : 0);
     const sportSeason = {}, sportVals = {};
     SPORTS.forEach((name) => {
       sportSeason[name] = wmins.reduce((a, x) => a + (x.by[name] || 0), 0);
@@ -1360,13 +1456,13 @@
     const yAt = (v) => CpT + plotH * (1 - v / maxY);
 
     chartGeo = { CpL, plotW, N, W, xAt, yAt };
-    chartData = { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep };
-    return { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep, W, xAt, yAt };
+    chartData = { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep, actualVals, lastLogged };
+    return { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep, W, xAt, yAt, actualVals, lastLogged };
   }
 
   function renderChart() {
     const c = computeChart();
-    const { N, hidden, totalVals, sportVals, sportSeason, W, xAt, yAt, maxY, yStep } = c;
+    const { N, hidden, totalVals, sportVals, sportSeason, W, xAt, yAt, maxY, yStep, actualVals, lastLogged } = c;
     const baseY = yAt(0).toFixed(1);
     const rightX = W - 14;
     els.chartSvg.setAttribute('viewBox', '0 0 ' + W + ' 220');
@@ -1392,17 +1488,15 @@
     svg += '<text x="15" y="103" text-anchor="middle" dominant-baseline="middle" transform="rotate(-90 15 103)" font-size="11" style="fill: color-mix(in srgb, var(--color-text) 55%, transparent);">Time (hours)</text>';
 
     // Phase boundaries
-    let acc = 0;
-    for (const p of PHASES) {
-      if (acc > 0 && acc < N) {
-        const x = xAt(acc).toFixed(1);
+    for (const r of blockRuns()) {
+      if (r.start > 0 && r.start < N) {
+        const x = xAt(r.start).toFixed(1);
         svg += '<line x1="' + x + '" x2="' + x + '" y1="12" y2="' + baseY + '" style="stroke: color-mix(in srgb, var(--color-text) 9%, transparent);" stroke-width="1"/>';
       }
-      acc += phaseWeeks(p);
     }
 
     // Current-week marker
-    const curX = xAt(weeksBefore(state.phase) + state.week).toFixed(1);
+    const curX = xAt(state.week).toFixed(1);
     svg += '<line x1="' + curX + '" x2="' + curX + '" y1="12" y2="' + baseY + '" style="stroke: var(--color-accent);" stroke-width="1" stroke-dasharray="3 3" opacity="0.55"/>';
 
     // X ticks + week-number labels
@@ -1422,6 +1516,18 @@
     });
     if (!hidden.Total) {
       svg += '<polyline points="' + ptsArr(totalVals) + '" fill="none" style="stroke: var(--color-accent);" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>';
+      if (lastLogged >= 0) {
+        const pts = actualVals.slice(0, lastLogged + 1)
+          .map((v, i) => xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1)).join(' ');
+        svg += '<polyline points="' + pts + '" fill="none" style="stroke: var(--color-text);" ' +
+          'stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round" stroke-linecap="round" opacity="0.75"/>';
+        // A single logged week is a one-point polyline, which draws nothing at
+        // all — so mark the points too, or the legend claims a series you cannot see.
+        for (let i = 0; i <= lastLogged; i++) {
+          svg += '<circle cx="' + xAt(i).toFixed(1) + '" cy="' + yAt(actualVals[i]).toFixed(1) +
+            '" r="2.6" style="fill: var(--color-text);" opacity="0.75"/>';
+        }
+      }
     }
 
     svg += '<g id="hover-g"></g>';
@@ -1444,6 +1550,14 @@
           ' <span class="amt">' + fmtTotal(sportSeason[name]) + '</span></button>';
       }
     });
+    // The dashed line is unlabelled otherwise, and an unexplained series on a
+    // chart is worse than no series. Not a toggle — it has nothing to hide.
+    if (c.lastLogged >= 0) {
+      const doneMin = c.actualVals[c.lastLogged];
+      legend += '<span class="legend-pill" style="cursor: default;">' +
+        '<span class="swatch" style="background: none; border-top: 2px dashed var(--color-text); opacity: .75;"></span>' +
+        'Actual <span class="amt">' + (fmtTotal(doneMin) || '0m') + '</span></span>';
+    }
     els.chartLegend.innerHTML = legend;
 
     renderHover();
@@ -1480,7 +1594,7 @@
 
     const hMon = addDays(parseISO(state.start), hi * 7);
     els.chartTip.innerHTML =
-      '<div class="tip-head"><span class="tip-week">Week ' + (hi + 1) + '</span><span class="tip-phase">' + phaseAt(hi)[0] + '</span></div>' +
+      '<div class="tip-head"><span class="tip-week">Week ' + (hi + 1) + '</span><span class="tip-phase">' + esc(weekInfo(hi).block) + '</span></div>' +
       '<div class="tip-date">' + fmtDate(hMon) + ' – ' + fmtDate(addDays(hMon, 6)) + '</div>' +
       rows.map((r) =>
         '<div class="tip-row"><span class="name"><span class="swatch" style="background: ' + r.color + ';"></span>' + r.name + '</span>' +
@@ -1513,6 +1627,7 @@
             '<div class="field"><label for="ed-zone">Intensity</label><input type="text" class="input" id="ed-zone" value="' + esc(s.zone || '') + '" placeholder="Z2" /></div>' +
           '</div>' +
           '<div class="field"><label for="ed-desc">Description</label><textarea class="input" id="ed-desc" placeholder="Sets, cues, notes…">' + esc(s.desc || '') + '</textarea></div>' +
+          logSectionHTML(s) +
           '<div class="dialog-foot">' +
             '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ph ph-trash"></i> Delete</button>' +
             '<span class="right">' +
@@ -1525,24 +1640,412 @@
     els.modalRoot.querySelector('#ed-focus')?.focus();
   }
 
+  /* What actually happened. Kept visually separate from the plan fields above:
+     editing the session changes the intention, logging it records history, and
+     conflating the two is how you end up quietly rewriting your own past. */
+  const STATUS_LABEL = { done: 'Done', partial: 'Partial', missed: 'Missed', sick: 'Sick / hurt' };
+
+  function logSectionHTML(s) {
+    const planned = durToMin(s.dur);
+    // Nothing to log for a rest day: "missed" a rest day is not a thing, and
+    // offering the controls invites entries the compliance maths ignores anyway.
+    if (!planned) return '';
+    const a = getActual(plan, s.id) || (state.done[s.id] ? { status: 'done', min: null, rpe: null } : null);
+    const btn = (v) => '<button type="button" data-status="' + v + '" class="' +
+      (a && a.status === v ? 'on' : '') + '">' + STATUS_LABEL[v] + '</button>';
+
+    return '<div class="log-sec">' +
+      '<label>How it went</label>' +
+      '<div class="log-seg" id="ed-status">' +
+        '<button type="button" data-status="" class="' + (a ? '' : 'on') + '">Not logged</button>' +
+        STATUSES.map(btn).join('') +
+      '</div>' +
+      '<div class="row-2">' +
+        '<div class="field"><label for="ed-actual">Actual duration</label>' +
+          '<input type="text" class="input" id="ed-actual" value="' +
+            esc(a && a.min != null ? minToDur(a.min) : '') + '" placeholder="' +
+            (planned ? esc(minToDur(planned)) + ' as planned' : '—') + '" /></div>' +
+        '<div class="field"><label for="ed-rpe">Effort (RPE 1–10)</label>' +
+          '<input type="number" class="input" id="ed-rpe" min="1" max="10" step="1" value="' +
+            (a && a.rpe != null ? a.rpe : '') + '" placeholder="optional" /></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /** Read the log controls out of the open modal. Returns undefined when the
+      session is marked "Not logged", which clears any existing entry. */
+  function readLogFromModal() {
+    const on = els.modalRoot.querySelector('#ed-status button.on');
+    const status = on ? on.dataset.status : '';
+    if (!status) return null;
+    const durTxt = (els.modalRoot.querySelector('#ed-actual')?.value || '').trim();
+    const rpe = (els.modalRoot.querySelector('#ed-rpe')?.value || '').trim();
+    return { status, min: durTxt ? durToMin(durTxt) : null, rpe: rpe || null };
+  }
+
+  /* What the logged weeks suggest about the week being looked at. These come
+     from tested rules in adapt.js, not from the coach's judgement — the numbers
+     behind every one of them are shown, and nothing applies itself. */
+  function renderAdvice() {
+    const list = suggest(plan, { week: state.week });
+    if (!list.length) { els.adviceRoot.innerHTML = ''; return; }
+
+    els.adviceRoot.innerHTML = '<div class="advice">' + list.map((x, i) =>
+      '<div class="advice-card ' + esc(x.severity) + '">' +
+        '<span class="grow">' + esc(x.message) + '</span>' +
+        (x.action
+          ? '<button type="button" class="btn btn-secondary" data-advice="' + i + '">Preview</button>'
+          : '') +
+      '</div>').join('') + '</div>';
+
+    els.adviceRoot.querySelectorAll('[data-advice]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        // Route it through the same tools → draft → diff → apply path the coach
+        // uses, so a suggestion is reviewed exactly like any other proposal.
+        const s = list[Number(btn.dataset.advice)];
+        const session = createSession(plan);
+        const r = callTool(session, s.action.tool, s.action.input);
+        if (r.isError) { setStatus(r.content, true); return; }
+        draft = session.draft;
+        renderDiff(sessionDiff(session));
+      });
+    });
+  }
+
   function renderAll() {
     renderHeader();
     renderOverview();
     renderToolbar();
     renderStatus();
+    renderAdvice();
     renderSummary();
     renderBoard();
     renderChart();
   }
 
   /* =========================================================================
+     Coach — the agent panel.
+
+     The model never writes to the plan. It calls tools, the tools build a draft,
+     and the draft goes through exactly the same review-and-apply gate as the
+     Plan setup form. That is why this panel can hand a language model write
+     access to a training plan at all: the worst it can produce is a proposal
+     that gets rejected.
+
+     The API key is the athlete's own and stays in localStorage under its own
+     key — never inside a plan, so it is never exported or synced to Firestore.
+     ========================================================================= */
+
+  let coach = null;      // { session, busy }
+  const chatOf = () => (plan.chat = plan.chat ?? []);
+  const getKey = () => { try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; } };
+  const setKey = (v) => { try { v ? localStorage.setItem(KEY_STORAGE, v) : localStorage.removeItem(KEY_STORAGE); } catch (e) {} };
+
+  function openCoach() {
+    if (!coach) coach = { session: createSession(plan), busy: false };
+    coach.session.plan = plan;   // always reason about the plan as it is now
+    if (!getKey()) return renderKeyForm();
+    renderCoach();
+  }
+
+  function renderKeyForm() {
+    panelShell(
+      '<h2>Connect the coach</h2>' +
+      '<p class="pnl-sub">yootri has no server, so it uses your own Anthropic API key and talks to the API directly from this page.</p>' +
+      '<div class="field"><label for="k-key">Anthropic API key</label>' +
+        '<input type="password" class="input" id="k-key" placeholder="sk-ant-…" autocomplete="off" /></div>' +
+      '<p class="key-warn">The key is stored in this browser only. It is never written into a plan, never exported, and never synced — but anything that can run script on this page could read it. Use a key you are willing to rotate, and remove it below when you are done.</p>' +
+      '<div class="pnl-act">' +
+        (getKey() ? '<button type="button" class="btn btn-ghost spacer" id="k-forget">Remove key</button>' : '') +
+        '<button type="button" class="btn btn-ghost" id="k-cancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" id="k-save">Save</button>' +
+      '</div>',
+    );
+    $('k-cancel').addEventListener('click', closePanel);
+    $('k-save').addEventListener('click', () => {
+      const v = $('k-key').value.trim();
+      if (!v) return;
+      setKey(v);
+      renderCoach();
+    });
+    $('k-forget')?.addEventListener('click', () => { setKey(''); closePanel(); setStatus('Coach key removed'); });
+  }
+
+  function renderCoach() {
+    const log = chatOf();
+    const d = sessionDiff(coach.session);
+
+    const bubbles = log.length
+      ? log.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : (m.error ? 'err' : 'coach')) +
+          '">' + esc(m.content) + '</div>').join('')
+      : '<div class="chat-empty">Ask about your plan, or tell it what changed. For example:' +
+        '<ul>' +
+          '<li>“I only have 6 hours next week, and no pool.”</li>' +
+          '<li>“How has my training actually been going?”</li>' +
+          '<li>“Move my long ride to Sunday from now on.”</li>' +
+        '</ul></div>';
+
+    const draftBar = d.weeks.length
+      ? '<div class="chat-draft"><span class="grow"><b>' + d.weeks.length + ' week' +
+          (d.weeks.length === 1 ? '' : 's') + '</b> would change' +
+          (d.totalDeltaMinutes ? ', ' + (d.totalDeltaMinutes > 0 ? '+' : '−') +
+            fmtTotal(Math.abs(d.totalDeltaMinutes)) : '') + '</span>' +
+        '<button type="button" class="btn btn-ghost" id="c-discard">Discard</button>' +
+        '<button type="button" class="btn btn-primary" id="c-review">Review changes</button></div>'
+      : '';
+
+    panelShell(
+      '<h2>Coach</h2>' +
+      '<p class="pnl-sub">It can read your plan and propose changes. Nothing is written until you review and apply it.</p>' +
+      draftBar +
+      '<div class="chat-log" id="c-log">' + bubbles +
+        (coach.busy ? '<div class="chat-msg coach chat-busy">Thinking…</div>' : '') + '</div>' +
+      '<div class="chat-row">' +
+        '<input type="text" class="input" id="c-input" placeholder="Ask your coach…" ' +
+          (coach.busy ? 'disabled ' : '') + 'autocomplete="off" />' +
+        '<button type="button" class="btn btn-primary" id="c-send"' + (coach.busy ? ' disabled' : '') + '>Send</button>' +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="c-key">API key</button>' +
+        (log.length ? '<button type="button" class="btn btn-ghost" id="c-clear">Clear chat</button>' : '') +
+        '<button type="button" class="btn btn-secondary" id="c-close">Close</button>' +
+      '</div>',
+    );
+
+    const logEl = $('c-log');
+    logEl.scrollTop = logEl.scrollHeight;
+    $('c-close').addEventListener('click', closePanel);
+    $('c-key').addEventListener('click', renderKeyForm);
+    $('c-clear')?.addEventListener('click', () => { plan.chat = []; persistPlan(); renderCoach(); });
+    $('c-send').addEventListener('click', sendToCoach);
+    $('c-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendToCoach(); });
+    if (!coach.busy) $('c-input').focus();
+
+    $('c-review')?.addEventListener('click', () => {
+      draft = coach.session.draft;
+      renderDiff(sessionDiff(coach.session));
+    });
+    $('c-discard')?.addEventListener('click', () => {
+      coach.session.draft = null;
+      renderCoach();
+    });
+  }
+
+  async function sendToCoach() {
+    if (coach.busy) return;
+    const input = $('c-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const log = chatOf();
+    log.push({ role: 'user', content: text });
+    coach.busy = true;
+    renderCoach();
+
+    // The transcript shown to the athlete is prose only; the model needs the
+    // full history including its own tool calls, so that is tracked separately.
+    coach.wire = (coach.wire ?? []).concat([{ role: 'user', content: text }]);
+
+    let out;
+    try {
+      out = await runTurn({
+        apiKey: getKey(),
+        session: coach.session,
+        messages: coach.wire,
+        effort: 'medium',
+      });
+    } catch (e) {
+      out = { error: true, text: 'Something went wrong: ' + e.message };
+    }
+
+    coach.busy = false;
+    if (out.messages) coach.wire = out.messages;
+    log.push({ role: 'coach', content: out.text || '(no reply)', error: !!(out.error || out.refused) });
+    // Keep the stored transcript bounded; a season of chat should not crowd out
+    // the training data in a 5MB localStorage budget.
+    if (log.length > 40) plan.chat = log.slice(-40);
+    persistPlan();
+    renderCoach();
+  }
+
+  /* =========================================================================
+     Plan setup — a profile goes in, a previewed re-fit comes out.
+
+     Nothing in here writes to the plan. Editing builds a *draft*; the draft is
+     diffed against what you have and validated; only Apply commits it, and even
+     then the previous plan is kept for a short undo window. That ceremony looks
+     heavy for a form, but it is the same path the coach agent will take — the
+     safety has to live here, not in the caller.
+     ========================================================================= */
+
+  let draft = null;
+
+  function closePanel() {
+    draft = null;
+    els.panelRoot.innerHTML = '';
+    document.removeEventListener('keydown', onPanelKey);
+  }
+
+  function onPanelKey(e) { if (e.key === 'Escape') closePanel(); }
+
+  function panelShell(inner) {
+    els.panelRoot.innerHTML =
+      '<div class="pnl-back"><div class="pnl" role="dialog" aria-modal="true" aria-label="Plan setup">' +
+      inner + '</div></div>';
+    document.addEventListener('keydown', onPanelKey);
+    els.panelRoot.querySelector('.pnl-back').addEventListener('mousedown', (e) => {
+      if (e.target.classList.contains('pnl-back')) closePanel();
+    });
+  }
+
+  const field = (label, control) =>
+    '<label class="pnl-f"><span>' + label + '</span>' + control + '</label>';
+
+  function openSetupPanel() {
+    const p = plan.profile;
+    const swimCap = (p.constraints.find((c) => c.disc === 'Swim' && c.rule === 'maxPerWeek') || {}).value;
+    const planned = plan.season.reduce((a, w) => a + Math.round(w.hours * 60), 0);
+    const opts = ['sprint', 'olympic', '70.3', 'ironman']
+      .map((o) => '<option value="' + o + '"' + (o === p.raceType ? ' selected' : '') + '>' + o + '</option>')
+      .join('');
+
+    panelShell(
+      '<h2>Plan setup</h2>' +
+      '<p class="pnl-sub">Fit the season to the time you actually have. Nothing changes until you review it.</p>' +
+      '<div class="pnl-grid">' +
+        field('Annual hours', '<input type="number" class="input" id="f-annual" min="50" max="2000" step="10" value="' + Math.round(p.annualHours) + '" />') +
+        field('Race date', '<input type="date" class="input" id="f-race" value="' + esc(p.raceDate || '') + '" />') +
+        field('Race distance', '<select class="input" id="f-race-type">' + opts + '</select>') +
+        field('Max swims / week', '<input type="number" class="input" id="f-swimcap" min="0" max="7" step="1" value="' + (swimCap ?? '') + '" placeholder="no limit" />') +
+      '</div>' +
+      '<p class="pnl-hint">Annual hours is a <b>scale</b>, not a total this plan adds up to. A typical week is annual ÷ 52, and a season covers only part of the year — this one prescribes <b>' +
+        (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
+      '<div class="pnl-sec">' +
+        '<span class="pnl-sub" style="display:block">Time available each day (minutes)</span>' +
+        '<div class="pnl-days">' +
+          DAYS.map((d) => '<label>' + d +
+            '<input type="number" class="input" data-day="' + d + '" min="0" max="600" step="15" value="' +
+            (p.availability[d] || 0) + '" /></label>').join('') +
+        '</div>' +
+        '<p class="pnl-hint">A day set to 0 is a rest day — nothing will be scheduled on it.</p>' +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" id="f-preview">Preview changes</button>' +
+      '</div>',
+    );
+    $('f-cancel').addEventListener('click', closePanel);
+    $('f-preview').addEventListener('click', previewRefit);
+  }
+
+  function previewRefit() {
+    const availability = {};
+    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => {
+      availability[i.dataset.day] = Number(i.value) || 0;
+    });
+
+    const cap = $('f-swimcap').value;
+    const constraints = plan.profile.constraints
+      .filter((c) => !(c.disc === 'Swim' && c.rule === 'maxPerWeek'));
+    if (cap !== '') constraints.push({ disc: 'Swim', rule: 'maxPerWeek', value: Number(cap) });
+
+    const profile = normalizeProfile({
+      ...plan.profile,
+      annualHours: Number($('f-annual').value) || plan.profile.annualHours,
+      raceDate: $('f-race').value || null,
+      raceType: $('f-race-type').value,
+      availability,
+      constraints,
+    });
+
+    draft = refit(plan, { profile });
+    renderDiff(diffPlans(plan, draft));
+  }
+
+  function renderDiff(d) {
+    const rows = d.weeks.map((w) => {
+      const dir = w.deltaMinutes > 0 ? 'up' : (w.deltaMinutes < 0 ? 'down' : '');
+      const sign = w.deltaMinutes > 0 ? '+' : '−';
+      return '<li class="diff-row">' +
+        '<span class="wk">Week ' + (w.absWeek + 1) + ' · ' + esc(w.block) + '</span>' +
+        '<span class="vol">' + (fmtTotal(w.beforeMinutes) || '0m') + ' → ' + (fmtTotal(w.afterMinutes) || '0m') + '</span>' +
+        '<span class="delta ' + dir + '">' +
+          (w.deltaMinutes ? sign + fmtTotal(Math.abs(w.deltaMinutes)) : '—') + '</span></li>';
+    }).join('');
+
+    const errs = d.issues.filter((i) => i.level === 'error');
+    const warns = d.issues.filter((i) => i.level === 'warn');
+    const list = (items, cls) => items.slice(0, 6)
+      .map((i) => '<li class="' + cls + '">Week ' + (i.weekIndex + 1) + ': ' + esc(i.message) + '</li>').join('');
+
+    const issues = d.issues.length
+      ? '<div class="diff-issues">' +
+          (errs.length
+            ? '<b class="err">' + errs.length + ' problem' + (errs.length === 1 ? '' : 's') +
+              ' — these weeks would not be possible, so this cannot be applied.</b><ul>' + list(errs, 'err') + '</ul>'
+            : '') +
+          (warns.length
+            ? '<b>' + warns.length + ' thing' + (warns.length === 1 ? '' : 's') + ' worth a look</b><ul>' +
+              list(warns, '') + '</ul>'
+            : '') +
+        '</div>'
+      : '';
+
+    const delta = d.totalDeltaMinutes;
+    panelShell(
+      '<h2>Review changes</h2>' +
+      '<p class="pnl-sub">' +
+        (d.weeks.length
+          ? d.weeks.length + ' of ' + totalWeeks() + ' weeks change' +
+            (delta ? ', season volume ' + (delta > 0 ? '+' : '−') + fmtTotal(Math.abs(delta)) : '')
+          : 'Nothing changes') + '.</p>' +
+      (d.weeks.length
+        ? '<ul class="diff-list">' + rows + '</ul>'
+        : '<p class="diff-empty">This fit produces the plan you already have.</p>') +
+      issues +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="d-back">Back</button>' +
+        '<button type="button" class="btn btn-ghost" id="d-cancel">Discard</button>' +
+        '<button type="button" class="btn btn-primary" id="d-apply"' +
+          (d.blocked || !d.weeks.length ? ' disabled' : '') + '>Apply</button>' +
+      '</div>',
+    );
+    $('d-back').addEventListener('click', openSetupPanel);
+    $('d-cancel').addEventListener('click', closePanel);
+    if (!d.blocked && d.weeks.length) $('d-apply').addEventListener('click', applyRefit);
+  }
+
+  function applyRefit() {
+    if (!draft) return;
+    const fromCoach = coach && coach.session && coach.session.draft === draft;
+    const snapshot = JSON.parse(JSON.stringify(plan));
+    const next = applyDraft(plan, draft, { now: now() });
+    closePanel();
+
+    adoptPlan(next);
+    persistPlan();
+
+    clearUndo();
+    pendingUndo = { kind: 'refit', plan: snapshot };
+    els.undoBtn.classList.remove('hidden');
+    undoTimer = setTimeout(clearUndo, UNDO_MS);
+
+    if (fromCoach) {
+      // The proposal is now the plan; the coach starts again from it.
+      coach.session = createSession(plan);
+    }
+
+    renderAll();
+    setStatus('Plan re-fitted');
+  }
+
+  /* =========================================================================
      State transitions
      ========================================================================= */
 
-  function select(phase, wi) {
-    state.phase = phase;
-    state.week = clampWeek(phase, wi);
-    state.sessions = sessionsFor(state.phase, state.week);
+  function select(wi) {
+    state.week = clampWeek(wi);
+    state.sessions = sessionsFor(state.week);
     state.dragId = null;
     persistPlan();
     renderAll();
@@ -1550,7 +2053,7 @@
 
   function persistSessions(sessions) {
     state.sessions = sessions;
-    setWeekSessions(state.phase, state.week, sessions);
+    setWeekSessions(state.week, sessions);
     persistPlan();
     renderSummary();
     renderBoard();
@@ -1735,6 +2238,15 @@
 
   function undoDelete() {
     if (!pendingUndo) return;
+    if (pendingUndo.kind === 'refit') {
+      const prev = pendingUndo.plan;
+      clearUndo();
+      adoptPlan(prev);
+      persistPlan();
+      renderAll();
+      setStatus('Re-fit undone');
+      return;
+    }
     const { plan: p, index, wasCurrent, autoCreatedId } = pendingUndo;
     clearUndo();
     savePlanLocal(p);
@@ -1785,7 +2297,7 @@
       p.done = (src.done && typeof src.done === 'object') ? src.done : {};
       p.chartmode = src.chartmode === 'cumulative' ? 'cumulative' : 'weekly';
       p.charthidden = (src.charthidden && typeof src.charthidden === 'object') ? src.charthidden : {};
-      p.view = (src.view && planData[src.view.phase]) ? { phase: src.view.phase, week: Number(src.view.week) || 0 } : { phase: 'Base', week: 0 };
+      p.view = src.view || { phase: 'Base', week: 0 };
       p.updatedAt = now();
       addPlan(p);
       setStatus('Imported "' + p.name + '"');
@@ -2029,16 +2541,15 @@
     renderAll();
   });
   els.timeline.addEventListener('click', (e) => {
-    const btn = e.target.closest('[data-phase]');
-    if (btn) select(btn.dataset.phase, 0);
+    const btn = e.target.closest('[data-week]');
+    if (btn) select(Number(btn.dataset.week) || 0);
   });
 
   // Toolbar
-  els.phaseSeg.addEventListener('change', (e) => {
-    if (e.target.name === 'phase') select(e.target.value, 0);
-  });
-  els.prevWeek.addEventListener('click', () => { if (state.week > 0) select(state.phase, state.week - 1); });
-  els.nextWeek.addEventListener('click', () => { if (state.week < phaseWeeks(state.phase) - 1) select(state.phase, state.week + 1); });
+  els.setupBtn.addEventListener('click', openSetupPanel);
+  els.coachBtn.addEventListener('click', openCoach);
+  els.prevWeek.addEventListener('click', () => { if (state.week > 0) select(state.week - 1); });
+  els.nextWeek.addEventListener('click', () => { if (state.week < totalWeeks() - 1) select(state.week + 1); });
   els.syncBtn.addEventListener('click', () => {
     if (cloudReady() && authUser) {
       els.syncIcon.classList.add('spinning');
@@ -2050,8 +2561,8 @@
     }
   });
   els.resetBtn.addEventListener('click', () => {
-    clearWeekSessions(state.phase, state.week);
-    state.sessions = freshSessions(state.phase, state.week);
+    state.sessions = freshSessions(state.week);
+    setWeekSessions(state.week, state.sessions);
     state.dragId = null;
     persistPlan();
     renderSummary();
@@ -2084,7 +2595,7 @@
       const id = 'cus-' + uid4();
       const sessions = [...state.sessions, { d: day, day, disc: 'Swim', focus: '', dur: '0:30', zone: 'Z2', desc: '', id, custom: true }];
       state.sessions = sessions;
-      setWeekSessions(state.phase, state.week, sessions);
+      setWeekSessions(state.week, sessions);
       persistPlan();
       state.editingId = id;
       renderSummary();
@@ -2173,6 +2684,21 @@
   // Modal
   els.modalRoot.addEventListener('click', (e) => {
     if (e.target.id === 'modal-backdrop') { state.editingId = null; renderModal(); return; }
+
+    const st = e.target.closest('[data-status]');
+    if (st) {
+      st.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === st));
+      // Pre-fill the planned duration when a session is marked as happening, so
+      // "partial" is an edit-down rather than a blank box.
+      const field = els.modalRoot.querySelector('#ed-actual');
+      const s = state.sessions.find((x) => x.id === state.editingId);
+      const plannedMin = s ? durToMin(s.dur) : 0;
+      const happened = st.dataset.status === 'done' || st.dataset.status === 'partial';
+      if (field && plannedMin && happened && !field.value) field.value = minToDur(plannedMin);
+      if (field && !happened) field.value = '';
+      return;
+    }
+
     const act = e.target.closest('[data-act]');
     if (!act) return;
     if (act.dataset.act === 'cancel') {
@@ -2183,11 +2709,16 @@
       const get = (sel) => els.modalRoot.querySelector(sel)?.value ?? '';
       const dur = get('#ed-dur').trim() || '—';
       const zone = get('#ed-zone').trim() || '—';
+      const log = readLogFromModal();
       const next = state.sessions.map((s) => (s.id === id
         ? { ...s, disc: get('#ed-disc'), focus: get('#ed-focus'), dur, zone, desc: get('#ed-desc') }
         : s));
       state.editingId = null;
       renderModal();
+      // The log lives on the plan, not on the session, so write it before the
+      // session edit persists — persistSessions re-renders from `plan`.
+      plan = setActual(plan, id, log);
+      state.done = plan.done;
       persistSessions(next);
     } else if (act.dataset.act === 'modal-delete') {
       const id = state.editingId;
