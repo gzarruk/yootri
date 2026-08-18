@@ -824,6 +824,57 @@
   .diff-issues ul { margin: .3rem 0 0; padding-left: 1.1rem; }
   .diff-issues .err { color: #e08a6c; }
   .diff-empty { font-size: .85rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+
+  /* ---- Logging what actually happened ---- */
+  .log-sec { margin-top: .2rem; padding-top: .85rem;
+    border-top: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent); }
+  .log-sec > label { display: block; font-size: .78rem; margin-bottom: .45rem;
+    color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+  .log-seg { display: flex; gap: .3rem; flex-wrap: wrap; margin-bottom: .6rem; }
+  .log-seg button { flex: 1 1 auto; padding: .38rem .5rem; font-size: .76rem; cursor: pointer;
+    border-radius: 7px; background: transparent; color: inherit;
+    border: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent); }
+  .log-seg button.on { background: color-mix(in srgb, var(--color-accent) 22%, transparent);
+    border-color: var(--color-accent); font-weight: 600; }
+  .card-actual { display: block; margin-top: .2rem; font-size: .72rem; font-variant-numeric: tabular-nums;
+    color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+  .card-actual.short { color: #e08a6c; }
+  .card-actual.miss { color: #e08a6c; font-style: italic; }
+  .sum-cell .sub.act { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+
+  /* ---- Coach ---- */
+  .chat-log { max-height: 46vh; overflow: auto; display: flex; flex-direction: column; gap: .55rem;
+    margin: .2rem 0 .9rem; padding-right: .2rem; }
+  .chat-msg { font-size: .85rem; line-height: 1.5; padding: .5rem .7rem; border-radius: 10px;
+    white-space: pre-wrap; overflow-wrap: anywhere; }
+  .chat-msg.user { background: color-mix(in srgb, var(--color-accent) 18%, transparent); align-self: flex-end;
+    max-width: 85%; }
+  .chat-msg.coach { background: color-mix(in srgb, var(--color-text) 7%, transparent); align-self: flex-start;
+    max-width: 92%; }
+  .chat-msg.err { background: color-mix(in srgb, #e08a6c 20%, transparent); align-self: flex-start; }
+  .chat-empty { font-size: .82rem; color: color-mix(in srgb, var(--color-text) 55%, transparent);
+    padding: .4rem 0 .8rem; }
+  .chat-empty ul { margin: .45rem 0 0; padding-left: 1.1rem; }
+  .chat-row { display: flex; gap: .5rem; }
+  .chat-row input { flex: 1; }
+  .chat-draft { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap;
+    margin: 0 0 .8rem; padding: .55rem .75rem; border-radius: 9px; font-size: .8rem;
+    background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent); }
+  .chat-draft .grow { flex: 1; }
+  .key-warn { font-size: .74rem; line-height: 1.5; margin: .5rem 0 0;
+    color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+  .advice { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1rem; }
+  .advice-card { display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .8rem;
+    border-radius: 10px; font-size: .82rem; line-height: 1.5;
+    background: color-mix(in srgb, var(--color-text) 6%, transparent);
+    border-left: 3px solid color-mix(in srgb, var(--color-text) 30%, transparent); }
+  .advice-card.warn { border-left-color: #e08a6c;
+    background: color-mix(in srgb, #e08a6c 10%, transparent); }
+  .advice-card .grow { flex: 1; }
+  .advice-card .btn { flex: none; }
+  .chat-busy { font-size: .8rem; font-style: italic;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 </style>
 </head>
 <body>
@@ -870,6 +921,9 @@
       <button type="button" class="btn btn-secondary" id="setup-btn">
         <i class="ph ph-sliders-horizontal" aria-hidden="true"></i> Plan setup
       </button>
+      <button type="button" class="btn btn-secondary" id="coach-btn">
+        <i class="ph ph-chat-teardrop-text" aria-hidden="true"></i> Coach
+      </button>
 
       <div class="wk-nav">
         <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ph ph-caret-left"></i></button>
@@ -885,11 +939,15 @@
       </div>
     </div>
 
+    <div id="advice-root"></div>
+
     <div class="summary" id="summary"></div>
 
     <div class="im-boardwrap">
       <div class="im-board" id="board"></div>
     </div>
+
+    <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. <b>Plan setup</b> fits the whole season to the hours you actually have; it always shows you the changes before anything is written, and <b>Reset week</b> rebuilds a single week from that fit.</p>
 
     <div class="im-chartcard">
       <div class="chart-head">
@@ -909,8 +967,6 @@
       <div class="chart-legend" id="chart-legend"></div>
     </div>
 
-    <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. <b>Plan setup</b> fits the whole season to the hours you actually have; it always shows you the changes before anything is written, and <b>Reset week</b> rebuilds a single week from that fit.</p>
-
     <div id="modal-root"></div>
     <div id="dialog-root"></div>
     <div id="panel-root"></div>
@@ -927,6 +983,13 @@
   } from './assets/coach/plan.js';
   import { normalizeProfile } from './assets/coach/profile.js';
   import { generateWeek } from './assets/coach/generate.js';
+  import {
+    STATUSES, getActual, setActual, actualMinutes, weekCompliance, seasonActuals,
+  } from './assets/coach/actuals.js';
+  import { minToDur } from './assets/coach/duration.js';
+  import { createSession, sessionDiff, callTool } from './assets/coach/tools.js';
+  import { suggest } from './assets/coach/adapt.js';
+  import { runTurn, KEY_STORAGE } from './assets/coach/agent.js';
   import { fitToRace } from './assets/coach/season.js';
   import { LEGACY_PHASES } from './assets/coach/migrate.js';
 
@@ -1156,7 +1219,8 @@
   const els = {
     subtitle: $('subtitle'), startInput: $('start-input'), totalWeeks: $('total-weeks'),
     timeline: $('phase-timeline'), seasonFill: $('season-fill'), seasonPos: $('season-pos'),
-    setupBtn: $('setup-btn'), panelRoot: $('panel-root'),
+    setupBtn: $('setup-btn'), coachBtn: $('coach-btn'), panelRoot: $('panel-root'),
+    adviceRoot: $('advice-root'),
     prevWeek: $('prev-week'), nextWeek: $('next-week'),
     weekPos: $('week-pos'), weekRange: $('week-range'),
     status: $('status'), syncBtn: $('sync-btn'), syncIcon: $('sync-icon'), resetBtn: $('reset-btn'),
@@ -1241,13 +1305,34 @@
 
     const icon = (name) => '<i class="ph ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
 
+    const comp = weekCompliance(plan, state.week);
+    const volSub = comp.logged
+      ? ' <span class="sub act">did ' + (fmtTotal(comp.actualMinutes) || '0m') +
+        ' · ' + Math.round(comp.ratio * 100) + '%</span>'
+      : '';
+
     els.summary.innerHTML =
-      cell('Total volume', fmtTotal(totalMin) || '0m', { accent: true }) +
+      cell('Total volume', (fmtTotal(totalMin) || '0m') + volSub, { accent: true }) +
       cell('Sessions', workouts.length) +
       cell(icon('Swim'), fmtTotal(discMin('Swim')) || '—') +
       cell(icon('Bike'), fmtTotal(discMin('Bike') + Math.round(discMin('Brick') / 2)) || '—') +
       cell(icon('Run'), fmtTotal(discMin('Run') + Math.round(discMin('Brick') / 2)) || '—') +
       cell('Completed', doneWork + ' / ' + workouts.length + ' <span class="sub">· ' + pct + '%</span>', { wide: true, meter: pct });
+  }
+
+  function actualLineHTML(s) {
+    const planned = durToMin(s.dur);
+    if (!planned) return '';   // rest days carry no log, and none is offered
+    const a = getActual(plan, s.id);
+    if (!a) return '';
+    if (a.status === 'missed' || a.status === 'sick') {
+      return '<span class="card-actual miss">' + STATUS_LABEL[a.status].toLowerCase() + '</span>';
+    }
+    const did = actualMinutes(plan, s);
+    const rpe = a.rpe != null ? ' · RPE ' + a.rpe : '';
+    if (did === planned && a.min == null) return rpe ? '<span class="card-actual">as planned' + rpe + '</span>' : '';
+    const cls = did < planned ? ' short' : '';
+    return '<span class="card-actual' + cls + '">did ' + esc(fmtTotal(did) || '0m') + rpe + '</span>';
   }
 
   function sessionCardHTML(s) {
@@ -1271,6 +1356,7 @@
           '<span><i class="ph ph-clock"></i>' + esc(s.dur) + '</span>' +
           (zone ? '<span><i class="ph ph-gauge"></i>' + esc(zone) + '</span>' : '') +
         '</div>' +
+        actualLineHTML(s) +
         (s.desc && s.desc.trim() ? '<div class="card-desc">' + esc(s.desc) + '</div>' : '') +
         '<div class="card-foot">' +
           (isDone
@@ -1343,6 +1429,12 @@
       return wmins.map((_, i) => { a += getW(i); return a; });
     };
     const totalVals = roll((i) => wmins[i].tot);
+    // What actually happened, plotted only as far as anything has been logged —
+    // drawing a flat zero line across a season nobody has trained yet would read
+    // as "you did nothing" rather than "there is nothing to say yet".
+    const compliance = seasonActuals(plan);
+    const lastLogged = compliance.reduce((last, r, i) => (r.logged > 0 ? i : last), -1);
+    const actualVals = roll((i) => compliance[i] ? compliance[i].actualMinutes : 0);
     const sportSeason = {}, sportVals = {};
     SPORTS.forEach((name) => {
       sportSeason[name] = wmins.reduce((a, x) => a + (x.by[name] || 0), 0);
@@ -1364,13 +1456,13 @@
     const yAt = (v) => CpT + plotH * (1 - v / maxY);
 
     chartGeo = { CpL, plotW, N, W, xAt, yAt };
-    chartData = { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep };
-    return { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep, W, xAt, yAt };
+    chartData = { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep, actualVals, lastLogged };
+    return { N, hidden, totalVals, sportVals, sportSeason, compMin, planMin, maxY, yStep, W, xAt, yAt, actualVals, lastLogged };
   }
 
   function renderChart() {
     const c = computeChart();
-    const { N, hidden, totalVals, sportVals, sportSeason, W, xAt, yAt, maxY, yStep } = c;
+    const { N, hidden, totalVals, sportVals, sportSeason, W, xAt, yAt, maxY, yStep, actualVals, lastLogged } = c;
     const baseY = yAt(0).toFixed(1);
     const rightX = W - 14;
     els.chartSvg.setAttribute('viewBox', '0 0 ' + W + ' 220');
@@ -1424,6 +1516,18 @@
     });
     if (!hidden.Total) {
       svg += '<polyline points="' + ptsArr(totalVals) + '" fill="none" style="stroke: var(--color-accent);" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>';
+      if (lastLogged >= 0) {
+        const pts = actualVals.slice(0, lastLogged + 1)
+          .map((v, i) => xAt(i).toFixed(1) + ',' + yAt(v).toFixed(1)).join(' ');
+        svg += '<polyline points="' + pts + '" fill="none" style="stroke: var(--color-text);" ' +
+          'stroke-width="2" stroke-dasharray="4 3" stroke-linejoin="round" stroke-linecap="round" opacity="0.75"/>';
+        // A single logged week is a one-point polyline, which draws nothing at
+        // all — so mark the points too, or the legend claims a series you cannot see.
+        for (let i = 0; i <= lastLogged; i++) {
+          svg += '<circle cx="' + xAt(i).toFixed(1) + '" cy="' + yAt(actualVals[i]).toFixed(1) +
+            '" r="2.6" style="fill: var(--color-text);" opacity="0.75"/>';
+        }
+      }
     }
 
     svg += '<g id="hover-g"></g>';
@@ -1446,6 +1550,14 @@
           ' <span class="amt">' + fmtTotal(sportSeason[name]) + '</span></button>';
       }
     });
+    // The dashed line is unlabelled otherwise, and an unexplained series on a
+    // chart is worse than no series. Not a toggle — it has nothing to hide.
+    if (c.lastLogged >= 0) {
+      const doneMin = c.actualVals[c.lastLogged];
+      legend += '<span class="legend-pill" style="cursor: default;">' +
+        '<span class="swatch" style="background: none; border-top: 2px dashed var(--color-text); opacity: .75;"></span>' +
+        'Actual <span class="amt">' + (fmtTotal(doneMin) || '0m') + '</span></span>';
+    }
     els.chartLegend.innerHTML = legend;
 
     renderHover();
@@ -1515,6 +1627,7 @@
             '<div class="field"><label for="ed-zone">Intensity</label><input type="text" class="input" id="ed-zone" value="' + esc(s.zone || '') + '" placeholder="Z2" /></div>' +
           '</div>' +
           '<div class="field"><label for="ed-desc">Description</label><textarea class="input" id="ed-desc" placeholder="Sets, cues, notes…">' + esc(s.desc || '') + '</textarea></div>' +
+          logSectionHTML(s) +
           '<div class="dialog-foot">' +
             '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ph ph-trash"></i> Delete</button>' +
             '<span class="right">' +
@@ -1527,14 +1640,232 @@
     els.modalRoot.querySelector('#ed-focus')?.focus();
   }
 
+  /* What actually happened. Kept visually separate from the plan fields above:
+     editing the session changes the intention, logging it records history, and
+     conflating the two is how you end up quietly rewriting your own past. */
+  const STATUS_LABEL = { done: 'Done', partial: 'Partial', missed: 'Missed', sick: 'Sick / hurt' };
+
+  function logSectionHTML(s) {
+    const planned = durToMin(s.dur);
+    // Nothing to log for a rest day: "missed" a rest day is not a thing, and
+    // offering the controls invites entries the compliance maths ignores anyway.
+    if (!planned) return '';
+    const a = getActual(plan, s.id) || (state.done[s.id] ? { status: 'done', min: null, rpe: null } : null);
+    const btn = (v) => '<button type="button" data-status="' + v + '" class="' +
+      (a && a.status === v ? 'on' : '') + '">' + STATUS_LABEL[v] + '</button>';
+
+    return '<div class="log-sec">' +
+      '<label>How it went</label>' +
+      '<div class="log-seg" id="ed-status">' +
+        '<button type="button" data-status="" class="' + (a ? '' : 'on') + '">Not logged</button>' +
+        STATUSES.map(btn).join('') +
+      '</div>' +
+      '<div class="row-2">' +
+        '<div class="field"><label for="ed-actual">Actual duration</label>' +
+          '<input type="text" class="input" id="ed-actual" value="' +
+            esc(a && a.min != null ? minToDur(a.min) : '') + '" placeholder="' +
+            (planned ? esc(minToDur(planned)) + ' as planned' : '—') + '" /></div>' +
+        '<div class="field"><label for="ed-rpe">Effort (RPE 1–10)</label>' +
+          '<input type="number" class="input" id="ed-rpe" min="1" max="10" step="1" value="' +
+            (a && a.rpe != null ? a.rpe : '') + '" placeholder="optional" /></div>' +
+      '</div>' +
+    '</div>';
+  }
+
+  /** Read the log controls out of the open modal. Returns undefined when the
+      session is marked "Not logged", which clears any existing entry. */
+  function readLogFromModal() {
+    const on = els.modalRoot.querySelector('#ed-status button.on');
+    const status = on ? on.dataset.status : '';
+    if (!status) return null;
+    const durTxt = (els.modalRoot.querySelector('#ed-actual')?.value || '').trim();
+    const rpe = (els.modalRoot.querySelector('#ed-rpe')?.value || '').trim();
+    return { status, min: durTxt ? durToMin(durTxt) : null, rpe: rpe || null };
+  }
+
+  /* What the logged weeks suggest about the week being looked at. These come
+     from tested rules in adapt.js, not from the coach's judgement — the numbers
+     behind every one of them are shown, and nothing applies itself. */
+  function renderAdvice() {
+    const list = suggest(plan, { week: state.week });
+    if (!list.length) { els.adviceRoot.innerHTML = ''; return; }
+
+    els.adviceRoot.innerHTML = '<div class="advice">' + list.map((x, i) =>
+      '<div class="advice-card ' + esc(x.severity) + '">' +
+        '<span class="grow">' + esc(x.message) + '</span>' +
+        (x.action
+          ? '<button type="button" class="btn btn-secondary" data-advice="' + i + '">Preview</button>'
+          : '') +
+      '</div>').join('') + '</div>';
+
+    els.adviceRoot.querySelectorAll('[data-advice]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        // Route it through the same tools → draft → diff → apply path the coach
+        // uses, so a suggestion is reviewed exactly like any other proposal.
+        const s = list[Number(btn.dataset.advice)];
+        const session = createSession(plan);
+        const r = callTool(session, s.action.tool, s.action.input);
+        if (r.isError) { setStatus(r.content, true); return; }
+        draft = session.draft;
+        renderDiff(sessionDiff(session));
+      });
+    });
+  }
+
   function renderAll() {
     renderHeader();
     renderOverview();
     renderToolbar();
     renderStatus();
+    renderAdvice();
     renderSummary();
     renderBoard();
     renderChart();
+  }
+
+  /* =========================================================================
+     Coach — the agent panel.
+
+     The model never writes to the plan. It calls tools, the tools build a draft,
+     and the draft goes through exactly the same review-and-apply gate as the
+     Plan setup form. That is why this panel can hand a language model write
+     access to a training plan at all: the worst it can produce is a proposal
+     that gets rejected.
+
+     The API key is the athlete's own and stays in localStorage under its own
+     key — never inside a plan, so it is never exported or synced to Firestore.
+     ========================================================================= */
+
+  let coach = null;      // { session, busy }
+  const chatOf = () => (plan.chat = plan.chat ?? []);
+  const getKey = () => { try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; } };
+  const setKey = (v) => { try { v ? localStorage.setItem(KEY_STORAGE, v) : localStorage.removeItem(KEY_STORAGE); } catch (e) {} };
+
+  function openCoach() {
+    if (!coach) coach = { session: createSession(plan), busy: false };
+    coach.session.plan = plan;   // always reason about the plan as it is now
+    if (!getKey()) return renderKeyForm();
+    renderCoach();
+  }
+
+  function renderKeyForm() {
+    panelShell(
+      '<h2>Connect the coach</h2>' +
+      '<p class="pnl-sub">yootri has no server, so it uses your own Anthropic API key and talks to the API directly from this page.</p>' +
+      '<div class="field"><label for="k-key">Anthropic API key</label>' +
+        '<input type="password" class="input" id="k-key" placeholder="sk-ant-…" autocomplete="off" /></div>' +
+      '<p class="key-warn">The key is stored in this browser only. It is never written into a plan, never exported, and never synced — but anything that can run script on this page could read it. Use a key you are willing to rotate, and remove it below when you are done.</p>' +
+      '<div class="pnl-act">' +
+        (getKey() ? '<button type="button" class="btn btn-ghost spacer" id="k-forget">Remove key</button>' : '') +
+        '<button type="button" class="btn btn-ghost" id="k-cancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" id="k-save">Save</button>' +
+      '</div>',
+    );
+    $('k-cancel').addEventListener('click', closePanel);
+    $('k-save').addEventListener('click', () => {
+      const v = $('k-key').value.trim();
+      if (!v) return;
+      setKey(v);
+      renderCoach();
+    });
+    $('k-forget')?.addEventListener('click', () => { setKey(''); closePanel(); setStatus('Coach key removed'); });
+  }
+
+  function renderCoach() {
+    const log = chatOf();
+    const d = sessionDiff(coach.session);
+
+    const bubbles = log.length
+      ? log.map((m) => '<div class="chat-msg ' + (m.role === 'user' ? 'user' : (m.error ? 'err' : 'coach')) +
+          '">' + esc(m.content) + '</div>').join('')
+      : '<div class="chat-empty">Ask about your plan, or tell it what changed. For example:' +
+        '<ul>' +
+          '<li>“I only have 6 hours next week, and no pool.”</li>' +
+          '<li>“How has my training actually been going?”</li>' +
+          '<li>“Move my long ride to Sunday from now on.”</li>' +
+        '</ul></div>';
+
+    const draftBar = d.weeks.length
+      ? '<div class="chat-draft"><span class="grow"><b>' + d.weeks.length + ' week' +
+          (d.weeks.length === 1 ? '' : 's') + '</b> would change' +
+          (d.totalDeltaMinutes ? ', ' + (d.totalDeltaMinutes > 0 ? '+' : '−') +
+            fmtTotal(Math.abs(d.totalDeltaMinutes)) : '') + '</span>' +
+        '<button type="button" class="btn btn-ghost" id="c-discard">Discard</button>' +
+        '<button type="button" class="btn btn-primary" id="c-review">Review changes</button></div>'
+      : '';
+
+    panelShell(
+      '<h2>Coach</h2>' +
+      '<p class="pnl-sub">It can read your plan and propose changes. Nothing is written until you review and apply it.</p>' +
+      draftBar +
+      '<div class="chat-log" id="c-log">' + bubbles +
+        (coach.busy ? '<div class="chat-msg coach chat-busy">Thinking…</div>' : '') + '</div>' +
+      '<div class="chat-row">' +
+        '<input type="text" class="input" id="c-input" placeholder="Ask your coach…" ' +
+          (coach.busy ? 'disabled ' : '') + 'autocomplete="off" />' +
+        '<button type="button" class="btn btn-primary" id="c-send"' + (coach.busy ? ' disabled' : '') + '>Send</button>' +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="c-key">API key</button>' +
+        (log.length ? '<button type="button" class="btn btn-ghost" id="c-clear">Clear chat</button>' : '') +
+        '<button type="button" class="btn btn-secondary" id="c-close">Close</button>' +
+      '</div>',
+    );
+
+    const logEl = $('c-log');
+    logEl.scrollTop = logEl.scrollHeight;
+    $('c-close').addEventListener('click', closePanel);
+    $('c-key').addEventListener('click', renderKeyForm);
+    $('c-clear')?.addEventListener('click', () => { plan.chat = []; persistPlan(); renderCoach(); });
+    $('c-send').addEventListener('click', sendToCoach);
+    $('c-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendToCoach(); });
+    if (!coach.busy) $('c-input').focus();
+
+    $('c-review')?.addEventListener('click', () => {
+      draft = coach.session.draft;
+      renderDiff(sessionDiff(coach.session));
+    });
+    $('c-discard')?.addEventListener('click', () => {
+      coach.session.draft = null;
+      renderCoach();
+    });
+  }
+
+  async function sendToCoach() {
+    if (coach.busy) return;
+    const input = $('c-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    const log = chatOf();
+    log.push({ role: 'user', content: text });
+    coach.busy = true;
+    renderCoach();
+
+    // The transcript shown to the athlete is prose only; the model needs the
+    // full history including its own tool calls, so that is tracked separately.
+    coach.wire = (coach.wire ?? []).concat([{ role: 'user', content: text }]);
+
+    let out;
+    try {
+      out = await runTurn({
+        apiKey: getKey(),
+        session: coach.session,
+        messages: coach.wire,
+        effort: 'medium',
+      });
+    } catch (e) {
+      out = { error: true, text: 'Something went wrong: ' + e.message };
+    }
+
+    coach.busy = false;
+    if (out.messages) coach.wire = out.messages;
+    log.push({ role: 'coach', content: out.text || '(no reply)', error: !!(out.error || out.refused) });
+    // Keep the stored transcript bounded; a season of chat should not crowd out
+    // the training data in a 5MB localStorage budget.
+    if (log.length > 40) plan.chat = log.slice(-40);
+    persistPlan();
+    renderCoach();
   }
 
   /* =========================================================================
@@ -1686,6 +2017,7 @@
 
   function applyRefit() {
     if (!draft) return;
+    const fromCoach = coach && coach.session && coach.session.draft === draft;
     const snapshot = JSON.parse(JSON.stringify(plan));
     const next = applyDraft(plan, draft, { now: now() });
     closePanel();
@@ -1697,6 +2029,11 @@
     pendingUndo = { kind: 'refit', plan: snapshot };
     els.undoBtn.classList.remove('hidden');
     undoTimer = setTimeout(clearUndo, UNDO_MS);
+
+    if (fromCoach) {
+      // The proposal is now the plan; the coach starts again from it.
+      coach.session = createSession(plan);
+    }
 
     renderAll();
     setStatus('Plan re-fitted');
@@ -2210,6 +2547,7 @@
 
   // Toolbar
   els.setupBtn.addEventListener('click', openSetupPanel);
+  els.coachBtn.addEventListener('click', openCoach);
   els.prevWeek.addEventListener('click', () => { if (state.week > 0) select(state.week - 1); });
   els.nextWeek.addEventListener('click', () => { if (state.week < totalWeeks() - 1) select(state.week + 1); });
   els.syncBtn.addEventListener('click', () => {
@@ -2346,6 +2684,21 @@
   // Modal
   els.modalRoot.addEventListener('click', (e) => {
     if (e.target.id === 'modal-backdrop') { state.editingId = null; renderModal(); return; }
+
+    const st = e.target.closest('[data-status]');
+    if (st) {
+      st.parentElement.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === st));
+      // Pre-fill the planned duration when a session is marked as happening, so
+      // "partial" is an edit-down rather than a blank box.
+      const field = els.modalRoot.querySelector('#ed-actual');
+      const s = state.sessions.find((x) => x.id === state.editingId);
+      const plannedMin = s ? durToMin(s.dur) : 0;
+      const happened = st.dataset.status === 'done' || st.dataset.status === 'partial';
+      if (field && plannedMin && happened && !field.value) field.value = minToDur(plannedMin);
+      if (field && !happened) field.value = '';
+      return;
+    }
+
     const act = e.target.closest('[data-act]');
     if (!act) return;
     if (act.dataset.act === 'cancel') {
@@ -2356,11 +2709,16 @@
       const get = (sel) => els.modalRoot.querySelector(sel)?.value ?? '';
       const dur = get('#ed-dur').trim() || '—';
       const zone = get('#ed-zone').trim() || '—';
+      const log = readLogFromModal();
       const next = state.sessions.map((s) => (s.id === id
         ? { ...s, disc: get('#ed-disc'), focus: get('#ed-focus'), dur, zone, desc: get('#ed-desc') }
         : s));
       state.editingId = null;
       renderModal();
+      // The log lives on the plan, not on the session, so write it before the
+      // session edit persists — persistSessions re-renders from `plan`.
+      plan = setActual(plan, id, log);
+      state.done = plan.done;
       persistSessions(next);
     } else if (act.dataset.act === 'modal-delete') {
       const id = state.editingId;

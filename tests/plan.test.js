@@ -180,3 +180,36 @@ test('completion flags for sessions that no longer exist are dropped', () => {
   const applied = applyDraft(withDone, withDone, { now: 1 });
   assert.equal(applied.done['ghost-session'], undefined, 'stale flags should not accumulate');
 });
+
+test('a per-week budget override survives a later refit', () => {
+  // Two tool calls in one turn — "make next week 4h" then "no swimming" — must
+  // not undo each other. A refit rebuilds the season from the profile, so an
+  // override recorded on the plan has to be reapplied on top of it.
+  const p = loadPlan(v2());
+  const pinned = { ...p, weekBudgets: { w3: 4 } };
+  const draft = refit(pinned, { profile: { ...p.profile, annualHours: 900 } });
+  assert.equal(weekTotals(draft)[3], 240, 'week 3 should still be the pinned 4h');
+  assert.notEqual(weekTotals(draft)[4], 240, 'other weeks follow the new budget');
+});
+
+test('week budget overrides are ignored when they name a week that is gone', () => {
+  const p = loadPlan(v2());
+  const pinned = { ...p, weekBudgets: { w99: 4 } };
+  assert.doesNotThrow(() => refit(pinned, {}));
+});
+
+test('applying a draft keeps the conversation that happened while it was drafted', () => {
+  // The draft is snapshotted when the coach calls its first tool — before it has
+  // replied. Taking the chat from the draft therefore rewinds the transcript and
+  // loses the coach's own answer. Chat is conversation state, like done and
+  // actuals: it belongs to the plan being replaced, not to the proposal.
+  const p = loadPlan(v2());
+  const mid = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const withChat = {
+    ...p,
+    chat: [{ role: 'user', content: 'more hours' }, { role: 'coach', content: 'done' }],
+  };
+  const applied = applyDraft(withChat, mid, { now: 1 });
+  assert.equal(applied.chat.length, 2);
+  assert.equal(applied.chat[1].role, 'coach');
+});
