@@ -91,7 +91,7 @@ npm test
 The app is static — any web server or static host will do, and GitHub Pages
 serves it straight from the repo root.
 
-One thing will bite you: **cloud sync will not work on your own domain** until
+To be aware: **cloud sync will not work on your own domain** until
 you point it at your own Firebase project and add your domain to that project's
 authorized list. Until then the app runs local-only and says so in the UI, with
 an explanation of what still works. That is a supported way to use it — if you
