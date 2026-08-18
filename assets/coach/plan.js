@@ -14,7 +14,9 @@ import { normalizeProfile } from './profile.js';
 import { fitToRace } from './season.js';
 import { generateWeek } from './generate.js';
 import { validateSeason } from './validate.js';
-import { durToMin } from './duration.js';
+import { durToMin, REST_DUR } from './duration.js';
+import { DAYS } from './profile.js';
+import { weeksUntil } from './dates.js';
 
 const clone = (x) => structuredClone(x);
 const weekKey = (absWeek) => `w${absWeek}`;
@@ -67,15 +69,16 @@ export function weekTotals(plan) {
  * @param {number} [opts.from]    first week to regenerate (default: all)
  * @param {number} [opts.to]      last week to regenerate, inclusive
  */
-export function refit(plan, { profile, from = 0, to = Infinity } = {}) {
+export function refit(plan, { profile, from = 0, to = Infinity, weeks } = {}) {
   const draft = clone(plan);
   draft.profile = normalizeProfile(profile ?? plan.profile);
 
-  // Re-resolve the season whenever the budget changes, keeping its length: the
-  // race date has not moved just because the hours did.
+  // Re-resolve the season whenever the budget changes. The length is kept unless
+  // a caller passes one: the race date has not moved just because the hours did,
+  // but when it *has* moved the runway genuinely changes.
   draft.season = fitToRace({
     annualHours: draft.profile.annualHours,
-    weeks: weekCount(plan),
+    weeks: Number.isFinite(weeks) && weeks > 0 ? Math.round(weeks) : weekCount(plan),
   });
 
   // Reapply any pinned per-week budgets on top. Without this, "make next week
@@ -185,4 +188,74 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
   next.chat = plan.chat ?? [];
 
   return next;
+}
+
+/* ---- Starting a new season ------------------------------------------------
+   A new plan is a separate record, so creating one never touches the plans you
+   already have: their weeks, completions and logs stay exactly where they are.
+   This is the "clean canvas" path — a fresh calendar for a new race, with the
+   old season still there to look back on. */
+
+export const FALLBACK_WEEKS = 16;
+
+/** Seven rest days: an empty week that still has somewhere to drop a session. */
+const emptyWeek = (idPrefix) =>
+  DAYS.map((day, i) => ({
+    id: `${idPrefix}-${i}`,
+    day,
+    disc: 'Rest',
+    focus: '',
+    dur: REST_DUR,
+    zone: '—',
+  }));
+
+/**
+ * Build a new plan.
+ *
+ * @param {object}  opts
+ * @param {string}  opts.name
+ * @param {string}  opts.startISO   first Monday of the plan
+ * @param {string} [opts.raceDate]  sizes the season; falls back to 16 weeks
+ * @param {string} [opts.raceType]
+ * @param {object} [opts.profile]   inherited availability/constraints/splits
+ * @param {'fitted'|'empty'} [opts.mode]
+ */
+export function newPlan({
+  name, startISO, raceDate = null, raceType, profile, mode = 'fitted', id, now = Date.now(),
+} = {}) {
+  // Carry the athlete's own constraints across — their week has not changed
+  // just because the race has — but never the previous race.
+  const base = normalizeProfile({
+    ...(profile ?? {}),
+    raceDate,
+    ...(raceType ? { raceType } : {}),
+  });
+
+  const weeks = weeksUntil(startISO, raceDate) ?? FALLBACK_WEEKS;
+  const season = fitToRace({ annualHours: base.annualHours, weeks });
+
+  const built = {};
+  for (const w of season) {
+    const key = weekKey(w.absWeek);
+    built[key] = mode === 'empty'
+      ? emptyWeek(key)
+      : generateWeek({ hours: w.hours, block: w.block, profile: base, idPrefix: key }).sessions;
+  }
+
+  return {
+    id: id ?? `p-${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    name: name || 'My plan',
+    schema: 3,
+    start: startISO,
+    profile: base,
+    season,
+    weeks: built,
+    done: {},
+    actuals: {},
+    chat: [],
+    chartmode: 'weekly',
+    charthidden: {},
+    view: { week: 0 },
+    updatedAt: now,
+  };
 }
