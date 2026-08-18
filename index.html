@@ -864,6 +864,19 @@
   .chat-draft .grow { flex: 1; }
   .key-warn { font-size: .74rem; line-height: 1.5; margin: .5rem 0 0;
     color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+  .np-modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: .3rem 0 0; }
+  .np-mode { text-align: left; padding: .6rem .75rem; border-radius: 10px; cursor: pointer;
+    background: transparent; color: inherit; font: inherit;
+    border: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent); }
+  .np-mode.on { border-color: var(--color-accent);
+    background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
+  .np-mode b { display: block; font-size: .84rem; margin-bottom: .15rem; }
+  .np-mode span { font-size: .74rem; line-height: 1.4;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .np-len { font-size: .78rem; margin: .7rem 0 0;
+    color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+  .np-check { display: flex; gap: .5rem; align-items: flex-start; font-size: .78rem; margin-top: .8rem; }
+  .np-check input { margin-top: .15rem; }
   .advice { display: flex; flex-direction: column; gap: .5rem; margin: 0 0 1rem; }
   .advice-card { display: flex; gap: .7rem; align-items: flex-start; padding: .6rem .8rem;
     border-radius: 10px; font-size: .82rem; line-height: 1.5;
@@ -988,9 +1001,10 @@
   } from './assets/coach/actuals.js';
   import { minToDur } from './assets/coach/duration.js';
   import { createSession, sessionDiff, callTool } from './assets/coach/tools.js';
+  import { newPlan, FALLBACK_WEEKS } from './assets/coach/plan.js';
+  import { weeksUntil } from './assets/coach/dates.js';
   import { suggest } from './assets/coach/adapt.js';
   import { runTurn, KEY_STORAGE } from './assets/coach/agent.js';
-  import { fitToRace } from './assets/coach/season.js';
   import { LEGACY_PHASES } from './assets/coach/migrate.js';
 
   /* =========================================================================
@@ -1100,23 +1114,10 @@
   let plans = [];   // index: [{ id, name }]
   let plan = null;  // the current plan object
 
-  const DEFAULT_SEASON_WEEKS = 16;
-
-  const blankPlan = (name) => {
-    const profile = normalizeProfile({});
-    const season = fitToRace({ annualHours: profile.annualHours, weeks: DEFAULT_SEASON_WEEKS });
-    const weeks = {};
-    for (const w of season) {
-      weeks['w' + w.absWeek] = generateWeek({
-        hours: w.hours, block: w.block, profile, idPrefix: 'w' + w.absWeek,
-      }).sessions;
-    }
-    return {
-      id: 'p-' + uid4(), name: name || 'My plan', schema: 3, start: defaultStart(),
-      profile, season, weeks, done: {}, actuals: {}, chat: [],
-      chartmode: 'weekly', charthidden: {}, view: { week: 0 }, updatedAt: now(),
-    };
-  };
+  /* The no-input path: bootstrap, the stand-in after deleting your last plan,
+     and the shell an import fills in. Same builder as the New plan panel, so
+     there is only one way a plan comes into existence. */
+  const blankPlan = (name) => newPlan({ name, startISO: defaultStart(), now: now() });
 
   // One-time migration of the older single-plan im703_v1_* keys into a plan.
   function migrateLegacy() {
@@ -1721,6 +1722,98 @@
     renderSummary();
     renderBoard();
     renderChart();
+  }
+
+  /* =========================================================================
+     New plan — a clean canvas that does not disturb the old one.
+
+     Plans are separate records, so this never touches the season you already
+     have: its weeks, completions and logs stay exactly as they are, and the
+     plan menu switches back to it whenever you want. What is inherited is the
+     *profile* — your availability, constraints and splits — because a new race
+     does not mean a new life. The previous race date is deliberately not
+     carried over.
+     ========================================================================= */
+
+  let npMode = 'fitted';
+
+  function npWeeks() {
+    const race = $('np-race')?.value || null;
+    return weeksUntil(state.start, race) ?? FALLBACK_WEEKS;
+  }
+
+  function npRenderLength() {
+    const el = $('np-len');
+    if (!el) return;
+    const race = $('np-race')?.value;
+    const n = npWeeks();
+    el.innerHTML = race
+      ? 'That is a <b>' + n + '-week</b> run-in. The season is built backwards from race week, so the taper lands on it.'
+      : 'No race date — defaulting to <b>' + FALLBACK_WEEKS + ' weeks</b>. You can set a date later in Plan setup.';
+  }
+
+  function openNewPlanPanel() {
+    npMode = 'fitted';
+    const opts = ['sprint', 'olympic', '70.3', 'ironman']
+      .map((o) => '<option value="' + o + '"' + (o === plan.profile.raceType ? ' selected' : '') + '>' + o + '</option>')
+      .join('');
+
+    panelShell(
+      '<h2>New plan</h2>' +
+      '<p class="pnl-sub">A separate season. "' + esc(plan.name || 'your current plan') +
+        '" keeps its weeks, its completed sessions and its logs — switch back any time from the plan menu.</p>' +
+      '<div class="pnl-grid">' +
+        field('Name', '<input type="text" class="input" id="np-name" value="' +
+          esc('My plan ' + (plans.length + 1)) + '" />') +
+        field('Race date', '<input type="date" class="input" id="np-race" />') +
+        field('Race distance', '<select class="input" id="np-type">' + opts + '</select>') +
+      '</div>' +
+      '<p class="np-len" id="np-len"></p>' +
+      '<div class="pnl-sec">' +
+        '<span class="pnl-sub" style="display:block">How should it start?</span>' +
+        '<div class="np-modes" id="np-modes">' +
+          '<button type="button" class="np-mode on" data-mode="fitted">' +
+            '<b>Fitted season</b><span>A full periodised plan sized to the run-in — blocks, recovery weeks and a taper landing on race day.</span></button>' +
+          '<button type="button" class="np-mode" data-mode="empty">' +
+            '<b>Empty calendar</b><span>Every week blank. Add sessions yourself, or ask the coach to fill specific weeks.</span></button>' +
+        '</div>' +
+        '<label class="np-check"><input type="checkbox" id="np-inherit" checked />' +
+          '<span>Use my current availability, constraints and discipline splits. Uncheck to start from defaults.</span></label>' +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost" id="np-cancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" id="np-create">Create plan</button>' +
+      '</div>',
+    );
+
+    npRenderLength();
+    $('np-cancel').addEventListener('click', closePanel);
+    $('np-race').addEventListener('change', npRenderLength);
+    $('np-race').addEventListener('input', npRenderLength);
+    $('np-modes').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-mode]');
+      if (!b) return;
+      npMode = b.dataset.mode;
+      $('np-modes').querySelectorAll('.np-mode').forEach((x) => x.classList.toggle('on', x === b));
+    });
+    $('np-create').addEventListener('click', createNewPlan);
+    $('np-name').focus();
+  }
+
+  function createNewPlan() {
+    const race = $('np-race').value || null;
+    const created = newPlan({
+      name: $('np-name').value.trim() || 'My plan ' + (plans.length + 1),
+      startISO: state.start,
+      raceDate: race,
+      raceType: $('np-type').value,
+      profile: $('np-inherit').checked ? plan.profile : undefined,
+      mode: npMode,
+      now: now(),
+    });
+    closePanel();
+    addPlan(created);
+    setStatus('Created "' + (created.name || 'plan') + '" · ' + created.season.length + ' weeks');
   }
 
   /* =========================================================================
@@ -2455,8 +2548,7 @@
     if (act === 'export') return exportPlan();
     if (act === 'import') return els.importFile.click();
     if (act === 'new') {
-      const name = await nameDialog('New plan', 'My plan ' + (plans.length + 1), 'Create');
-      if (name) addPlan(blankPlan(name));
+      return openNewPlanPanel();
     } else if (act === 'dup') {
       const name = await nameDialog('Duplicate plan', (plan.name || 'Plan') + ' copy', 'Duplicate');
       if (name) duplicatePlan(name);

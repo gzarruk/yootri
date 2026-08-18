@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
-  refit, diffPlans, applyDraft, weekTotals,
+  refit, diffPlans, applyDraft, weekTotals, newPlan,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -212,4 +212,91 @@ test('applying a draft keeps the conversation that happened while it was drafted
   const applied = applyDraft(withChat, mid, { now: 1 });
   assert.equal(applied.chat.length, 2);
   assert.equal(applied.chat[1].role, 'coach');
+});
+
+/* Starting a new season without losing the old one. */
+
+test('newPlan sizes the season from the race date', () => {
+  const p = newPlan({ name: 'Ironman 2027', startISO: '2026-08-17', raceDate: '2027-06-14' });
+  assert.equal(weekCount(p), 44);
+  assert.equal(p.season.at(-1).block, 'Race', 'the taper lands on race week');
+});
+
+test('newPlan falls back to a sensible length with no race date', () => {
+  const p = newPlan({ name: 'Untitled', startISO: '2026-08-17' });
+  assert.ok(weekCount(p) >= 8, `got ${weekCount(p)} weeks`);
+  assert.equal(p.profile.raceDate, null);
+});
+
+test('a short runway keeps the race-specific end', () => {
+  const p = newPlan({ name: 'Sprint', startISO: '2026-08-17', raceDate: '2026-10-05' });
+  assert.equal(weekCount(p), 8);
+  assert.equal(p.season.at(-1).block, 'Race');
+});
+
+test('newPlan inherits a profile when given one', () => {
+  const mine = normalizeProfile({
+    annualHours: 620,
+    availability: { ...anyDay(120), Wed: 0 },
+    constraints: [{ disc: 'Swim', rule: 'maxPerWeek', value: 2 }],
+  });
+  const p = newPlan({ name: 'Next', startISO: '2026-08-17', raceDate: '2027-01-04', profile: mine });
+  assert.equal(p.profile.annualHours, 620);
+  assert.equal(p.profile.availability.Wed, 0);
+  assert.equal(p.profile.constraints.length, 1);
+});
+
+test('an inherited profile does not drag the old race date along with it', () => {
+  const mine = normalizeProfile({ annualHours: 620, raceDate: '2026-09-01', raceType: 'olympic' });
+  const p = newPlan({ name: 'Next', startISO: '2026-08-17', raceDate: '2027-01-04', raceType: 'ironman', profile: mine });
+  assert.equal(p.profile.raceDate, '2027-01-04');
+  assert.equal(p.profile.raceType, 'ironman');
+});
+
+test('a fitted plan arrives with training in it', () => {
+  const p = newPlan({ name: 'A', startISO: '2026-08-17', raceDate: '2026-12-07', mode: 'fitted' });
+  const totals = weekTotals(p);
+  assert.ok(totals.every((m) => m > 0), 'every week should hold training');
+});
+
+test('an empty plan arrives as a blank calendar of the right length', () => {
+  const p = newPlan({ name: 'B', startISO: '2026-08-17', raceDate: '2026-12-07', mode: 'empty' });
+  assert.equal(weekCount(p), weekCount(newPlan({ name: 'A', startISO: '2026-08-17', raceDate: '2026-12-07' })));
+  assert.deepEqual(weekTotals(p), weekTotals(p).map(() => 0), 'no training anywhere');
+  assert.ok(p.season.length > 0, 'but it still knows its block structure');
+});
+
+test('an empty plan still shows every day, so there is somewhere to drop a session', () => {
+  const p = newPlan({ name: 'B', startISO: '2026-08-17', raceDate: '2026-12-07', mode: 'empty' });
+  const week = sessionsAt(p, 0);
+  assert.deepEqual(week.map((s) => s.day), DAYS);
+  assert.ok(week.every((s) => s.disc === 'Rest'));
+});
+
+test('a new plan starts with no history of its own', () => {
+  const p = newPlan({ name: 'C', startISO: '2026-08-17', raceDate: '2026-12-07' });
+  assert.deepEqual(p.done, {});
+  assert.deepEqual(p.actuals, {});
+  assert.deepEqual(p.chat, []);
+  assert.equal(p.schema, 3);
+});
+
+test('new plans get distinct ids so they cannot overwrite each other', () => {
+  const a = newPlan({ name: 'A', startISO: '2026-08-17' });
+  const b = newPlan({ name: 'B', startISO: '2026-08-17' });
+  assert.notEqual(a.id, b.id);
+});
+
+test('refit can resize a season when the race date moves', () => {
+  const p = newPlan({ name: 'A', startISO: '2026-08-17', raceDate: '2026-12-07' });
+  const before = weekCount(p);
+  const draft = refit(p, { profile: { ...p.profile, raceDate: '2027-03-01' }, weeks: 28 });
+  assert.notEqual(before, 28, 'the fixture should actually be resized by this');
+  assert.equal(weekCount(draft), 28);
+  assert.equal(draft.season.at(-1).block, 'Race');
+});
+
+test('refit keeps the season length when not told otherwise', () => {
+  const p = newPlan({ name: 'A', startISO: '2026-08-17', raceDate: '2026-12-07' });
+  assert.equal(weekCount(refit(p, { profile: { ...p.profile, annualHours: 700 } })), weekCount(p));
 });
