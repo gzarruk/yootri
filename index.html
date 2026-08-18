@@ -356,9 +356,24 @@
   }
   .account-email i { color: var(--color-accent); font-size: 14px; }
   .account-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font: inherit;
     font-size: 12px;
-    color: color-mix(in srgb, var(--color-text) 40%, transparent);
+    padding: 4px 8px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    background: none;
+    cursor: pointer;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
   }
+  .account-note:hover {
+    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+    color: var(--color-text);
+  }
+  .account-note i { font-size: 13px; }
 
   /* ---- Summary bar ---- */
 
@@ -643,6 +658,12 @@
     font-family: var(--font-heading);
   }
   .im-chartscroll { position: relative; }
+  .chart-scrollhint {
+    display: none;
+    margin: 0 0 6px;
+    font-size: 11.5px;
+    color: color-mix(in srgb, var(--color-text) 48%, transparent);
+  }
   .im-chartsvg { width: 100%; height: auto; display: block; }
   .chart-tip {
     position: absolute;
@@ -733,6 +754,23 @@
     color: color-mix(in srgb, var(--color-text) 45%, transparent);
   }
 
+  /* ---- First-run orientation ---- */
+
+  .orient {
+    margin: 0 0 16px;
+    padding: 16px 18px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 34%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  }
+  .orient-lead { margin: 0; font-size: 15px; line-height: 1.5; }
+  .orient-sub {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  }
+  .orient-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
   /* ---- Footer ---- */
 
   .im-foot {
@@ -801,19 +839,6 @@
   .dialog-foot .del-btn { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
   .dialog-foot .del-btn:hover { color: var(--color-accent); }
 
-  /* ---- Responsive ---- */
-
-  @media (max-width: 680px) {
-    .im-h1 { font-size: 26px; }
-    .im-actions { margin-left: 0; }
-    .im-boardwrap { overflow-x: visible; }
-    .im-board { grid-template-columns: 1fr; min-width: 0; }
-    .im-col { min-height: 0; }
-    .im-chartcard { padding: 16px 12px; }
-    .im-chartscroll { overflow-x: auto; overflow-y: hidden; }
-    .im-chartsvg { min-width: 600px; }
-    .im-h1-input { font-size: 26px; }
-  }
   /* ---- Plan setup panel & change preview ---- */
   .pnl-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex;
     align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 60; overflow: auto; }
@@ -827,7 +852,7 @@
   .pnl-f { display: flex; flex-direction: column; gap: .28rem; font-size: .8rem; }
   .pnl-f > span { color: color-mix(in srgb, var(--color-text) 70%, transparent); }
   .pnl-hint { font-size: .74rem; line-height: 1.45;
-    color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 0; }
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 .6rem; }
   .pnl-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: .4rem; }
   .pnl-days label { display: flex; flex-direction: column; gap: .25rem; font-size: .72rem; text-align: center; }
   .pnl-days input { width: 100%; text-align: center; padding: .35rem .2rem; }
@@ -923,6 +948,79 @@
   .advice-card .btn { flex: none; }
   .chat-busy { font-size: .8rem; font-style: italic;
     color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+  /* ---- Responsive ---- */
+
+  @media (max-width: 680px) {
+    .im-h1 { font-size: 26px; }
+    .im-actions { margin-left: 0; }
+    .im-boardwrap { overflow-x: visible; }
+    .im-board { grid-template-columns: 1fr; min-width: 0; }
+    .im-col { min-height: 0; }
+    .im-chartcard { padding: 16px 12px; }
+    .im-chartscroll { overflow-x: auto; overflow-y: hidden; }
+    .im-chartsvg { min-width: 600px; }
+    .im-h1-input { font-size: 26px; }
+
+    /* A dense 16-week season does not survive being squeezed into 390px, so the
+       chart keeps its width and scrolls. That is a deliberate choice, so it is
+       given an edge fade and a label rather than being left to look clipped. */
+    .im-chartscroll::after {
+      content: "";
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 34px;
+      pointer-events: none;
+      background: linear-gradient(to right, transparent, var(--color-surface));
+    }
+    .chart-scrollhint { display: block; }
+
+    /* The summary strip is a row of figures; let it wrap instead of shrinking
+       each cell past readability. */
+    .summary { flex-wrap: wrap; }
+
+    /* Panels are the main way anything gets done, and every one of them was
+       written for a desktop width. */
+    .pnl-back { padding: 0; align-items: stretch; }
+    .pnl {
+      min-height: 100%;
+      border-radius: 0;
+      border-left: 0;
+      border-right: 0;
+      padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    }
+    .pnl-grid { grid-template-columns: 1fr; }
+    .pnl-days { flex-wrap: wrap; }
+    .pnl-act { flex-wrap: wrap; gap: .5rem; }
+    .pnl-act .btn { flex: 1 1 auto; min-height: 40px; }
+    .pnl-act .spacer { flex-basis: 100%; order: 10; }
+
+    /* The wizard's two modes stack rather than halving their own width. */
+    .np-modes { grid-template-columns: 1fr; }
+
+    /* Chat needs the height back that the panel chrome took. */
+    .chat-log { max-height: 52vh; }
+    .chat-row { flex-wrap: wrap; }
+    .chat-row input { flex: 1 1 100%; min-height: 40px; }
+    .chat-row .btn { flex: 1 1 auto; min-height: 40px; }
+
+    /* Touch targets. 34px is fine with a mouse and mean with a thumb. */
+    .btn { min-height: 38px; }
+
+    .im-foot { margin-top: 22px; }
+  }
+
+  /* Phones proper, where the header and the overview strip are the first things
+     to give way. */
+  @media (max-width: 460px) {
+    .im-h1 { font-size: 23px; }
+    .im-h1-input { font-size: 23px; }
+    .im-sub { font-size: 12px; }
+    .ov-phases { gap: 4px; }
+    .ov-phase { padding: 5px 6px; font-size: 10.5px; }
+    .toolbar { gap: .4rem; }
+    .orient { padding: 14px; }
+    .orient-act .btn { flex: 1 1 auto; }
+  }
 </style>
 </head>
 <body>
@@ -987,6 +1085,7 @@
       </div>
     </div>
 
+    <div id="orient-root"></div>
     <div id="advice-root"></div>
 
     <div class="summary" id="summary"></div>
@@ -1008,6 +1107,7 @@
           </span>
         </span>
       </div>
+      <span class="chart-scrollhint">Scroll sideways to see the whole season →</span>
       <div class="im-chartscroll" id="chart-scroll">
         <svg class="im-chartsvg" id="chart-svg" viewBox="0 0 900 220"></svg>
         <div class="chart-tip hidden" id="chart-tip"></div>
@@ -1263,7 +1363,7 @@
     timeline: $('phase-timeline'), seasonFill: $('season-fill'), seasonPos: $('season-pos'),
     setupBtn: $('setup-btn'), coachBtn: $('coach-btn'), panelRoot: $('panel-root'),
     aboutBtn: $('about-btn'),
-    adviceRoot: $('advice-root'),
+    adviceRoot: $('advice-root'), orientRoot: $('orient-root'),
     prevWeek: $('prev-week'), nextWeek: $('next-week'),
     weekPos: $('week-pos'), weekRange: $('week-range'),
     status: $('status'), syncBtn: $('sync-btn'), syncIcon: $('sync-icon'), resetBtn: $('reset-btn'),
@@ -1755,7 +1855,45 @@
     });
   }
 
+  /* A first visitor lands on a real plan, not an empty screen: ensurePlans()
+     guarantees one exists. So "new here" cannot be detected by counting plans —
+     it is a plan nobody has touched yet. Say what this is and offer the two
+     things worth doing first, both of which go through the existing wizard.
+     Dismissed for good once it is in the way. */
+  const ORIENT_KEY = 'yootri_oriented_v1';
+  const orientDone = () => { try { return localStorage.getItem(ORIENT_KEY) === '1'; } catch (e) { return true; } };
+
+  function planIsUntouched() {
+    if (plans.length > 1) return false;
+    if (Object.keys(plan.done ?? {}).length) return false;
+    if ((plan.chat ?? []).length) return false;
+    const weeks = plan.weeks ?? {};
+    return !Object.values(weeks).some((w) =>
+      (w?.sessions ?? []).some((x) => x && x.actual));
+  }
+
+  function renderOrientation() {
+    if (orientDone() || !planIsUntouched()) { els.orientRoot.innerHTML = ''; return; }
+    els.orientRoot.innerHTML =
+      '<div class="orient">' +
+        '<p class="orient-lead">yootri plans a triathlon season around the hours you actually have, and keeps it in this browser.</p>' +
+        '<p class="orient-sub">Start from a fitted season, or build one up yourself on an empty calendar.</p>' +
+        '<div class="orient-act">' +
+          '<button type="button" class="btn btn-primary" data-orient="new">Create a season</button>' +
+          '<button type="button" class="btn btn-ghost" data-orient="dismiss">Not now</button>' +
+        '</div>' +
+      '</div>';
+    els.orientRoot.querySelectorAll('[data-orient]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        try { localStorage.setItem(ORIENT_KEY, '1'); } catch (e) {}
+        if (btn.dataset.orient === 'new') openNewPlanPanel();
+        else renderOrientation();
+      });
+    });
+  }
+
   function renderAll() {
+    renderOrientation();
     renderHeader();
     renderOverview();
     renderToolbar();
@@ -1918,7 +2056,7 @@
 
     const modelOpts = provider.models.map((m) =>
       '<option value="' + esc(m.id) + '"' + (m.id === cur.model && !custom ? ' selected' : '') + '>' +
-      esc(m.label) + ' — ' + esc(m.note) + '</option>').join('') +
+      esc(m.label) + '</option>').join('') +
       (provider.allowCustomModel
         ? '<option value="__custom"' + (custom ? ' selected' : '') + '>Another model…</option>'
         : '');
@@ -1930,6 +2068,10 @@
         field('Provider', '<select class="input" id="k-prov">' + provOpts + '</select>') +
         field('Model', '<select class="input" id="k-model">' + modelOpts + '</select>') +
       '</div>' +
+      // The cost hint is the point of the list, so it is shown in full rather
+      // than truncated inside a <select> on a narrow screen.
+      (custom ? '' : '<p class="pnl-hint" id="k-model-note">' +
+        esc((provider.models.find((m) => m.id === cur.model) || {}).note || '') + '</p>') +
       (custom
         ? '<div class="field"><label for="k-model-custom">Model name</label>' +
           '<input type="text" class="input" id="k-model-custom" value="' + esc(cur.model) + '" ' +
@@ -2181,6 +2323,28 @@
     );
     markAcked();
     $('ack-ok').addEventListener('click', closePanel);
+  }
+
+  /* Sign-in is optional and its absence is not an error. Say what is and is not
+     working, in the place the athlete just clicked, and point a self-hoster at
+     the README rather than at the console. */
+  function openLocalOnlyPanel() {
+    const why = (window.imCloud && window.imCloud.reason) || '';
+    panelShell(
+      '<h2>Running local-only</h2>' +
+      '<p class="pnl-sub">Signing in is unavailable on this copy of yootri. Everything else works normally.</p>' +
+      '<div class="legal">' +
+        '<p><b>Your plans are safe.</b> They are stored in this browser and load again next time you open the page. Nothing has been lost, and nothing is waiting to be uploaded.</p>' +
+        '<p><b>What you do not get.</b> Syncing plans between devices, and signing in with Google. Use <b>Export</b> from the plan menu to move a plan to another browser or keep a backup.</p>' +
+        '<p><b>If this is your own copy.</b> Cloud sync needs a Firebase project, and its authorized-domain list has to include the domain you are serving from. The README covers setting that up, or skipping it — running local-only is a supported way to use yootri.</p>' +
+        (why ? '<p class="muted">Reported by Firebase: ' + esc(why) + '</p>' : '') +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-primary" id="lo-close">Close</button>' +
+      '</div>',
+      'Running local-only',
+    );
+    $('lo-close').addEventListener('click', closePanel);
   }
 
   function openAboutPanel() {
@@ -2678,7 +2842,11 @@
 
   function renderAccount() {
     if (!cloudReady()) {
-      els.account.innerHTML = '<span class="account-note" title="Cloud sync unavailable — saved on this device">Local only</span>';
+      els.account.innerHTML =
+        '<button type="button" class="account-note" id="local-only" ' +
+        'title="Sign-in is unavailable here — your plans are saved in this browser">' +
+        '<i class="ph ph-hard-drives"></i> Local only</button>';
+      $('local-only').addEventListener('click', openLocalOnlyPanel);
     } else if (authUser) {
       els.account.innerHTML =
         '<span class="account-email"><i class="ph ph-cloud-check"></i>' + esc(authUser.email || 'Signed in') + '</span>' +
@@ -3128,8 +3296,13 @@
         },
       };
     } catch (e) {
+      // Anyone serving this from their own domain hits this until they add that
+      // domain to Firebase's authorized list — and a fork with no Firebase
+      // project of its own never leaves this branch. Local-only is a supported
+      // way to run yootri, not a broken one, so the reason is kept for the UI
+      // to show rather than left in the console where nobody looks.
       console.error('Cloud sync unavailable; running local-only.', e);
-      window.imCloud = { configured: false };
+      window.imCloud = { configured: false, reason: (e && e.message) || String(e) };
     }
     window.dispatchEvent(new Event('imcloud:ready'));
   </script>
