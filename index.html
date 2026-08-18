@@ -356,9 +356,24 @@
   }
   .account-email i { color: var(--color-accent); font-size: 14px; }
   .account-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font: inherit;
     font-size: 12px;
-    color: color-mix(in srgb, var(--color-text) 40%, transparent);
+    padding: 4px 8px;
+    border: 1px solid var(--color-divider);
+    border-radius: var(--radius-md);
+    background: none;
+    cursor: pointer;
+    white-space: nowrap;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
   }
+  .account-note:hover {
+    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
+    color: var(--color-text);
+  }
+  .account-note i { font-size: 13px; }
 
   /* ---- Summary bar ---- */
 
@@ -643,6 +658,12 @@
     font-family: var(--font-heading);
   }
   .im-chartscroll { position: relative; }
+  .chart-scrollhint {
+    display: none;
+    margin: 0 0 6px;
+    font-size: 11.5px;
+    color: color-mix(in srgb, var(--color-text) 48%, transparent);
+  }
   .im-chartsvg { width: 100%; height: auto; display: block; }
   .chart-tip {
     position: absolute;
@@ -733,6 +754,49 @@
     color: color-mix(in srgb, var(--color-text) 45%, transparent);
   }
 
+  /* ---- First-run orientation ---- */
+
+  .orient {
+    margin: 0 0 16px;
+    padding: 16px 18px;
+    border: 1px solid color-mix(in srgb, var(--color-accent) 34%, transparent);
+    border-radius: var(--radius-lg);
+    background: color-mix(in srgb, var(--color-accent) 7%, transparent);
+  }
+  .orient-lead { margin: 0; font-size: 15px; line-height: 1.5; }
+  .orient-sub {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent);
+  }
+  .orient-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+  /* ---- Footer ---- */
+
+  .im-foot {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    margin: 28px 0 4px;
+    padding-top: 16px;
+    border-top: 1px solid var(--color-divider);
+    font-size: 0.8rem;
+    line-height: 1.6;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent);
+  }
+  .im-foot-link {
+    font: inherit;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--color-accent);
+    cursor: pointer;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .im-foot-link:hover { color: var(--color-accent-300); }
+
   /* ---- Edit modal ---- */
 
   .modal-backdrop {
@@ -775,19 +839,6 @@
   .dialog-foot .del-btn { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
   .dialog-foot .del-btn:hover { color: var(--color-accent); }
 
-  /* ---- Responsive ---- */
-
-  @media (max-width: 680px) {
-    .im-h1 { font-size: 26px; }
-    .im-actions { margin-left: 0; }
-    .im-boardwrap { overflow-x: visible; }
-    .im-board { grid-template-columns: 1fr; min-width: 0; }
-    .im-col { min-height: 0; }
-    .im-chartcard { padding: 16px 12px; }
-    .im-chartscroll { overflow-x: auto; overflow-y: hidden; }
-    .im-chartsvg { min-width: 600px; }
-    .im-h1-input { font-size: 26px; }
-  }
   /* ---- Plan setup panel & change preview ---- */
   .pnl-back { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex;
     align-items: flex-start; justify-content: center; padding: 4vh 1rem; z-index: 60; overflow: auto; }
@@ -801,7 +852,7 @@
   .pnl-f { display: flex; flex-direction: column; gap: .28rem; font-size: .8rem; }
   .pnl-f > span { color: color-mix(in srgb, var(--color-text) 70%, transparent); }
   .pnl-hint { font-size: .74rem; line-height: 1.45;
-    color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 0; }
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 .6rem; }
   .pnl-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: .4rem; }
   .pnl-days label { display: flex; flex-direction: column; gap: .25rem; font-size: .72rem; text-align: center; }
   .pnl-days input { width: 100%; text-align: center; padding: .35rem .2rem; }
@@ -864,6 +915,15 @@
   .chat-draft .grow { flex: 1; }
   .key-warn { font-size: .74rem; line-height: 1.5; margin: .5rem 0 0;
     color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+  .ai-note { font-size: .74rem; line-height: 1.5; margin: -.2rem 0 .6rem;
+    padding-left: .6rem; border-left: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent);
+    color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .legal { font-size: .82rem; line-height: 1.65;
+    color: color-mix(in srgb, var(--color-text) 78%, transparent); }
+  .legal p { margin: 0 0 .7rem; }
+  .legal b { color: var(--color-text); font-weight: 500; }
+  .legal-about { font-size: .82rem; line-height: 1.65; margin: 0;
+    color: color-mix(in srgb, var(--color-text) 70%, transparent); }
   .np-modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: .3rem 0 0; }
   .np-mode { text-align: left; padding: .6rem .75rem; border-radius: 10px; cursor: pointer;
     background: transparent; color: inherit; font: inherit;
@@ -888,6 +948,79 @@
   .advice-card .btn { flex: none; }
   .chat-busy { font-size: .8rem; font-style: italic;
     color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+  /* ---- Responsive ---- */
+
+  @media (max-width: 680px) {
+    .im-h1 { font-size: 26px; }
+    .im-actions { margin-left: 0; }
+    .im-boardwrap { overflow-x: visible; }
+    .im-board { grid-template-columns: 1fr; min-width: 0; }
+    .im-col { min-height: 0; }
+    .im-chartcard { padding: 16px 12px; }
+    .im-chartscroll { overflow-x: auto; overflow-y: hidden; }
+    .im-chartsvg { min-width: 600px; }
+    .im-h1-input { font-size: 26px; }
+
+    /* A dense 16-week season does not survive being squeezed into 390px, so the
+       chart keeps its width and scrolls. That is a deliberate choice, so it is
+       given an edge fade and a label rather than being left to look clipped. */
+    .im-chartscroll::after {
+      content: "";
+      position: absolute;
+      top: 0; right: 0; bottom: 0;
+      width: 34px;
+      pointer-events: none;
+      background: linear-gradient(to right, transparent, var(--color-surface));
+    }
+    .chart-scrollhint { display: block; }
+
+    /* The summary strip is a row of figures; let it wrap instead of shrinking
+       each cell past readability. */
+    .summary { flex-wrap: wrap; }
+
+    /* Panels are the main way anything gets done, and every one of them was
+       written for a desktop width. */
+    .pnl-back { padding: 0; align-items: stretch; }
+    .pnl {
+      min-height: 100%;
+      border-radius: 0;
+      border-left: 0;
+      border-right: 0;
+      padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
+    }
+    .pnl-grid { grid-template-columns: 1fr; }
+    .pnl-days { flex-wrap: wrap; }
+    .pnl-act { flex-wrap: wrap; gap: .5rem; }
+    .pnl-act .btn { flex: 1 1 auto; min-height: 40px; }
+    .pnl-act .spacer { flex-basis: 100%; order: 10; }
+
+    /* The wizard's two modes stack rather than halving their own width. */
+    .np-modes { grid-template-columns: 1fr; }
+
+    /* Chat needs the height back that the panel chrome took. */
+    .chat-log { max-height: 52vh; }
+    .chat-row { flex-wrap: wrap; }
+    .chat-row input { flex: 1 1 100%; min-height: 40px; }
+    .chat-row .btn { flex: 1 1 auto; min-height: 40px; }
+
+    /* Touch targets. 34px is fine with a mouse and mean with a thumb. */
+    .btn { min-height: 38px; }
+
+    .im-foot { margin-top: 22px; }
+  }
+
+  /* Phones proper, where the header and the overview strip are the first things
+     to give way. */
+  @media (max-width: 460px) {
+    .im-h1 { font-size: 23px; }
+    .im-h1-input { font-size: 23px; }
+    .im-sub { font-size: 12px; }
+    .ov-phases { gap: 4px; }
+    .ov-phase { padding: 5px 6px; font-size: 10.5px; }
+    .toolbar { gap: .4rem; }
+    .orient { padding: 14px; }
+    .orient-act .btn { flex: 1 1 auto; }
+  }
 </style>
 </head>
 <body>
@@ -952,6 +1085,7 @@
       </div>
     </div>
 
+    <div id="orient-root"></div>
     <div id="advice-root"></div>
 
     <div class="summary" id="summary"></div>
@@ -973,12 +1107,18 @@
           </span>
         </span>
       </div>
+      <span class="chart-scrollhint">Scroll sideways to see the whole season →</span>
       <div class="im-chartscroll" id="chart-scroll">
         <svg class="im-chartsvg" id="chart-svg" viewBox="0 0 900 220"></svg>
         <div class="chart-tip hidden" id="chart-tip"></div>
       </div>
       <div class="chart-legend" id="chart-legend"></div>
     </div>
+
+    <footer class="im-foot">
+      <span>yootri is a training planner, not medical advice. Free and open source (MIT).</span>
+      <button type="button" class="im-foot-link" id="about-btn">About &amp; disclaimer</button>
+    </footer>
 
     <div id="modal-root"></div>
     <div id="dialog-root"></div>
@@ -1004,7 +1144,8 @@
   import { newPlan, FALLBACK_WEEKS } from './assets/coach/plan.js';
   import { weeksUntil } from './assets/coach/dates.js';
   import { suggest } from './assets/coach/adapt.js';
-  import { runTurn, KEY_STORAGE } from './assets/coach/agent.js';
+  import { runTurn } from './assets/coach/agent.js';
+  import { PROVIDERS, getProvider, resolveModel } from './assets/coach/providers.js';
   import { LEGACY_PHASES } from './assets/coach/migrate.js';
 
   /* =========================================================================
@@ -1221,7 +1362,8 @@
     subtitle: $('subtitle'), startInput: $('start-input'), totalWeeks: $('total-weeks'),
     timeline: $('phase-timeline'), seasonFill: $('season-fill'), seasonPos: $('season-pos'),
     setupBtn: $('setup-btn'), coachBtn: $('coach-btn'), panelRoot: $('panel-root'),
-    adviceRoot: $('advice-root'),
+    aboutBtn: $('about-btn'),
+    adviceRoot: $('advice-root'), orientRoot: $('orient-root'),
     prevWeek: $('prev-week'), nextWeek: $('next-week'),
     weekPos: $('week-pos'), weekRange: $('week-range'),
     status: $('status'), syncBtn: $('sync-btn'), syncIcon: $('sync-icon'), resetBtn: $('reset-btn'),
@@ -1713,7 +1855,45 @@
     });
   }
 
+  /* A first visitor lands on a real plan, not an empty screen: ensurePlans()
+     guarantees one exists. So "new here" cannot be detected by counting plans —
+     it is a plan nobody has touched yet. Say what this is and offer the two
+     things worth doing first, both of which go through the existing wizard.
+     Dismissed for good once it is in the way. */
+  const ORIENT_KEY = 'yootri_oriented_v1';
+  const orientDone = () => { try { return localStorage.getItem(ORIENT_KEY) === '1'; } catch (e) { return true; } };
+
+  function planIsUntouched() {
+    if (plans.length > 1) return false;
+    if (Object.keys(plan.done ?? {}).length) return false;
+    if ((plan.chat ?? []).length) return false;
+    const weeks = plan.weeks ?? {};
+    return !Object.values(weeks).some((w) =>
+      (w?.sessions ?? []).some((x) => x && x.actual));
+  }
+
+  function renderOrientation() {
+    if (orientDone() || !planIsUntouched()) { els.orientRoot.innerHTML = ''; return; }
+    els.orientRoot.innerHTML =
+      '<div class="orient">' +
+        '<p class="orient-lead">yootri plans a triathlon season around the hours you actually have, and keeps it in this browser.</p>' +
+        '<p class="orient-sub">Start from a fitted season, or build one up yourself on an empty calendar.</p>' +
+        '<div class="orient-act">' +
+          '<button type="button" class="btn btn-primary" data-orient="new">Create a season</button>' +
+          '<button type="button" class="btn btn-ghost" data-orient="dismiss">Not now</button>' +
+        '</div>' +
+      '</div>';
+    els.orientRoot.querySelectorAll('[data-orient]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        try { localStorage.setItem(ORIENT_KEY, '1'); } catch (e) {}
+        if (btn.dataset.orient === 'new') openNewPlanPanel();
+        else renderOrientation();
+      });
+    });
+  }
+
   function renderAll() {
+    renderOrientation();
     renderHeader();
     renderOverview();
     renderToolbar();
@@ -1831,8 +2011,31 @@
 
   let coach = null;      // { session, busy }
   const chatOf = () => (plan.chat = plan.chat ?? []);
-  const getKey = () => { try { return localStorage.getItem(KEY_STORAGE) || ''; } catch (e) { return ''; } };
-  const setKey = (v) => { try { v ? localStorage.setItem(KEY_STORAGE, v) : localStorage.removeItem(KEY_STORAGE); } catch (e) {} };
+
+  /* Coach settings live in localStorage, not in the plan: they are about this
+     browser, not about this season. Each provider keeps its key under its own
+     name so switching provider does not destroy the other one. */
+  const SETTINGS_KEY = 'yootri_coach_settings';
+  const lsGet = (k) => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const lsSet = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
+
+  function coachSettings() {
+    let raw = {};
+    try { raw = JSON.parse(lsGet(SETTINGS_KEY) || '{}') || {}; } catch (e) { raw = {}; }
+    const provider = getProvider(raw.providerId);
+    return {
+      provider,
+      model: resolveModel(provider, raw.model),
+      baseUrl: (provider.allowBaseUrlOverride && raw.baseUrl) || provider.defaultBaseUrl,
+    };
+  }
+
+  function saveCoachSettings({ providerId, model, baseUrl }) {
+    lsSet(SETTINGS_KEY, JSON.stringify({ providerId, model, baseUrl }));
+  }
+
+  const getKey = (provider) => lsGet((provider || coachSettings().provider).keyStorageKey);
+  const setKey = (provider, v) => lsSet((provider || coachSettings().provider).keyStorageKey, v);
 
   function openCoach() {
     if (!coach) coach = { session: createSession(plan), busy: false };
@@ -1841,27 +2044,96 @@
     renderCoach();
   }
 
-  function renderKeyForm() {
+  function renderKeyForm(pending) {
+    const cur = pending || coachSettings();
+    const provider = cur.provider;
+    const key = getKey(provider);
+    const listed = provider.models.some((m) => m.id === cur.model);
+    const custom = provider.allowCustomModel && !listed;
+
+    const provOpts = PROVIDERS.map((p) =>
+      '<option value="' + p.id + '"' + (p.id === provider.id ? ' selected' : '') + '>' + esc(p.label) + '</option>').join('');
+
+    const modelOpts = provider.models.map((m) =>
+      '<option value="' + esc(m.id) + '"' + (m.id === cur.model && !custom ? ' selected' : '') + '>' +
+      esc(m.label) + '</option>').join('') +
+      (provider.allowCustomModel
+        ? '<option value="__custom"' + (custom ? ' selected' : '') + '>Another model…</option>'
+        : '');
+
     panelShell(
-      '<h2>Connect the coach</h2>' +
-      '<p class="pnl-sub">yootri has no server, so it uses your own Anthropic API key and talks to the API directly from this page.</p>' +
-      '<div class="field"><label for="k-key">Anthropic API key</label>' +
-        '<input type="password" class="input" id="k-key" placeholder="sk-ant-…" autocomplete="off" /></div>' +
+      '<h2>Coach settings</h2>' +
+      '<p class="pnl-sub">yootri has no server, so it uses your own API key and talks to the provider directly from this page.</p>' +
+      '<div class="pnl-grid">' +
+        field('Provider', '<select class="input" id="k-prov">' + provOpts + '</select>') +
+        field('Model', '<select class="input" id="k-model">' + modelOpts + '</select>') +
+      '</div>' +
+      // The cost hint is the point of the list, so it is shown in full rather
+      // than truncated inside a <select> on a narrow screen.
+      (custom ? '' : '<p class="pnl-hint" id="k-model-note">' +
+        esc((provider.models.find((m) => m.id === cur.model) || {}).note || '') + '</p>') +
+      (custom
+        ? '<div class="field"><label for="k-model-custom">Model name</label>' +
+          '<input type="text" class="input" id="k-model-custom" value="' + esc(cur.model) + '" ' +
+          'placeholder="llama3.1:70b" autocomplete="off" /></div>'
+        : '') +
+      (provider.allowBaseUrlOverride
+        ? '<div class="field"><label for="k-base">Base URL</label>' +
+          '<input type="text" class="input" id="k-base" value="' + esc(cur.baseUrl) + '" ' +
+          'placeholder="' + esc(provider.defaultBaseUrl) + '" autocomplete="off" /></div>'
+        : '') +
+      '<div class="field"><label for="k-key">' + esc(provider.label) + ' API key</label>' +
+        '<input type="password" class="input" id="k-key" placeholder="' + esc(provider.keyPlaceholder) + '" ' +
+        'value="' + esc(key) + '" autocomplete="off" /></div>' +
+      (provider.keyHint ? '<p class="pnl-hint">' + esc(provider.keyHint) + '</p>' : '') +
       '<p class="key-warn">The key is stored in this browser only. It is never written into a plan, never exported, and never synced — but anything that can run script on this page could read it. Use a key you are willing to rotate, and remove it below when you are done.</p>' +
+      '<p class="key-warn">Coach conversations use your own API credits. What a turn costs depends on the model you pick — the list is ordered cheapest first.</p>' +
       '<div class="pnl-act">' +
-        (getKey() ? '<button type="button" class="btn btn-ghost spacer" id="k-forget">Remove key</button>' : '') +
+        (key ? '<button type="button" class="btn btn-ghost spacer" id="k-forget">Remove key</button>' : '') +
         '<button type="button" class="btn btn-ghost" id="k-cancel">Cancel</button>' +
         '<button type="button" class="btn btn-primary" id="k-save">Save</button>' +
       '</div>',
+      'Coach settings',
     );
+
+    // Changing provider or picking "another model" redraws the form, keeping
+    // what has been typed so far. Each provider's key is read from its own slot.
+    const redraw = () => {
+      const nextProvider = getProvider($('k-prov').value);
+      const picked = $('k-model').value;
+      const sameProvider = nextProvider.id === provider.id;
+      renderKeyForm({
+        provider: nextProvider,
+        model: !sameProvider ? nextProvider.defaultModel
+          : picked === '__custom' ? (custom ? readCustomModel() : '')
+          : picked,
+        baseUrl: sameProvider && $('k-base') ? $('k-base').value.trim() : nextProvider.defaultBaseUrl,
+      });
+    };
+    const readCustomModel = () => ($('k-model-custom') ? $('k-model-custom').value.trim() : '');
+
+    $('k-prov').addEventListener('change', redraw);
+    $('k-model').addEventListener('change', redraw);
     $('k-cancel').addEventListener('click', closePanel);
     $('k-save').addEventListener('click', () => {
+      const picked = $('k-model').value;
+      const model = picked === '__custom' ? readCustomModel() : picked;
+      if (picked === '__custom' && !model) return;
       const v = $('k-key').value.trim();
       if (!v) return;
-      setKey(v);
+      setKey(provider, v);
+      saveCoachSettings({
+        providerId: provider.id,
+        model,
+        baseUrl: $('k-base') ? $('k-base').value.trim() : undefined,
+      });
       renderCoach();
     });
-    $('k-forget')?.addEventListener('click', () => { setKey(''); closePanel(); setStatus('Coach key removed'); });
+    $('k-forget')?.addEventListener('click', () => {
+      setKey(provider, '');
+      closePanel();
+      setStatus('Coach key removed');
+    });
   }
 
   function renderCoach() {
@@ -1890,6 +2162,9 @@
     panelShell(
       '<h2>Coach</h2>' +
       '<p class="pnl-sub">It can read your plan and propose changes. Nothing is written until you review and apply it.</p>' +
+      // EU AI Act Art. 50(1): people must be told they are interacting with an
+      // AI system. It is stated here, in the panel, rather than in a tooltip.
+      '<p class="ai-note">Responses are generated by an AI model using the API key you configured. This is not advice from a human coach.</p>' +
       draftBar +
       '<div class="chat-log" id="c-log">' + bubbles +
         (coach.busy ? '<div class="chat-msg coach chat-busy">Thinking…</div>' : '') + '</div>' +
@@ -1899,7 +2174,7 @@
         '<button type="button" class="btn btn-primary" id="c-send"' + (coach.busy ? ' disabled' : '') + '>Send</button>' +
       '</div>' +
       '<div class="pnl-act">' +
-        '<button type="button" class="btn btn-ghost spacer" id="c-key">API key</button>' +
+        '<button type="button" class="btn btn-ghost spacer" id="c-key">Settings</button>' +
         (log.length ? '<button type="button" class="btn btn-ghost" id="c-clear">Clear chat</button>' : '') +
         '<button type="button" class="btn btn-secondary" id="c-close">Close</button>' +
       '</div>',
@@ -1908,7 +2183,7 @@
     const logEl = $('c-log');
     logEl.scrollTop = logEl.scrollHeight;
     $('c-close').addEventListener('click', closePanel);
-    $('c-key').addEventListener('click', renderKeyForm);
+    $('c-key').addEventListener('click', () => renderKeyForm());
     $('c-clear')?.addEventListener('click', () => { plan.chat = []; persistPlan(); renderCoach(); });
     $('c-send').addEventListener('click', sendToCoach);
     $('c-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') sendToCoach(); });
@@ -1941,8 +2216,12 @@
 
     let out;
     try {
+      const cfg = coachSettings();
       out = await runTurn({
-        apiKey: getKey(),
+        apiKey: getKey(cfg.provider),
+        provider: cfg.provider,
+        model: cfg.model,
+        baseUrl: cfg.baseUrl,
         session: coach.session,
         messages: coach.wire,
         effort: 'medium',
@@ -1981,9 +2260,9 @@
 
   function onPanelKey(e) { if (e.key === 'Escape') closePanel(); }
 
-  function panelShell(inner) {
+  function panelShell(inner, label = 'Plan setup') {
     els.panelRoot.innerHTML =
-      '<div class="pnl-back"><div class="pnl" role="dialog" aria-modal="true" aria-label="Plan setup">' +
+      '<div class="pnl-back"><div class="pnl" role="dialog" aria-modal="true" aria-label="' + esc(label) + '">' +
       inner + '</div></div>';
     document.addEventListener('keydown', onPanelKey);
     els.panelRoot.querySelector('.pnl-back').addEventListener('mousedown', (e) => {
@@ -1993,6 +2272,104 @@
 
   const field = (label, control) =>
     '<label class="pnl-f"><span>' + label + '</span>' + control + '</label>';
+
+  /* ---- About & disclaimer ----
+
+     The substance here is deliberate and is not to be softened or shortened. It
+     is what says, in the place a user will actually look, that this is a
+     planner and not advice. The About part at the end is the whole of the
+     project's self-description: free software, a repo link, and a way to
+     support the work. Nothing is sold and nothing is gated. */
+
+  const DISCLAIMER_SECTIONS = [
+    ['Not medical or professional advice.',
+      'yootri is not a substitute for advice from your physician, physiotherapist, or a qualified coach. Never disregard or delay seeking medical advice because of anything in this application.'],
+    ['The developer is not a certified coach, personal trainer, or medical professional.',
+      'yootri is software, not a coaching service, and no coaching relationship is created by using it.'],
+    ['Consult a physician before beginning any training programme,',
+      'particularly if you have or have had any cardiac condition, dizziness or balance problems, bone or joint problems, or any condition that exercise could worsen.'],
+    ['Assumption of risk.',
+      'Endurance training carries inherent and significant risks of injury, illness and death. Your use of yootri — including following, adapting, or acting on any training plan, session, or recommendation it generates — is at your own risk. You are solely responsible for your own training decisions.'],
+    ['AI-generated content.',
+      'Where you connect your own AI provider, coaching responses are generated by an artificial intelligence model, not a human coach. AI output may be inaccurate, inappropriate for your circumstances, or simply wrong. Review it critically and do not follow it without your own judgement.'],
+    ['No warranty as to results.',
+      'yootri makes no guarantee of fitness improvement, race outcome, or any other result. The software is provided "as is" under the MIT licence, without warranty of any kind.'],
+    ['Your data.',
+      'Everything you enter is stored in your own browser. If you choose to sign in, your plans sync to Google Cloud Firestore under your own account and are readable only by you. Your API key is stored in this browser only and is never synced or exported. Coach conversations are never synced.'],
+    ['Nothing here excludes or limits liability where the law does not allow it,',
+      'including liability for death or personal injury.'],
+  ];
+
+  /* Shown once, on a browser that has never run yootri before. It is an
+     acknowledgement, not a gate: one button, and the flag is written whether it
+     is dismissed by the button or by Escape, so it cannot come back. */
+  const ACK_KEY = 'yootri_ack_v1';
+  const ackSeen = () => { try { return localStorage.getItem(ACK_KEY) === '1'; } catch (e) { return true; } };
+  const markAcked = () => { try { localStorage.setItem(ACK_KEY, '1'); } catch (e) {} };
+
+  function maybeShowFirstRun() {
+    if (ackSeen()) return;
+    panelShell(
+      '<h2>Before you start</h2>' +
+      '<div class="legal">' +
+        '<p>yootri is a training planner. It is <b>not medical advice</b>, and the developer is not a certified coach, personal trainer, or medical professional.</p>' +
+        '<p>Consult a physician before beginning any training programme. Endurance training carries inherent and significant risks of injury, illness and death, and you are solely responsible for your own training decisions.</p>' +
+        '<p class="muted">The full disclaimer is always available from the footer.</p>' +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-primary" id="ack-ok">I understand</button>' +
+      '</div>',
+      'Before you start',
+    );
+    markAcked();
+    $('ack-ok').addEventListener('click', closePanel);
+  }
+
+  /* Sign-in is optional and its absence is not an error. Say what is and is not
+     working, in the place the athlete just clicked, and point a self-hoster at
+     the README rather than at the console. */
+  function openLocalOnlyPanel() {
+    const why = (window.imCloud && window.imCloud.reason) || '';
+    panelShell(
+      '<h2>Running local-only</h2>' +
+      '<p class="pnl-sub">Signing in is unavailable on this copy of yootri. Everything else works normally.</p>' +
+      '<div class="legal">' +
+        '<p><b>Your plans are safe.</b> They are stored in this browser and load again next time you open the page. Nothing has been lost, and nothing is waiting to be uploaded.</p>' +
+        '<p><b>What you do not get.</b> Syncing plans between devices, and signing in with Google. Use <b>Export</b> from the plan menu to move a plan to another browser or keep a backup.</p>' +
+        '<p><b>If this is your own copy.</b> Cloud sync needs a Firebase project, and its authorized-domain list has to include the domain you are serving from. The README covers setting that up, or skipping it — running local-only is a supported way to use yootri.</p>' +
+        (why ? '<p class="muted">Reported by Firebase: ' + esc(why) + '</p>' : '') +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-primary" id="lo-close">Close</button>' +
+      '</div>',
+      'Running local-only',
+    );
+    $('lo-close').addEventListener('click', closePanel);
+  }
+
+  function openAboutPanel() {
+    panelShell(
+      '<h2>About &amp; disclaimer</h2>' +
+      '<p class="pnl-sub">yootri is a triathlon training planner. It fits a season to the hours you actually have, and keeps your plan on your own device.</p>' +
+      '<div class="legal">' +
+        DISCLAIMER_SECTIONS.map(([head, body]) =>
+          '<p><b>' + esc(head) + '</b> ' + esc(body) + '</p>').join('') +
+      '</div>' +
+      '<div class="pnl-sec">' +
+        '<p class="legal-about">Free and open source under the ' +
+          '<a href="https://github.com/gzarruk/yootri/blob/main/LICENSE" target="_blank" rel="noopener">MIT licence</a>. ' +
+          'The source is on <a href="https://github.com/gzarruk/yootri" target="_blank" rel="noopener">GitHub</a> — ' +
+          'fork it, run it yourself, or read exactly what it does. ' +
+          'If it is useful to you, you can <a href="https://gzarruk.gumroad.com/l/yootri" target="_blank" rel="noopener">support development</a>. ' +
+          'That is a contribution to the project, not a purchase: yootri is free, and there is nothing to unlock.</p>' +
+      '</div>' +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-primary" id="ab-close">Close</button>' +
+      '</div>',
+      'About and disclaimer',
+    );
+    $('ab-close').addEventListener('click', closePanel);
+  }
 
   function openSetupPanel() {
     const p = plan.profile;
@@ -2202,7 +2579,10 @@
       if (!cp || !cp.id) return;
       const lp = loadPlanLocal(cp.id);
       if (!lp || (cp.updatedAt || 0) >= (lp.updatedAt || 0)) {
-        savePlanLocal(cp);
+        // A cloud plan never carries `chat` (savePlan strips it), and cloud wins
+        // ties, so adopting it wholesale would delete the transcript on the very
+        // first sync. Carry the local one forward instead.
+        savePlanLocal({ ...cp, chat: cp.chat ?? lp?.chat ?? [] });
         if (!idx[cp.id]) { const e = { id: cp.id, name: cp.name }; plans.push(e); idx[cp.id] = e; }
         else idx[cp.id].name = cp.name;
       }
@@ -2365,7 +2745,11 @@
   /* ---- Export / Import (a saved file is a reusable template) ---- */
 
   function exportPlan() {
-    const payload = { _type: 'im703-plan', version: 1, exportedFrom: 'yootri.gzarruk.com', plan: plan };
+    // Same reasoning as the cloud push: the transcript stays in this browser. An
+    // exported file gets mailed around and dropped in cloud drives, and import
+    // has never read `chat` back anyway, so dropping it costs nothing.
+    const { chat, ...shareable } = plan;
+    const payload = { _type: 'im703-plan', version: 1, exportedFrom: 'yootri.gzarruk.com', plan: shareable };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -2458,7 +2842,11 @@
 
   function renderAccount() {
     if (!cloudReady()) {
-      els.account.innerHTML = '<span class="account-note" title="Cloud sync unavailable — saved on this device">Local only</span>';
+      els.account.innerHTML =
+        '<button type="button" class="account-note" id="local-only" ' +
+        'title="Sign-in is unavailable here — your plans are saved in this browser">' +
+        '<i class="ph ph-hard-drives"></i> Local only</button>';
+      $('local-only').addEventListener('click', openLocalOnlyPanel);
     } else if (authUser) {
       els.account.innerHTML =
         '<span class="account-email"><i class="ph ph-cloud-check"></i>' + esc(authUser.email || 'Signed in') + '</span>' +
@@ -2640,6 +3028,7 @@
   // Toolbar
   els.setupBtn.addEventListener('click', openSetupPanel);
   els.coachBtn.addEventListener('click', openCoach);
+  els.aboutBtn.addEventListener('click', openAboutPanel);
   els.prevWeek.addEventListener('click', () => { if (state.week > 0) select(state.week - 1); });
   els.nextWeek.addEventListener('click', () => { if (state.week < totalWeeks() - 1) select(state.week + 1); });
   els.syncBtn.addEventListener('click', () => {
@@ -2830,6 +3219,7 @@
 
   renderAll();
   renderAccount();
+  maybeShowFirstRun();
 
   // The Firebase module (below) is a deferred module, so it loads after this
   // classic script. Bind when it signals ready; if it never loads, stay local.
@@ -2888,10 +3278,16 @@
         },
         async savePlan(p) {
           if (!uid) throw new Error('Not signed in');
+          // The coach transcript never leaves this browser. An athlete typing
+          // about how they feel is not something this project wants to hold, so
+          // `chat` is dropped here rather than filtered later — the field simply
+          // never reaches the network. Plans that come back without it are the
+          // normal case; the merge keeps the local copy.
+          const { chat, ...syncable } = p;
           await setDoc(doc(db, 'users', uid, 'plans', p.id), {
             name: p.name || 'Plan',
             updatedAt: p.updatedAt || Date.now(),
-            data: JSON.stringify(p),
+            data: JSON.stringify(syncable),
           });
         },
         async deletePlan(id) {
@@ -2900,8 +3296,13 @@
         },
       };
     } catch (e) {
+      // Anyone serving this from their own domain hits this until they add that
+      // domain to Firebase's authorized list — and a fork with no Firebase
+      // project of its own never leaves this branch. Local-only is a supported
+      // way to run yootri, not a broken one, so the reason is kept for the UI
+      // to show rather than left in the console where nobody looks.
       console.error('Cloud sync unavailable; running local-only.', e);
-      window.imCloud = { configured: false };
+      window.imCloud = { configured: false, reason: (e && e.message) || String(e) };
     }
     window.dispatchEvent(new Event('imcloud:ready'));
   </script>

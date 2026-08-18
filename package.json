@@ -1,6 +1,7 @@
 {
   "name": "yootri",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "Dev-only manifest: lets `node --test` run the coach engine modules. The app itself has no build step and no dependencies.",
   "scripts": {

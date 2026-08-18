@@ -1,21 +1,28 @@
-/* Talking to Claude directly from the browser, with the athlete's own API key.
+/* Talking to a language model directly from the browser, with the athlete's own
+   API key.
 
    This repo is public and served statically, so no key can ever be committed.
    The athlete pastes their own; it lives in localStorage and goes straight to
-   api.anthropic.com. That requires the `anthropic-dangerous-direct-browser-access`
-   header — the API rejects browser origins without it. The name is a fair
-   warning: anything that can run script on this page can read the key. For a
-   bring-your-own-key tool that is a trade the key's owner is making knowingly,
-   but it is why the key is never written into a plan and never synced.
+   whichever provider they picked. The trade is a fair one for a bring-your-own-
+   key tool, but it is worth naming: anything that can run script on this page
+   can read the key. It is why the key is never written into a plan and never
+   synced.
+
+   Which provider is which lives in providers.js. This file knows only the
+   normalised shape that module returns, so the tool loop below has no
+   provider-specific branching in it.
 
    The division of labour is deliberate and enforced by construction: the model
    chooses *what* to change by calling tools; the engine decides *what that
    means* in minutes. Nothing here lets a model emit a duration. */
 
 import { TOOL_DEFS, callTool } from './tools.js';
+import { getProvider, resolveModel, describeTransportError, DEFAULT_PROVIDER_ID } from './providers.js';
 
-export const MODEL = 'claude-opus-5';
-export const API_URL = 'https://api.anthropic.com/v1/messages';
+export { PROVIDERS, DEFAULT_PROVIDER_ID, getProvider, resolveModel } from './providers.js';
+
+/* Kept as named exports because index.html imports them; the storage key for a
+   given provider is providers.js's business now. */
 export const KEY_STORAGE = 'yootri_anthropic_key';
 
 const MAX_TOOL_STEPS = 12;
@@ -31,56 +38,51 @@ How to work:
 - Your changes are staged as a draft. The athlete reviews a diff and decides whether to apply it. Say plainly what you changed and why; do not claim it is done.
 - If a tool reports an error, read it and correct the call rather than repeating it.
 
+Scope:
+- You plan training and nothing else. You are not a clinician, and this is not a medical service. If you are asked a health question — whether something is serious, what is wrong, or what to do about it — say plainly that it is outside what you can help with and is a question for a doctor or physiotherapist. Then help with the training side if there is one, usually by adjusting the schedule around the time they expect to be away.
+
 Coaching judgement:
 - When the numbers disagree with the athlete's plan, say so once, plainly, and then do what they asked. It is their training.
 - Distinguish a missed session from illness. Missing sessions is a scheduling problem; being ill is not, and they do not call for the same change.
 - Be concise. This is a side panel, not an essay. Lead with what you did or found.`;
 
-/** Build the HTTP request. Pure, so the shape can be tested without a network. */
-export function buildRequest({ apiKey, messages, tools, system, effort = 'medium', maxTokens = 16000 }) {
-  const body = {
-    model: MODEL,
-    max_tokens: maxTokens,
-    // Thinking is left at its default (adaptive). Disabling it on this model can
-    // make a tool call arrive as visible text that silently never runs; effort is
-    // the right lever for cost.
-    output_config: { effort },
-    system: system ?? SYSTEM_PROMPT,
+/**
+ * Build the HTTP request. Pure, so the shape can be tested without a network.
+ * Delegates to the provider; kept here because callers already import it.
+ */
+export function buildRequest({
+  provider = getProvider(DEFAULT_PROVIDER_ID), model, apiKey, baseUrl,
+  messages, tools, system, effort = 'medium', maxTokens = 4000,
+}) {
+  return provider.buildRequest({
+    apiKey,
+    baseUrl,
+    model: resolveModel(provider, model),
     messages,
-  };
-  if (tools && tools.length) body.tools = tools;
-
-  return {
-    url: API_URL,
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    },
-    body,
-  };
+    tools,
+    system: system ?? SYSTEM_PROMPT,
+    maxTokens,
+    effort,
+  });
 }
 
-export function describeHttpError(status) {
-  if (status === 401 || status === 403) return 'That API key was rejected. Check it in Coach settings.';
-  if (status === 429) return 'Rate limited — too many requests. Wait a moment and try again.';
-  if (status === 529) return 'Anthropic is busy right now. Try again shortly.';
-  if (status >= 500) return `Anthropic server error (${status}). Try again shortly.`;
-  if (status === 400) return 'That request was rejected as malformed. This is a bug in yootri, not in your key.';
-  return `Request failed (${status}).`;
+export function describeHttpError(status, body, provider = getProvider(DEFAULT_PROVIDER_ID)) {
+  return provider.describeHttpError(status, body);
 }
 
-const textOf = (content) =>
-  (content ?? []).filter((b) => b.type === 'text').map((b) => b.text).join('').trim();
+async function post({ provider, model, apiKey, baseUrl, messages, tools, system, effort, maxTokens, fetchImpl }) {
+  const { url, headers, body } = buildRequest({
+    provider, model, apiKey, baseUrl, messages, tools, system, effort, maxTokens,
+  });
 
-/** Pull the API's own error text out of a body, if it put one there. */
-const apiErrorMessage = (body) =>
-  (body && typeof body === 'object' && body.type === 'error' && body.error?.message) || null;
-
-async function post({ apiKey, messages, tools, system, effort, maxTokens, fetchImpl }) {
-  const { url, headers, body } = buildRequest({ apiKey, messages, tools, system, effort, maxTokens });
-  const res = await fetchImpl(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  let res;
+  try {
+    res = await fetchImpl(url, { method: 'POST', headers, body: JSON.stringify(body) });
+  } catch (e) {
+    // The request never reached the provider. On a static page the most common
+    // cause is an origin the provider will not serve, so say so specifically.
+    throw new Error(describeTransportError(provider, e));
+  }
 
   let parsed;
   try {
@@ -90,32 +92,28 @@ async function post({ apiKey, messages, tools, system, effort, maxTokens, fetchI
   }
 
   if (!res.ok) {
-    // The API explains itself far better than a status code does; lead with its
-    // words and keep the generic advice as context.
-    const detail = apiErrorMessage(parsed);
-    const err = new Error(detail ? `${describeHttpError(res.status)} (${detail})` : describeHttpError(res.status));
+    // The API explains itself far better than a status code does; the provider
+    // leads with its words and keeps the generic advice as context.
+    const err = new Error(provider.describeHttpError(res.status, parsed));
     err.status = res.status;
     throw err;
   }
 
-  // A 200 is not a promise that the body is a Message. Version skew, a captive
-  // portal, or a proxy can all return something else, and reading .stop_reason
-  // off it produced a bare "Cannot read properties of undefined" with nothing
-  // to act on. Fail here instead, saying what actually came back.
-  const detail = apiErrorMessage(parsed);
+  // A 200 is not a promise that the body is the shape we expect. Version skew,
+  // a captive portal, or a proxy can all return something else, and reading a
+  // field off it produced a bare "Cannot read properties of undefined" with
+  // nothing to act on. Fail here instead, saying what actually came back.
+  const detail = provider.apiErrorMessage(parsed);
   if (detail) throw new Error(`The API returned an error: ${detail}`);
 
-  if (!parsed || typeof parsed !== 'object' || typeof parsed.stop_reason !== 'string') {
-    const snippet = parsed === undefined || parsed === null
-      ? 'an empty body'
-      : JSON.stringify(parsed).slice(0, 200);
+  const result = provider.parseResponse(parsed);
+  if (result.malformed) {
     throw new Error(
-      `Unexpected reply from the API (HTTP ${res.status}): ${snippet}. ` +
+      `Unexpected reply from the API (HTTP ${res.status}): ${result.snippet}. ` +
       'If this persists, hard-reload the page — a stale cached script can cause it.',
     );
   }
-
-  return parsed;
+  return result;
 }
 
 /**
@@ -126,47 +124,50 @@ async function post({ apiKey, messages, tools, system, effort, maxTokens, fetchI
  * Never throws — a failure comes back as `{ error: true, text }` so the panel
  * can show it like any other message.
  */
-export async function runTurn({ apiKey, session, messages, fetchImpl = fetch, onText, effort = 'medium' }) {
+export async function runTurn({
+  apiKey, session, messages, fetchImpl = fetch, onText, effort = 'medium',
+  provider = getProvider(DEFAULT_PROVIDER_ID), model, baseUrl, maxTokens = 4000,
+}) {
   const convo = messages.slice();
+  const tools = provider.translateTools(TOOL_DEFS);
 
   for (let step = 0; step < MAX_TOOL_STEPS; step++) {
     let res;
     try {
-      res = await post({ apiKey, messages: convo, tools: TOOL_DEFS, effort, fetchImpl });
+      res = await post({
+        provider, model, apiKey, baseUrl, messages: convo, tools, effort, maxTokens, fetchImpl,
+      });
     } catch (e) {
       return { error: true, text: e.message, messages: convo };
     }
 
     // Classifiers can decline with a normal 200 and an empty body; reading
     // content without checking would render that as a blank reply.
-    if (res.stop_reason === 'refusal') {
+    if (res.stopReason === 'refusal') {
       return {
         refused: true,
-        text: 'Claude declined to answer that one. Try rephrasing it.',
+        text: res.text || 'The model declined to answer that one. Try rephrasing it.',
         messages: convo,
       };
     }
 
-    convo.push({ role: 'assistant', content: res.content });
+    convo.push(...provider.formatAssistant(res));
 
-    const calls = (res.content ?? []).filter((b) => b.type === 'tool_use');
-    if (res.stop_reason !== 'tool_use' || !calls.length) {
-      const text = textOf(res.content);
-      if (onText) onText(text);
-      return { text, messages: convo };
+    if (res.stopReason !== 'tool_use' || !res.toolCalls.length) {
+      if (onText) onText(res.text);
+      return { text: res.text, messages: convo };
     }
 
-    // All results for one assistant turn go back in a single user message.
-    const results = calls.map((c) => {
+    const results = res.toolCalls.map((c) => {
+      // A provider that could not parse the model's arguments reports it as a
+      // tool error, so the model gets a chance to correct the call.
+      if (c.argError) {
+        return { id: c.id, content: `${c.name} failed: ${c.argError}.`, isError: true };
+      }
       const r = callTool(session, c.name, c.input);
-      return {
-        type: 'tool_result',
-        tool_use_id: c.id,
-        content: r.content,
-        ...(r.isError ? { is_error: true } : {}),
-      };
+      return { id: c.id, content: r.content, isError: r.isError };
     });
-    convo.push({ role: 'user', content: results });
+    convo.push(...provider.formatToolResults(results));
   }
 
   return {
@@ -183,7 +184,10 @@ export async function runTurn({ apiKey, session, messages, fetchImpl = fetch, on
  * engine's output, so a hallucinated duration or an invented session simply has
  * nowhere to land.
  */
-export async function polishWeek({ apiKey, sessions, block, fetchImpl = fetch }) {
+export async function polishWeek({
+  apiKey, sessions, block, fetchImpl = fetch,
+  provider = getProvider(DEFAULT_PROVIDER_ID), model, baseUrl,
+}) {
   const brief = sessions
     .filter((s) => s.dur && s.dur !== '—')
     .map((s) => ({ id: s.id, day: s.day, disc: s.disc, dur: s.dur, zone: s.zone }));
@@ -198,10 +202,13 @@ export async function polishWeek({ apiKey, sessions, block, fetchImpl = fetch })
   let res;
   try {
     res = await post({
+      provider,
+      model,
       apiKey,
+      baseUrl,
       system,
       effort: 'low',
-      maxTokens: 4000,
+      maxTokens: 2000,
       messages: [{
         role: 'user',
         content: `Block: ${block}\nSessions:\n${JSON.stringify(brief, null, 1)}`,
@@ -211,11 +218,11 @@ export async function polishWeek({ apiKey, sessions, block, fetchImpl = fetch })
   } catch {
     return sessions; // wording is a nicety; never fail a week over it
   }
-  if (res.stop_reason === 'refusal') return sessions;
+  if (res.stopReason === 'refusal') return sessions;
 
   let map;
   try {
-    map = JSON.parse(textOf(res.content));
+    map = JSON.parse(res.text);
   } catch {
     return sessions;
   }
