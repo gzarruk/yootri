@@ -59,7 +59,9 @@ test('get_week returns the sessions for one week', () => {
 
 test('get_week clamps rather than failing on a week that does not exist', () => {
   const s = createSession(basePlan());
-  assert.equal(parse(call(s, 'get_week', { week: 999 })).week, 15);
+  // Sixteen weeks, so the last one is week 16 — the number on the board, not
+  // the engine's absWeek 15.
+  assert.equal(parse(call(s, 'get_week', { week: 999 })).week, 16);
 });
 
 test('get_profile reports availability and constraints', () => {
@@ -75,7 +77,8 @@ test('get_compliance reports what has actually been done', () => {
     plan = setActual(plan, x.id, { status: 'done', rpe: 7 });
   }
   const s = createSession(plan);
-  const out = parse(call(s, 'get_compliance', { upto_week: 1, weeks: 1 }));
+  // Week 1 is where the actuals are; ask about the week after it.
+  const out = parse(call(s, 'get_compliance', { upto_week: 2, weeks: 1 }));
   assert.equal(out.ratio, 1);
   assert.equal(out.meanRpe, 7);
 });
@@ -205,7 +208,7 @@ test('the coach can read deterministic adaptation suggestions', () => {
       plan = setActual(plan, x.id, { status: 'partial', min: Math.round(durToMin(x.dur) * 0.4) });
     }
   }
-  const out = parse(call(createSession(plan), 'get_adaptation_suggestions', { week: 2 }));
+  const out = parse(call(createSession(plan), 'get_adaptation_suggestions', { week: 3 }));
   assert.ok(Array.isArray(out) && out.length > 0);
   assert.ok(out.some((x) => x.code === 'under-compliance'));
   assert.ok(out[0].evidence, 'the model should see the numbers, not just a verdict');
@@ -215,4 +218,63 @@ test('with nothing to say, the adaptation tool says so plainly', () => {
   const r = call(createSession(basePlan()), 'get_adaptation_suggestions', { week: 3 });
   assert.equal(r.isError, false);
   assert.match(r.content, /no suggestions/i);
+});
+
+/* Week numbering.
+
+   The engine counts absWeek from 0; the athlete and the board count from 1.
+   The tools speak the athlete's language, because a model given a 0-based
+   interface turned "cut week 3" into a change to the week labelled Week 4. */
+
+test('a week asked for by number comes back as the same number', () => {
+  const s = createSession(basePlan());
+  for (const w of [1, 2, 8, 16]) {
+    assert.equal(parse(call(s, 'get_week', { week: w })).week, w, `week ${w}`);
+  }
+});
+
+test('week 1 is the first week of the season, not the second', () => {
+  const s = createSession(basePlan());
+  const first = parse(call(s, 'get_week', { week: 1 }));
+  // sessionsAt speaks the engine's language, so absWeek 0 is the same week.
+  const engineFirst = sessionsAt(basePlan(), 0).filter((x) => durToMin(x.dur) > 0);
+  assert.deepEqual(first.sessions.map((x) => x.id), engineFirst.map((x) => x.id));
+});
+
+test('pinning a budget changes the week the athlete named', () => {
+  const s = createSession(basePlan());
+  const before = parse(call(s, 'get_week', { week: 4 })).plannedMinutes;
+  call(s, 'set_week_budget', { week: 3, hours: 4 });
+  assert.equal(parse(call(s, 'get_week', { week: 3 })).plannedMinutes, 240, 'week 3 is the one that changed');
+  assert.equal(parse(call(s, 'get_week', { week: 4 })).plannedMinutes, before, 'week 4 untouched');
+});
+
+test('what a tool says it did names the week the athlete would recognise', () => {
+  const s = createSession(basePlan());
+  assert.match(call(s, 'set_week_budget', { week: 3, hours: 4 }).content, /week 3\b/i);
+  assert.match(call(createSession(basePlan()), 'regenerate_weeks', { from: 2, to: 4 }).content, /weeks 2–4/i);
+});
+
+test('the season summary marks block starts in the athlete numbering', () => {
+  const out = parse(call(createSession(basePlan()), 'get_plan_summary'));
+  // The first block starts at week 1, never week 0.
+  assert.equal(out.blocks[0].startWeek, 1);
+  assert.ok(out.blocks.every((b) => b.startWeek >= 1 && b.startWeek <= out.totalWeeks));
+});
+
+test('a suggested tool call is handed back in the numbering the tools accept', () => {
+  // adapt.js works in absWeek; a suggestion the model copies verbatim must not
+  // arrive a week early.
+  let plan = basePlan();
+  for (let w = 0; w < 3; w++) {
+    for (const x of sessionsAt(plan, w).filter((v) => durToMin(v.dur) > 0)) {
+      plan = setActual(plan, x.id, { status: 'partial', min: Math.round(durToMin(x.dur) * 0.4) });
+    }
+  }
+  const out = parse(call(createSession(plan), 'get_adaptation_suggestions', { week: 3 }));
+  const withAction = out.filter((x) => x.action?.input && 'week' in x.action.input);
+  assert.ok(withAction.length, 'expected at least one actionable suggestion');
+  for (const x of withAction) {
+    assert.equal(x.action.input.week, 3, 'the suggestion should target the week asked about');
+  }
 });
