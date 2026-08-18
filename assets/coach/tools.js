@@ -36,7 +36,19 @@ const current = (s) => s.draft ?? s.plan;
 /** Start (or continue) a draft. */
 const draftOf = (s) => s.draft ?? clone(s.plan);
 
-const clampWeek = (plan, w) => Math.max(0, Math.min(Number(w) || 0, weekCount(plan) - 1));
+/* Week numbering, and the one place it is translated.
+
+   The engine counts `absWeek` from 0. The athlete and the app both count from
+   1 — the board says "Week 1 of 16" and the diff says "Week 4". A model handed
+   a 0-based tool interface has no way to know that, so "cut week 3" quietly
+   became week 4 on screen: both halves were behaving as documented and the
+   athlete still got the wrong week.
+
+   So the tools speak the athlete's language. Everything crossing this boundary
+   is 1-based in both directions, and the conversion happens here and nowhere
+   else — the engine below never sees anything but absWeek. */
+const toIndex = (plan, w) => Math.max(0, Math.min((Number(w) || 1) - 1, weekCount(plan) - 1));
+const weekLabel = (i) => i + 1;
 
 /** Regenerate a range of weeks from the draft's own profile and season. */
 function rebuild(draft, from, to) {
@@ -57,7 +69,7 @@ const summariseWeek = (plan, w) => {
   const sessions = sessionsAt(plan, w);
   const c = weekCompliance(plan, w);
   return {
-    week: w,
+    week: weekLabel(w),
     block: info.block,
     recovery: info.recovery,
     plannedMinutes: c.plannedMinutes,
@@ -81,7 +93,7 @@ export const TOOL_DEFS = [
       'The sessions in one week, with planned and actual minutes. Use it to check the effect of a change you just made, or to answer a question about a specific week.',
     input_schema: {
       type: 'object',
-      properties: { week: { type: 'integer', description: 'Absolute week index, 0-based.' } },
+      properties: { week: { type: 'integer', description: 'Which week of the season, counting from 1 — the same number the athlete sees on the board.' } },
       required: ['week'],
     },
   },
@@ -98,7 +110,7 @@ export const TOOL_DEFS = [
     input_schema: {
       type: 'object',
       properties: {
-        upto_week: { type: 'integer', description: 'Look at the weeks before this one.' },
+        upto_week: { type: 'integer', description: 'Look at the weeks before this one. Counts from 1, as the athlete sees it.' },
         weeks: { type: 'integer', description: 'How many preceding weeks to average. Default 2.' },
       },
       required: ['upto_week'],
@@ -110,7 +122,7 @@ export const TOOL_DEFS = [
       'Deterministic read of what the logged weeks suggest doing about a given week — falling behind, comfortably ahead, effort creeping up at the same volume, or one discipline being skipped. Each suggestion carries the numbers behind it. Prefer these to your own judgement about whether a plan is too hard: the thresholds here are consistent and testable, yours are not. An empty list means the evidence does not support saying anything, which is a real answer.',
     input_schema: {
       type: 'object',
-      properties: { week: { type: 'integer', description: 'The week being planned, 0-based.' } },
+      properties: { week: { type: 'integer', description: 'The week being planned, counting from 1 — the same number the athlete sees on the board.' } },
       required: ['week'],
     },
   },
@@ -144,7 +156,7 @@ export const TOOL_DEFS = [
     input_schema: {
       type: 'object',
       properties: {
-        week: { type: 'integer', description: 'Absolute week index, 0-based.' },
+        week: { type: 'integer', description: 'Which week of the season, counting from 1 — the same number the athlete sees on the board.' },
         hours: { type: 'number', description: 'Hours for that week.' },
       },
       required: ['week', 'hours'],
@@ -189,7 +201,7 @@ export const TOOL_DEFS = [
     input_schema: {
       type: 'object',
       properties: {
-        week: { type: 'integer' },
+        week: { type: 'integer', description: 'Which week the session is in, counting from 1 — the same number the athlete sees on the board.' },
         session_id: { type: 'string' },
         day: { type: 'string', enum: DAYS },
       },
@@ -203,8 +215,8 @@ export const TOOL_DEFS = [
     input_schema: {
       type: 'object',
       properties: {
-        from: { type: 'integer', description: 'First week, 0-based.' },
-        to: { type: 'integer', description: 'Last week, inclusive.' },
+        from: { type: 'integer', description: 'First week, counting from 1.' },
+        to: { type: 'integer', description: 'Last week, inclusive, counting from 1.' },
       },
       required: ['from', 'to'],
     },
@@ -218,7 +230,7 @@ const HANDLERS = {
     for (const w of p.season) {
       const last = runs[runs.length - 1];
       if (last && last.block === w.block) last.weeks++;
-      else runs.push({ block: w.block, weeks: 1, startWeek: w.absWeek });
+      else runs.push({ block: w.block, weeks: 1, startWeek: weekLabel(w.absWeek) });
     }
     return ok({
       totalWeeks: weekCount(p),
@@ -233,7 +245,7 @@ const HANDLERS = {
 
   get_week(s, input) {
     const p = current(s);
-    return ok(summariseWeek(p, clampWeek(p, input.week)));
+    return ok(summariseWeek(p, toIndex(p, input.week)));
   },
 
   get_profile(s) {
@@ -250,7 +262,7 @@ const HANDLERS = {
 
   get_compliance(s, input) {
     const p = current(s);
-    const c = trailingCompliance(p, clampWeek(p, input.upto_week), Number(input.weeks) || 2);
+    const c = trailingCompliance(p, toIndex(p, input.upto_week), Number(input.weeks) || 2);
     return ok({
       weeksConsidered: c.weeks,
       plannedMinutes: c.plannedMinutes,
@@ -262,13 +274,19 @@ const HANDLERS = {
 
   get_adaptation_suggestions(s, input) {
     const p = current(s);
-    const list = suggest(p, { week: clampWeek(p, input.week) });
+    const list = suggest(p, { week: toIndex(p, input.week) });
     if (!list.length) {
       return ok('No suggestions: the logged weeks do not support saying anything yet.');
     }
+    // A suggestion carries a ready-made tool call, and adapt.js speaks the
+    // engine's 0-based absWeek. Left alone the model would copy that week
+    // straight into a tool that now counts from 1, landing a week early.
     return ok(list.map((x) => ({
       code: x.code, severity: x.severity, message: x.message,
-      evidence: x.evidence, action: x.action ?? null,
+      evidence: x.evidence,
+      action: x.action
+        ? { ...x.action, input: { ...x.action.input, ...('week' in (x.action.input ?? {}) ? { week: weekLabel(x.action.input.week) } : {}) } }
+        : null,
     })));
   },
 
@@ -294,7 +312,7 @@ const HANDLERS = {
 
   set_week_budget(s, input) {
     const base = draftOf(s);
-    const week = clampWeek(base, input.week);
+    const week = toIndex(base, input.week);
     const hours = Number(input.hours);
     if (!Number.isFinite(hours) || hours < 0) return fail('hours must be zero or more.');
 
@@ -305,7 +323,7 @@ const HANDLERS = {
     draft.season = draft.season.map((w) => (w.absWeek === week ? { ...w, hours } : w));
     rebuild(draft, week, week);
     s.draft = draft;
-    return ok(`Week ${week} pinned to ${hours} hours and rebuilt. It will keep that budget through later changes.`);
+    return ok(`Week ${weekLabel(week)} pinned to ${hours} hours and rebuilt. It will keep that budget through later changes.`);
   },
 
   set_constraint(s, input) {
@@ -351,25 +369,25 @@ const HANDLERS = {
       return fail(`"${input.day}" is not a weekday. Use one of: ${DAYS.join(', ')}.`);
     }
     const base = draftOf(s);
-    const week = clampWeek(base, input.week);
+    const week = toIndex(base, input.week);
     const sessions = clone(base.weeks[weekKey(week)] ?? []);
     const hit = sessions.find((x) => x.id === input.session_id);
-    if (!hit) return fail(`No session "${input.session_id}" in week ${week}. Call get_week first.`);
+    if (!hit) return fail(`No session "${input.session_id}" in week ${weekLabel(week)}. Call get_week first.`);
 
     hit.day = input.day;
     const draft = clone(base);
     draft.weeks[weekKey(week)] = sessions;
     s.draft = draft;
-    return ok(`Moved ${hit.disc} to ${input.day} in week ${week}.`);
+    return ok(`Moved ${hit.disc} to ${input.day} in week ${weekLabel(week)}.`);
   },
 
   regenerate_weeks(s, input) {
     const base = draftOf(s);
-    const from = clampWeek(base, input.from);
-    const to = clampWeek(base, input.to);
+    const from = toIndex(base, input.from);
+    const to = toIndex(base, input.to);
     if (to < from) return fail('"to" must not be before "from".');
     s.draft = rebuild(clone(base), from, to);
-    return ok(`Weeks ${from}–${to} rebuilt from the current profile.`);
+    return ok(`Weeks ${weekLabel(from)}–${weekLabel(to)} rebuilt from the current profile.`);
   },
 };
 

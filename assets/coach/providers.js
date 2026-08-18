@@ -12,31 +12,29 @@
    ---------------------------------------------------------------------------
    CORS, and what was actually observed
 
-   The brief for this work said to verify browser CORS empirically rather than
-   assume it. That verification could NOT be completed in the environment this
-   code was written in, and saying so is more useful than a guess:
+   Measured from a page served at http://localhost:8000, with a real key, not
+   assumed:
 
-   - api.anthropic.com — reachable from the command line (an invalid key
-     returned a normal HTTP 401), but every browser request from a served
-     origin failed with net::ERR_CONNECTION_RESET before any response existed.
-   - api.openai.com — refused at the egress proxy entirely
-     (net::ERR_TUNNEL_CONNECTION_FAILED, and CONNECT 403 from curl).
+   - **Anthropic works, and only with the header below.** The same request to
+     api.anthropic.com, differing in nothing but one header, gave:
+       without `anthropic-dangerous-direct-browser-access` → net::ERR_FAILED,
+         blocked by the browser before any response existed;
+       with it → HTTP 200 and a response body readable from script.
+     That differential is a CORS observation rather than a network one: same
+     URL, same route, only the header changed. The header is not optional
+     decoration; it is the whole reason this app can call the API from a page.
 
-   Both are transport failures, not CORS decisions: a CORS rejection completes
-   the request and blocks the *response*, which is a different observation.
-   The sandbox therefore could not answer the question either way.
+   - **OpenAI-compatible is still unverified from a browser.** api.openai.com
+     could not be reached at all from the environment this was written in — the
+     egress filter answered HTTP 403 to the request itself, so a browser failure
+     there cannot be attributed to CORS one way or the other. Nothing is claimed
+     about it.
 
-   What is known independently: the Anthropic path here is the one this app has
-   always used, and it works from a browser precisely because of the
-   `anthropic-dangerous-direct-browser-access` header below — that header exists
-   for this case, and the API rejects browser origins without it.
-
-   The OpenAI-compatible path is unverified from a browser. It is shipped rather
-   than omitted because the same adapter also serves OpenRouter, Groq, Together,
-   LM Studio and Ollama, and a local endpoint has no CORS problem at all. If the
-   request fails in a way that looks like an origin block, `describeHttpError`
-   and the transport-error text say so specifically and say what to do about it.
-   Anyone self-hosting should re-run the check from their own origin. */
+   It is shipped rather than omitted because the same adapter also serves
+   OpenRouter, Groq, Together, LM Studio and Ollama, and a local endpoint has no
+   CORS problem at all. If a request fails in a way that looks like an origin
+   block, `describeTransportError` says so specifically and says what to do
+   about it. Anyone self-hosting should re-run the check from their own origin. */
 
 /** Normalised stop reasons. Everything downstream speaks only these. */
 const STOP = { end: 'end', tool_use: 'tool_use', refusal: 'refusal' };
@@ -55,10 +53,13 @@ const anthropic = {
   keyHint: 'From console.anthropic.com → API keys.',
 
   defaultModel: 'claude-haiku-4-5-20251001',
+  /* `supportsEffort` is per-model, not per-provider: sending output_config to a
+     model that does not take it is a 400, not a silently ignored field. Verified
+     against the live API — Haiku 4.5 rejects it, Sonnet 5 and Opus 5 accept it. */
   models: [
-    { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', note: 'Cheapest. The default, and enough for this.' },
-    { id: 'claude-sonnet-5', label: 'Sonnet 5', note: 'Mid-priced. Better at awkward multi-step asks.' },
-    { id: 'claude-opus-5', label: 'Opus 5', note: 'Most expensive by a wide margin.' },
+    { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5', note: 'Cheapest. The default, and enough for this.', supportsEffort: false },
+    { id: 'claude-sonnet-5', label: 'Sonnet 5', note: 'Mid-priced. Better at awkward multi-step asks.', supportsEffort: true },
+    { id: 'claude-opus-5', label: 'Opus 5', note: 'Most expensive by a wide margin.', supportsEffort: true },
   ],
 
   translateTools: (toolDefs) => toolDefs,
@@ -67,14 +68,17 @@ const anthropic = {
     const body = {
       model,
       max_tokens: maxTokens,
-      // Thinking is left at its default (adaptive). Disabling it on these models
-      // can make a tool call arrive as visible text that silently never runs;
-      // effort is the right lever for cost. This is an Anthropic-only concept,
-      // which is why it is absorbed here rather than passed through agent.js.
-      output_config: { effort },
       system,
       messages,
     };
+    // Thinking is left at its default (adaptive). Disabling it on the models that
+    // support the lever can make a tool call arrive as visible text that silently
+    // never runs; effort is the right way to control cost. It is an Anthropic-only
+    // concept, which is why it is absorbed here rather than passed through
+    // agent.js — and it goes only to models that accept it.
+    if (this.models.find((m) => m.id === model)?.supportsEffort) {
+      body.output_config = { effort };
+    }
     if (tools && tools.length) body.tools = tools;
 
     return {
