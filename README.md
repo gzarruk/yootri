@@ -135,7 +135,7 @@ yootri is free and MIT-licensed, and always will be. There is no paid tier, no
 licence key, and nothing to unlock.
 
 If it is useful to you and you would like to support its development, there is a
-[supporter page on Gumroad](https://gzarruk.gumroad.com/l/yootri). That is a
+[supporter page on Gumroad](https://gzarruk.gumroad.com/coffee). That is a
 contribution to the work, not a purchase of the software.
 
 ## License
