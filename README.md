@@ -1,5 +1,7 @@
 # yootri
 
+<!-- SPDX-License-Identifier: MIT -->
+
 A triathlon training planner — a 16‑week Ironman 70.3 plan you can edit,
 reschedule by drag‑and‑drop, track completion on, and visualize as a season
 training‑load chart. Single‑file, no build step, plain vanilla JS.
@@ -44,3 +46,9 @@ python3 -m http.server 8000   # then open http://localhost:8000/
 4. Once DNS propagates, tick **Enforce HTTPS** in Settings → Pages.
 
 Publishes at `https://yootri.gzarruk.com`.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
+
+`SPDX-License-Identifier: MIT`

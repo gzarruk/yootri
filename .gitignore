@@ -7,4 +7,14 @@ yootri.code-workspace
 
 # Editor/OS noise
 .DS_Store
+
+# Private working notes and drafts. Anything committed here is served publicly,
+# so these stay local. `.gitignore` does not untrack a file that is already
+# committed — use `git rm --cached` if one ever slips in.
 yootri-viability-and-legal.md
+yootri-gumroad-readiness.md
+GUMROAD.md
+RELEASE-CHECKLIST.md
+
+# Browser-automation debris: console logs that capture real sign-in flows.
+.playwright-mcp/
