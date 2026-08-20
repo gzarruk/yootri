@@ -2,13 +2,15 @@
 
 <!-- SPDX-License-Identifier: MIT -->
 
+[![CI](https://github.com/gzarruk/yootri/actions/workflows/ci.yml/badge.svg)](https://github.com/gzarruk/yootri/actions/workflows/ci.yml)
+
 A triathlon training planner that fits a season to the hours you actually have,
 and keeps it in your own browser. It is free, open source, and has no server of
 its own — no account is required, and nothing is uploaded unless you ask it to be.
 
 Live at **https://yootri.gzarruk.com**
 
-![](assets/screenshot.png)
+![The week board: a 16-week season, the current week's sessions, and what each one is for](assets/screenshot.png)
 
 ## What it does
 
@@ -132,6 +134,11 @@ so `node --test` can run the engine's unit tests:
 npm test
 ```
 
+Every pull request runs the same `npm test` on Node 20, 22 and 24, plus a check
+that nothing private, credential-shaped or broken-linked has been committed —
+this repo is a website, so anything merged here is published. See
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml).
+
 ## Forking and self-hosting
 
 The app is static — any web server or static host will do, and GitHub Pages
@@ -161,6 +168,7 @@ once DNS has propagated.
 | `assets/nocturne.css` | The "Nocturne" design-system base |
 | `tests/` | `npm test`, plain `node --test`, no framework |
 | `firestore.rules` | Firestore security rules (owner-only, default deny) |
+| `.github/workflows/` | CI: unit tests on three Node versions, repo hygiene, CodeQL |
 
 [`CLAUDE.md`](CLAUDE.md) is the contributor and architecture document. Read it
 before changing the engine.

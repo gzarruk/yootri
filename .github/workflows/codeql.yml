@@ -1,0 +1,40 @@
+name: CodeQL
+
+# The app runs entirely in the athlete's browser and holds their training data,
+# their Google session and — if they configure the coach — an LLM API key. There
+# is no server to hide a mistake behind, so the analysis runs on every PR.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, so new queries are run against code that has not changed.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: analyze javascript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      security-events: write   # to file findings in the Security tab
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # The default suite, not security-extended: index.html builds its DOM
+          # with innerHTML in ~30 places and the broader suite would bury a real
+          # finding in them. Tighten this once those are audited.
+
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
