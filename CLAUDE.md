@@ -57,7 +57,12 @@ If a session concludes something worth keeping, write it back to that
 
 ## Working here
 
-- Engine changes are test-first; `npm test` must stay green.
+- Engine changes are test-first; `npm test` must stay green — CI runs it on
+  Node 20, 22 and 24 for every pull request, alongside a repo-hygiene check
+  (`.github/scripts/check-repo-hygiene.mjs`) that guards what gets published.
+- `index.html` is not importable, so `tests/index-html.test.js` checks it as
+  text: its module scripts parse, and every module, named export and asset it
+  references exists. Rename an engine export and that is what catches it.
 - The coaching constants (discipline splits, session lengths, ramp ceilings) are
   deliberately *not* universal truths. Prefer making something profile-driven
   over tuning a default toward one athlete.

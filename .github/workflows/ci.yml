@@ -1,0 +1,77 @@
+name: CI
+
+# Every pull request, plus main itself so the branch the site is served from is
+# never red without anyone noticing. GitHub Pages deploys yootri straight from
+# main — there is no staging between a merge and the live site.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same PR makes the run in flight irrelevant. Runs on main
+# are not cancelled: each one is the record for a commit that is already live.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: tests (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # One Node version failing should not hide what the others would have said.
+      fail-fast: false
+      matrix:
+        node: ['20.x', '22.x', '24.x']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      # No install step and no cache, on purpose: the app has no dependencies and
+      # there is no lockfile, so `npm ci` would fail. package.json exists only to
+      # point `node --test` at the engine.
+
+      - name: Node version
+        run: node --version
+
+      # Runs on Linux, which is the point as much as the assertions are: a
+      # case-wrong path resolves fine on a developer's macOS filesystem and 404s
+      # on Pages. tests/index-html.test.js checks every path the page asks for.
+      - name: Unit tests
+        run: npm test
+
+  hygiene:
+    name: repo hygiene
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+
+      - name: Nothing private, no credentials, no broken links
+        run: node .github/scripts/check-repo-hygiene.mjs
+
+  ci:
+    # One status to require in branch protection, whatever the matrix does.
+    name: CI
+    if: always()
+    needs: [test, hygiene]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report
+        run: |
+          echo "tests:   ${{ needs.test.result }}"
+          echo "hygiene: ${{ needs.hygiene.result }}"
+      - name: Fail if anything upstream did not succeed
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

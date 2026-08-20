@@ -1,0 +1,14 @@
+version: 2
+
+# The app itself has no dependencies — there is nothing to update but CI. Actions
+# do go stale, and a pinned action on a deprecated runner fails every workflow at
+# once, which is exactly the surprise this avoids.
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci
+    labels:
+      - ci
