@@ -853,6 +853,12 @@
   .pnl-f > span { color: color-mix(in srgb, var(--color-text) 70%, transparent); }
   .pnl-hint { font-size: .74rem; line-height: 1.45;
     color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 .6rem; }
+  /* The fit hint only exists when there is something wrong to say, so it must
+     take up no room at all the rest of the time. */
+  .fit-warn:empty { display: none; }
+  .fit-warn { color: color-mix(in srgb, var(--color-text) 72%, transparent);
+    margin: -.2rem 0 .6rem; padding-left: .6rem;
+    border-left: 2px solid color-mix(in srgb, var(--color-accent) 55%, transparent); }
   .pnl-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: .4rem; }
   .pnl-days label { display: flex; flex-direction: column; gap: .25rem; font-size: .72rem; text-align: center; }
   .pnl-days input { width: 100%; text-align: center; padding: .35rem .2rem; }
@@ -1150,7 +1156,10 @@
   import {
     exportEnvelope, readPlanFile, adoptImported, summarizePlan,
   } from './assets/coach/portable.js';
-  import { validateSeason } from './assets/coach/validate.js';
+  import {
+    validateSeason, seasonFit, volumeBeyondRace, MIN_VARIATION_RETAINED,
+  } from './assets/coach/validate.js';
+  import { fitToRace } from './assets/coach/season.js';
   import { weeksUntil } from './assets/coach/dates.js';
   import { suggest } from './assets/coach/adapt.js';
   import { runTurn } from './assets/coach/agent.js';
@@ -2401,6 +2410,7 @@
       '</div>' +
       '<p class="pnl-hint">Annual hours is a <b>scale</b>, not a total this plan adds up to. A typical week is annual ÷ 52, and a season covers only part of the year — this one prescribes <b>' +
         (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
+      '<p class="pnl-hint fit-warn" id="f-fit"></p>' +
       '<div class="pnl-sec">' +
         '<span class="pnl-sub" style="display:block">Time available each day (minutes)</span>' +
         '<div class="pnl-days">' +
@@ -2417,6 +2427,56 @@
     );
     $('f-cancel').addEventListener('click', closePanel);
     $('f-preview').addEventListener('click', previewRefit);
+
+    // Say it while the number is being typed, not after a preview. The season
+    // keeps its current length here (previewRefit does not pass `weeks`), so
+    // only the budget and the available time can move the fit.
+    renderFitHint();
+    $('f-annual').addEventListener('input', renderFitHint);
+    $('f-race-type').addEventListener('change', renderFitHint);
+    els.panelRoot.querySelectorAll('[data-day]').forEach((i) =>
+      i.addEventListener('input', renderFitHint));
+  }
+
+  /* Would the hours being typed actually periodise inside the week being typed?
+     Pure arithmetic over the season model — no sessions are generated for this. */
+  function renderFitHint() {
+    const el = $('f-fit');
+    if (!el) return;
+
+    const availability = {};
+    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => {
+      availability[i.dataset.day] = Number(i.value) || 0;
+    });
+    const annualHours = Number($('f-annual').value) || plan.profile.annualHours;
+    const raceType = $('f-race-type').value;
+    const profile = normalizeProfile({ ...plan.profile, annualHours, raceType, availability });
+    const season = fitToRace({ annualHours, weeks: totalWeeks() });
+
+    // Two ways the numbers can be wrong, and they are mutually exclusive by
+    // construction: either the budget outruns the week, or the week is roomy
+    // enough to absorb a budget the race never called for.
+    const fit = seasonFit(season, profile);
+    if (fit && fit.retained < MIN_VARIATION_RETAINED) {
+      el.innerHTML = 'That is more than this week can absorb: <b>' + fit.clippedWeeks + ' of ' +
+        totalWeeks() + '</b> weeks would be capped at the same ceiling, so the season stops ' +
+        'building and tapering.' +
+        (fit.suggestedAnnualHours
+          ? ' Around <b>' + fit.suggestedAnnualHours + ' hours</b> would fit.'
+          : '');
+      return;
+    }
+
+    const beyond = volumeBeyondRace(season, profile);
+    if (beyond) {
+      el.innerHTML = 'The hardest week would reach <b>' + fmtTotal(beyond.peakMinutes) +
+        '</b> of training for a ' + esc(raceType) + ' — about <b>' +
+        Math.round(beyond.multiple) + '×</b> what the distance itself calls for. ' +
+        'Check the race distance and the hours are both right.';
+      return;
+    }
+
+    el.innerHTML = '';
   }
 
   function previewRefit() {
@@ -2456,8 +2516,11 @@
 
     const errs = d.issues.filter((i) => i.level === 'error');
     const warns = d.issues.filter((i) => i.level === 'warn');
+    // weekIndex null means the issue is about the season, not one week of it.
     const list = (items, cls) => items.slice(0, 6)
-      .map((i) => '<li class="' + cls + '">Week ' + (i.weekIndex + 1) + ': ' + esc(i.message) + '</li>').join('');
+      .map((i) => '<li class="' + cls + '">' +
+        (i.weekIndex == null ? '' : 'Week ' + (i.weekIndex + 1) + ': ') +
+        esc(i.message) + '</li>').join('');
 
     const issues = d.issues.length
       ? '<div class="diff-issues">' +
@@ -2838,7 +2901,8 @@
     const errs = issues.filter((i) => i.level === 'error');
     const warns = issues.filter((i) => i.level === 'warn');
     const list = (items) => items.slice(0, 6)
-      .map((i) => '<li>Week ' + (i.weekIndex + 1) + ': ' + esc(i.message) + '</li>').join('');
+      .map((i) => '<li>' + (i.weekIndex == null ? '' : 'Week ' + (i.weekIndex + 1) + ': ') +
+        esc(i.message) + '</li>').join('');
 
     const fact = (label, value) => '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>';
     const history = s.doneCount || s.actualCount

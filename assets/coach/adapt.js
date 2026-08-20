@@ -9,6 +9,11 @@
    Nothing here applies anything. Each suggestion carries an `action` naming a
    tool the athlete (or the coach, on their behalf) may choose to run.
 
+   Most rules read the logged weeks. One does not: a budget the athlete's week
+   cannot absorb flattens the season whether or not anybody has trained yet, so
+   that rule takes its evidence from the shape of the plan and fires from week
+   one. Everything below it needs history.
+
    Two principles shape the rules:
 
      1. **Silence is a valid answer.** Compliance of zero because nobody opened
@@ -21,6 +26,7 @@
    The numbers below are hand-chosen and unfitted — see ../yootri-rnd/FINDINGS.md. */
 
 import { weekCompliance, getActual, actualMinutes } from './actuals.js';
+import { seasonFit, MIN_VARIATION_RETAINED } from './validate.js';
 import { durToMin } from './duration.js';
 import { weekCount } from './plan.js';
 
@@ -92,6 +98,32 @@ const hoursOf = (plan, week) =>
 export function suggest(plan, { week } = {}) {
   const out = [];
   const here = Math.max(0, Math.min(Number(week) || 0, weekCount(plan) - 1));
+
+  /* --- Structural: the budget has outrun the week it has to fit in ------- */
+  const fit = seasonFit(plan.season ?? [], plan.profile ?? {});
+  if (fit && fit.retained < MIN_VARIATION_RETAINED) {
+    out.push({
+      code: 'season-flattened',
+      severity: 'warn',
+      message:
+        `Every week is being capped at the ${round1(fit.capacityMinutes / 60)}h you have, ` +
+        `so ${fit.clippedWeeks} of ${plan.season.length} weeks come out the same size and the ` +
+        `season no longer builds or tapers.` +
+        (fit.suggestedAnnualHours
+          ? ` ${fit.suggestedAnnualHours} annual hours would give it its shape back.`
+          : ''),
+      evidence: {
+        retained: round1(fit.retained * 100) / 100,
+        capacityMinutes: fit.capacityMinutes,
+        clippedWeeks: fit.clippedWeeks,
+      },
+      action: fit.suggestedAnnualHours
+        ? { tool: 'set_annual_hours', input: { hours: fit.suggestedAnnualHours } }
+        : null,
+    });
+  }
+
+  // Everything below reads the logged past, and week one has none.
   if (here <= 0) return out;
 
   /* --- Doing consistently less than planned ----------------------------- */
