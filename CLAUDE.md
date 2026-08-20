@@ -26,6 +26,7 @@ folder rather than opening the file: `python3 -m http.server 8000`.
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
 | `plan.js` | Plan-level operations and the draft → diff → apply flow. |
 | `migrate.js` | Schema v2 → v3. `legacy-plan.js` is the frozen old template it needs. |
+| `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
 | `duration.js` | `"H:MM"` ↔ minutes, the format the app already stores. |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached

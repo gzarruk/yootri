@@ -164,6 +164,20 @@ export function diffPlans(before, after) {
 }
 
 /**
+ * Completion flags and logged actuals, filtered down to sessions that `weeks`
+ * still contains. A plan edited over a season would otherwise accumulate
+ * references to sessions nobody can see — and a plan arriving from a file can
+ * claim history for sessions it does not carry. Anything still present keeps
+ * its history.
+ */
+export function pruneHistory(weeks, { done, actuals } = {}) {
+  const live = new Set(Object.values(weeks ?? {}).flat().map((s) => s.id));
+  const keep = (src) =>
+    Object.fromEntries(Object.entries(src ?? {}).filter(([id]) => live.has(id)));
+  return { done: keep(done), actuals: keep(actuals) };
+}
+
+/**
  * Commit a draft. The only function here that produces the plan you store.
  * Returns a new object; both inputs are left alone.
  */
@@ -173,14 +187,9 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
   next.name = plan.name;
   next.updatedAt = now;
 
-  // Drop completion flags and actuals whose session no longer exists, so a plan
-  // edited over a season does not accumulate references to sessions nobody can
-  // see. Anything still present keeps its history.
-  const live = new Set(Object.values(next.weeks).flat().map((s) => s.id));
-  const keep = (src) =>
-    Object.fromEntries(Object.entries(src ?? {}).filter(([id]) => live.has(id)));
-  next.done = keep(plan.done);
-  next.actuals = keep(plan.actuals);
+  const history = pruneHistory(next.weeks, plan);
+  next.done = history.done;
+  next.actuals = history.actuals;
 
   // Chat is conversation state, not plan content. A draft is snapshotted when
   // the coach makes its first tool call — before it has replied — so taking the
@@ -197,6 +206,11 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
    old season still there to look back on. */
 
 export const FALLBACK_WEEKS = 16;
+
+/** A plan id. Unique per record: two plans must never share one, or storing the
+    second would overwrite the first. */
+export const mintPlanId = (now = Date.now()) =>
+  `p-${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
 /** Seven rest days: an empty week that still has somewhere to drop a session. */
 const emptyWeek = (idPrefix) =>
@@ -243,7 +257,7 @@ export function newPlan({
   }
 
   return {
-    id: id ?? `p-${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    id: id ?? mintPlanId(now),
     name: name || 'My plan',
     schema: 3,
     start: startISO,

@@ -875,6 +875,11 @@
   .diff-issues ul { margin: .3rem 0 0; padding-left: 1.1rem; }
   .diff-issues .err { color: #e08a6c; }
   .diff-empty { font-size: .85rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .imp-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: .6rem 1rem; margin: 1rem 0 .8rem; }
+  .imp-facts dt { font-size: .74rem; margin-bottom: .1rem;
+    color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .imp-facts dd { margin: 0; font-size: .88rem; font-variant-numeric: tabular-nums; }
 
   /* ---- Logging what actually happened ---- */
   .log-sec { margin-top: .2rem; padding-top: .85rem;
@@ -1141,7 +1146,11 @@
   } from './assets/coach/actuals.js';
   import { minToDur } from './assets/coach/duration.js';
   import { createSession, sessionDiff, callTool } from './assets/coach/tools.js';
-  import { newPlan, FALLBACK_WEEKS } from './assets/coach/plan.js';
+  import { newPlan, FALLBACK_WEEKS, mintPlanId } from './assets/coach/plan.js';
+  import {
+    exportEnvelope, readPlanFile, adoptImported, summarizePlan,
+  } from './assets/coach/portable.js';
+  import { validateSeason } from './assets/coach/validate.js';
   import { weeksUntil } from './assets/coach/dates.js';
   import { suggest } from './assets/coach/adapt.js';
   import { runTurn } from './assets/coach/agent.js';
@@ -1255,9 +1264,11 @@
   let plans = [];   // index: [{ id, name }]
   let plan = null;  // the current plan object
 
-  /* The no-input path: bootstrap, the stand-in after deleting your last plan,
-     and the shell an import fills in. Same builder as the New plan panel, so
-     there is only one way a plan comes into existence. */
+  /* The no-input path: bootstrap, and the stand-in after deleting your last
+     plan. Same builder as the New plan panel, so there is only one way a plan
+     comes into existence. (An import does not come through here: it arrives as a
+     whole plan already, and building a shell to pour it into is what used to
+     lose its profile and its season.) */
   const blankPlan = (name) => newPlan({ name, startISO: defaultStart(), now: now() });
 
   // One-time migration of the older single-plan im703_v1_* keys into a plan.
@@ -2742,15 +2753,13 @@
     setStatus('Restored "' + (p.name || 'plan') + '"');
   }
 
-  /* ---- Export / Import (a saved file is a reusable template) ---- */
+  /* ---- Export / Import (a saved file is the whole plan, not a template) ---- */
 
   function exportPlan() {
-    // Same reasoning as the cloud push: the transcript stays in this browser. An
-    // exported file gets mailed around and dropped in cloud drives, and import
-    // has never read `chat` back anyway, so dropping it costs nothing.
-    const { chat, ...shareable } = plan;
-    const payload = { _type: 'im703-plan', version: 1, exportedFrom: 'yootri.gzarruk.com', plan: shareable };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    // The envelope — and the decision to leave the transcript out of it — lives in
+    // portable.js, next to the code that reads it back. A file the app cannot
+    // re-import is not an export, so the two are defined and tested together.
+    const blob = new Blob([JSON.stringify(exportEnvelope(plan), null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -2761,25 +2770,141 @@
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 
+  /* An import used to be a file picker and a one-line toast, which asked the
+     athlete to already know both which file to pick and that it would work. It
+     is now a panel with two states — what a plan file is, then what this
+     particular one contains — so the answer to "what am I supposed to import?"
+     is in the app rather than only in the README.
+
+     Nothing here reshapes the file: portable.js hands back a whole plan, and the
+     only thing this end chooses is the name and the new identity. */
+
   function importPlanFile(file) {
     const reader = new FileReader();
     reader.onload = () => {
-      let src;
-      try { const parsed = JSON.parse(reader.result); src = parsed.plan || parsed; }
-      catch (e) { setStatus('Import failed — not a valid plan file', true); return; }
-      if (!src || typeof src !== 'object') { setStatus('Import failed — not a valid plan file', true); return; }
-      const p = blankPlan(src.name || file.name.replace(/\.json$/i, ''));
-      p.start = src.start || defaultStart();
-      p.weeks = (src.weeks && typeof src.weeks === 'object') ? src.weeks : {};
-      p.done = (src.done && typeof src.done === 'object') ? src.done : {};
-      p.chartmode = src.chartmode === 'cumulative' ? 'cumulative' : 'weekly';
-      p.charthidden = (src.charthidden && typeof src.charthidden === 'object') ? src.charthidden : {};
-      p.view = src.view || { phase: 'Base', week: 0 };
-      p.updatedAt = now();
-      addPlan(p);
-      setStatus('Imported "' + p.name + '"');
+      const res = readPlanFile(reader.result);
+      if (!res.ok) return openImportPanel(null, res.reason);
+      openImportPanel(res, null, file.name.replace(/\.json$/i, ''));
     };
+    reader.onerror = () => openImportPanel(null, 'That file could not be read from disk.');
     reader.readAsText(file);
+  }
+
+  async function importExample() {
+    try {
+      const r = await fetch('assets/example-plan.json', { cache: 'no-store' });
+      if (!r.ok) throw new Error(r.status);
+      const res = readPlanFile(await r.text());
+      if (!res.ok) throw new Error(res.reason);
+      openImportPanel(res);
+    } catch (e) {
+      openImportPanel(null, 'The example plan could not be loaded from this page.');
+    }
+  }
+
+  const fmtLongDate = (iso) =>
+    parseISO(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+
+  function openImportPanel(res, error, fallbackName) {
+    if (!res) {
+      panelShell(
+        '<h2>Import a plan</h2>' +
+        '<p class="pnl-sub">A plan file is the <b>.json</b> file yootri writes when you choose ' +
+          '<b>Export this plan</b>. The whole season travels in it: your hours and availability, ' +
+          'the block structure, every session, what you have ticked off and anything you have logged.</p>' +
+        (error ? '<div class="diff-issues"><b class="err">' + esc(error) + '</b></div>' : '') +
+        '<p class="pnl-hint">An imported plan arrives alongside the ones you already have — ' +
+          '"' + esc(plan.name || 'your current plan') + '" is not touched, and you can switch ' +
+          'between them from the plan menu.</p>' +
+        '<div class="pnl-act">' +
+          '<button type="button" class="btn btn-ghost spacer" id="imp-example">Try the example plan</button>' +
+          '<button type="button" class="btn btn-ghost" id="imp-cancel">Cancel</button>' +
+          '<button type="button" class="btn btn-primary" id="imp-pick">Choose file…</button>' +
+        '</div>',
+        'Import a plan',
+      );
+      $('imp-cancel').addEventListener('click', closePanel);
+      $('imp-pick').addEventListener('click', () => els.importFile.click());
+      $('imp-example').addEventListener('click', importExample);
+      return;
+    }
+
+    const s = summarizePlan(res.plan);
+    const name = s.name || fallbackName || 'Imported plan';
+    const issues = validateSeason(
+      res.plan.season.map((w) => ({ ...w, sessions: res.plan.weeks['w' + w.absWeek] || [] })),
+      { profile: res.plan.profile },
+    );
+    const errs = issues.filter((i) => i.level === 'error');
+    const warns = issues.filter((i) => i.level === 'warn');
+    const list = (items) => items.slice(0, 6)
+      .map((i) => '<li>Week ' + (i.weekIndex + 1) + ': ' + esc(i.message) + '</li>').join('');
+
+    const fact = (label, value) => '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>';
+    const history = s.doneCount || s.actualCount
+      ? [s.doneCount ? s.doneCount + ' ticked off' : '', s.actualCount ? s.actualCount + ' logged' : '']
+        .filter(Boolean).join(' · ')
+      : 'None yet';
+
+    panelShell(
+      '<h2>Import plan</h2>' +
+      '<p class="pnl-sub">This is what the file contains. Nothing is written until you import it, ' +
+        'and "' + esc(plan.name || 'your current plan') + '" stays as it is.</p>' +
+      (res.upgraded
+        ? '<p class="pnl-hint">This file was written by an older version of yootri. It has been ' +
+          'brought up to date on the way in — the file itself is not changed.</p>'
+        : '') +
+      '<div class="pnl-grid">' +
+        field('Name', '<input type="text" class="input" id="imp-name" maxlength="60" value="' +
+          esc(name) + '" />') +
+      '</div>' +
+      '<dl class="imp-facts">' +
+        fact('Starts', esc(fmtLongDate(s.start))) +
+        fact('Length', s.weeks + ' week' + (s.weeks === 1 ? '' : 's')) +
+        fact('Race', esc(s.raceType || '—') + (s.raceDate ? ' · ' + esc(fmtLongDate(s.raceDate)) : '')) +
+        fact('Annual budget', s.annualHours ? Math.round(s.annualHours) + ' h' : '—') +
+        fact('Planned volume', esc(fmtTotal(s.plannedMinutes) || '0m')) +
+        fact('Your history', esc(history)) +
+      '</dl>' +
+      '<p class="pnl-hint">' + esc(s.blocks.join(' → ')) + '</p>' +
+      (issues.length
+        ? '<div class="diff-issues">' +
+            (errs.length
+              ? '<b class="err">' + errs.length + ' week' + (errs.length === 1 ? '' : 's') +
+                ' in this plan ask for more time than the availability it carries.</b>' +
+                '<ul class="err">' + list(errs) + '</ul>'
+              : '') +
+            (warns.length
+              ? '<b>' + warns.length + ' thing' + (warns.length === 1 ? '' : 's') + ' worth a look</b><ul>' +
+                list(warns) + '</ul>'
+              : '') +
+          '</div>'
+        : '') +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="imp-back">Back</button>' +
+        '<button type="button" class="btn btn-ghost" id="imp-cancel">Cancel</button>' +
+        '<button type="button" class="btn btn-primary" id="imp-go">Import plan</button>' +
+      '</div>',
+      'Import plan',
+    );
+    $('imp-back').addEventListener('click', () => openImportPanel(null));
+    $('imp-cancel').addEventListener('click', closePanel);
+    $('imp-go').addEventListener('click', () => doImport(res.plan, $('imp-name').value, name));
+  }
+
+  /* Errors are shown above, not enforced here. The engine refuses to *write* an
+     impossible week into a plan you already have; refusing to open the athlete's
+     own file is a different thing, and worse. They are told, and it is theirs. */
+  function doImport(imported, typed, fallback) {
+    const at = now();
+    const p = adoptImported(imported, {
+      now: at,
+      id: mintPlanId(at),
+      name: String(typed || '').trim() || fallback,
+    });
+    closePanel();
+    addPlan(p);
+    setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks');
   }
 
   /* ---- Small dialogs (name entry / confirm) reusing the modal styles ---- */
@@ -2934,7 +3059,7 @@
     closePlanMenu(act !== 'rename');
     if (act === 'rename') return startRename();
     if (act === 'export') return exportPlan();
-    if (act === 'import') return els.importFile.click();
+    if (act === 'import') return openImportPanel(null);
     if (act === 'new') {
       return openNewPlanPanel();
     } else if (act === 'dup') {

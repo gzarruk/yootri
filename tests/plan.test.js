@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
-  refit, diffPlans, applyDraft, weekTotals, newPlan,
+  refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -179,6 +179,31 @@ test('completion flags for sessions that no longer exist are dropped', () => {
   const withDone = { ...p, done: { 'ghost-session': true, ...{} } };
   const applied = applyDraft(withDone, withDone, { now: 1 });
   assert.equal(applied.done['ghost-session'], undefined, 'stale flags should not accumulate');
+});
+
+test('logged actuals for sessions that no longer exist are dropped', () => {
+  const p = loadPlan(v2());
+  const keep = sessionsAt(p, 0)[0].id;
+  const withLogs = { ...p, actuals: { [keep]: { status: 'done' }, 'ghost-session': { status: 'done' } } };
+  const applied = applyDraft(withLogs, withLogs, { now: 1 });
+  assert.deepEqual(applied.actuals, { [keep]: { status: 'done' } });
+});
+
+test('pruneHistory keeps only what the weeks it is given still contain', () => {
+  const weeks = { w0: [{ id: 'a' }], w1: [{ id: 'b' }] };
+  const out = pruneHistory(weeks, { done: { a: true, gone: true }, actuals: { b: { status: 'done' } } });
+  assert.deepEqual(out.done, { a: true });
+  assert.deepEqual(out.actuals, { b: { status: 'done' } });
+});
+
+test('pruneHistory copes with a plan that has no history at all', () => {
+  assert.deepEqual(pruneHistory({ w0: [{ id: 'a' }] }), { done: {}, actuals: {} });
+  assert.deepEqual(pruneHistory(undefined, { done: { a: true } }), { done: {}, actuals: {} });
+});
+
+test('mintPlanId does not hand out the same id twice in a millisecond', () => {
+  const ids = new Set(Array.from({ length: 500 }, () => mintPlanId(1)));
+  assert.equal(ids.size, 500, 'a repeat would overwrite the plan it collided with');
 });
 
 test('a per-week budget override survives a later refit', () => {

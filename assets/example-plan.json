@@ -1,0 +1,1696 @@
+{
+  "_type": "im703-plan",
+  "version": 1,
+  "exportedFrom": "yootri.gzarruk.com",
+  "plan": {
+    "id": "p-example",
+    "name": "Example — 70.3 season",
+    "schema": 3,
+    "start": "2026-01-05",
+    "profile": {
+      "annualHours": 450,
+      "raceDate": "2026-05-24",
+      "raceType": "70.3",
+      "availability": {
+        "Mon": 0,
+        "Tue": 75,
+        "Wed": 90,
+        "Thu": 75,
+        "Fri": 60,
+        "Sat": 240,
+        "Sun": 150
+      },
+      "constraints": [],
+      "experience": "intermediate",
+      "notes": ""
+    },
+    "season": [
+      {
+        "block": "Base 1",
+        "week": 4,
+        "recovery": true,
+        "absWeek": 0,
+        "load": 0.7,
+        "hours": 6
+      },
+      {
+        "block": "Base 2",
+        "week": 1,
+        "recovery": false,
+        "absWeek": 1,
+        "load": 1.19,
+        "hours": 10.5
+      },
+      {
+        "block": "Base 2",
+        "week": 2,
+        "recovery": false,
+        "absWeek": 2,
+        "load": 1.295,
+        "hours": 11
+      },
+      {
+        "block": "Base 2",
+        "week": 3,
+        "recovery": false,
+        "absWeek": 3,
+        "load": 1.4,
+        "hours": 12
+      },
+      {
+        "block": "Base 2",
+        "week": 4,
+        "recovery": true,
+        "absWeek": 4,
+        "load": 0.7,
+        "hours": 6
+      },
+      {
+        "block": "Base 3",
+        "week": 1,
+        "recovery": false,
+        "absWeek": 5,
+        "load": 1.275,
+        "hours": 11
+      },
+      {
+        "block": "Base 3",
+        "week": 2,
+        "recovery": false,
+        "absWeek": 6,
+        "load": 1.3875000000000002,
+        "hours": 12
+      },
+      {
+        "block": "Base 3",
+        "week": 3,
+        "recovery": false,
+        "absWeek": 7,
+        "load": 1.5,
+        "hours": 13
+      },
+      {
+        "block": "Base 3",
+        "week": 4,
+        "recovery": true,
+        "absWeek": 8,
+        "load": 0.7,
+        "hours": 6
+      },
+      {
+        "block": "Build 1",
+        "week": 1,
+        "recovery": false,
+        "absWeek": 9,
+        "load": 1.3,
+        "hours": 11.5
+      },
+      {
+        "block": "Build 1",
+        "week": 2,
+        "recovery": false,
+        "absWeek": 10,
+        "load": 1.3,
+        "hours": 11.5
+      },
+      {
+        "block": "Build 1",
+        "week": 3,
+        "recovery": false,
+        "absWeek": 11,
+        "load": 1.3,
+        "hours": 11.5
+      },
+      {
+        "block": "Build 1",
+        "week": 4,
+        "recovery": true,
+        "absWeek": 12,
+        "load": 0.7,
+        "hours": 6
+      },
+      {
+        "block": "Build 2",
+        "week": 1,
+        "recovery": false,
+        "absWeek": 13,
+        "load": 1.25,
+        "hours": 11
+      },
+      {
+        "block": "Build 2",
+        "week": 2,
+        "recovery": false,
+        "absWeek": 14,
+        "load": 1.25,
+        "hours": 11
+      },
+      {
+        "block": "Build 2",
+        "week": 3,
+        "recovery": false,
+        "absWeek": 15,
+        "load": 1.25,
+        "hours": 11
+      },
+      {
+        "block": "Build 2",
+        "week": 4,
+        "recovery": true,
+        "absWeek": 16,
+        "load": 0.7,
+        "hours": 6
+      },
+      {
+        "block": "Peak",
+        "week": 1,
+        "recovery": false,
+        "absWeek": 17,
+        "load": 1.1,
+        "hours": 9.5
+      },
+      {
+        "block": "Peak",
+        "week": 2,
+        "recovery": false,
+        "absWeek": 18,
+        "load": 0.8800000000000001,
+        "hours": 7.5
+      },
+      {
+        "block": "Race",
+        "week": 1,
+        "recovery": false,
+        "absWeek": 19,
+        "load": 0.7,
+        "hours": 6
+      }
+    ],
+    "weeks": {
+      "w0": [
+        {
+          "id": "w0-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w0-1",
+          "day": "Tue",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w0-2",
+          "day": "Wed",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:35",
+          "zone": "—"
+        },
+        {
+          "id": "w0-3",
+          "day": "Thu",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w0-4",
+          "day": "Fri",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w0-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "1:50",
+          "zone": "Z2"
+        },
+        {
+          "id": "w0-6",
+          "day": "Sat",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w0-7",
+          "day": "Sun",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:20",
+          "zone": "Z2"
+        },
+        {
+          "id": "w0-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "0:45",
+          "zone": "Z2"
+        }
+      ],
+      "w1": [
+        {
+          "id": "w1-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w1-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w1-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w1-3",
+          "day": "Thu",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:00",
+          "zone": "Z2"
+        },
+        {
+          "id": "w1-4",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:40",
+          "zone": "Z2"
+        },
+        {
+          "id": "w1-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w1-6",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:50",
+          "zone": "Z2"
+        },
+        {
+          "id": "w1-7",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "1:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w1-8",
+          "day": "Sun",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:45",
+          "zone": "—"
+        }
+      ],
+      "w2": [
+        {
+          "id": "w2-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w2-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w2-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w2-3",
+          "day": "Thu",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:00",
+          "zone": "Z2"
+        },
+        {
+          "id": "w2-4",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:50",
+          "zone": "Z2"
+        },
+        {
+          "id": "w2-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w2-6",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:40",
+          "zone": "Z2"
+        },
+        {
+          "id": "w2-7",
+          "day": "Sat",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:30",
+          "zone": "—"
+        },
+        {
+          "id": "w2-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:30",
+          "zone": "Z2"
+        }
+      ],
+      "w3": [
+        {
+          "id": "w3-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w3-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w3-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w3-3",
+          "day": "Thu",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w3-4",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:00",
+          "zone": "Z2"
+        },
+        {
+          "id": "w3-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w3-6",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w3-7",
+          "day": "Sat",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:30",
+          "zone": "—"
+        },
+        {
+          "id": "w3-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:30",
+          "zone": "Z2"
+        }
+      ],
+      "w4": [
+        {
+          "id": "w4-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w4-1",
+          "day": "Tue",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w4-2",
+          "day": "Wed",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:35",
+          "zone": "—"
+        },
+        {
+          "id": "w4-3",
+          "day": "Thu",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w4-4",
+          "day": "Fri",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w4-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "1:50",
+          "zone": "Z2"
+        },
+        {
+          "id": "w4-6",
+          "day": "Sat",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w4-7",
+          "day": "Sun",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:20",
+          "zone": "Z2"
+        },
+        {
+          "id": "w4-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "0:45",
+          "zone": "Z2"
+        }
+      ],
+      "w5": [
+        {
+          "id": "w5-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w5-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w5-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w5-3",
+          "day": "Thu",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:00",
+          "zone": "Z2"
+        },
+        {
+          "id": "w5-4",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:50",
+          "zone": "Z2"
+        },
+        {
+          "id": "w5-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w5-6",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:40",
+          "zone": "Z2"
+        },
+        {
+          "id": "w5-7",
+          "day": "Sat",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:30",
+          "zone": "—"
+        },
+        {
+          "id": "w5-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:30",
+          "zone": "Z2"
+        }
+      ],
+      "w6": [
+        {
+          "id": "w6-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w6-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w6-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w6-3",
+          "day": "Thu",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w6-4",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:00",
+          "zone": "Z2"
+        },
+        {
+          "id": "w6-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w6-6",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w6-7",
+          "day": "Sat",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:30",
+          "zone": "—"
+        },
+        {
+          "id": "w6-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:30",
+          "zone": "Z2"
+        }
+      ],
+      "w7": [
+        {
+          "id": "w7-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w7-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w7-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w7-3",
+          "day": "Thu",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:15",
+          "zone": "Z2"
+        },
+        {
+          "id": "w7-4",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:00",
+          "zone": "Z2"
+        },
+        {
+          "id": "w7-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w7-6",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "0:45",
+          "zone": "Z2"
+        },
+        {
+          "id": "w7-7",
+          "day": "Sat",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:30",
+          "zone": "—"
+        },
+        {
+          "id": "w7-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "2:30",
+          "zone": "Z2"
+        }
+      ],
+      "w8": [
+        {
+          "id": "w8-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w8-1",
+          "day": "Tue",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w8-2",
+          "day": "Wed",
+          "disc": "Strength",
+          "focus": "Core & stability",
+          "dur": "0:35",
+          "zone": "—"
+        },
+        {
+          "id": "w8-3",
+          "day": "Thu",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w8-4",
+          "day": "Fri",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w8-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "1:50",
+          "zone": "Z2"
+        },
+        {
+          "id": "w8-6",
+          "day": "Sat",
+          "disc": "Run",
+          "focus": "Long run",
+          "dur": "1:30",
+          "zone": "Z2"
+        },
+        {
+          "id": "w8-7",
+          "day": "Sun",
+          "disc": "Swim",
+          "focus": "Endurance sets",
+          "dur": "1:20",
+          "zone": "Z2"
+        },
+        {
+          "id": "w8-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Long ride",
+          "dur": "0:45",
+          "zone": "Z2"
+        }
+      ],
+      "w9": [
+        {
+          "id": "w9-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w9-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:50",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w9-2",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:20",
+          "zone": "—"
+        },
+        {
+          "id": "w9-3",
+          "day": "Wed",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:30",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w9-4",
+          "day": "Thu",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w9-5",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w9-6",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:55",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w9-7",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w9-8",
+          "day": "Sun",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w9-9",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:10",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w10": [
+        {
+          "id": "w10-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w10-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:50",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w10-2",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:20",
+          "zone": "—"
+        },
+        {
+          "id": "w10-3",
+          "day": "Wed",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:30",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w10-4",
+          "day": "Thu",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w10-5",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w10-6",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:55",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w10-7",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w10-8",
+          "day": "Sun",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w10-9",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:10",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w11": [
+        {
+          "id": "w11-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w11-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:50",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w11-2",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:20",
+          "zone": "—"
+        },
+        {
+          "id": "w11-3",
+          "day": "Wed",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:30",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w11-4",
+          "day": "Thu",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w11-5",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w11-6",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:55",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w11-7",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w11-8",
+          "day": "Sun",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w11-9",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:10",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w12": [
+        {
+          "id": "w12-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w12-1",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:25",
+          "zone": "—"
+        },
+        {
+          "id": "w12-2",
+          "day": "Wed",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w12-3",
+          "day": "Thu",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w12-4",
+          "day": "Fri",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w12-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:55",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w12-6",
+          "day": "Sat",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w12-7",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "0:50",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w12-8",
+          "day": "Sun",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:30",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w13": [
+        {
+          "id": "w13-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w13-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:45",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w13-2",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:25",
+          "zone": "—"
+        },
+        {
+          "id": "w13-3",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:30",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w13-4",
+          "day": "Thu",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w13-5",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w13-6",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:45",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w13-7",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w13-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:30",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w14": [
+        {
+          "id": "w14-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w14-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:45",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w14-2",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:25",
+          "zone": "—"
+        },
+        {
+          "id": "w14-3",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:30",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w14-4",
+          "day": "Thu",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w14-5",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w14-6",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:45",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w14-7",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w14-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:30",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w15": [
+        {
+          "id": "w15-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w15-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:45",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w15-2",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:25",
+          "zone": "—"
+        },
+        {
+          "id": "w15-3",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:30",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w15-4",
+          "day": "Thu",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w15-5",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w15-6",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:45",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w15-7",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:00",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w15-8",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "2:30",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w16": [
+        {
+          "id": "w16-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w16-1",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Power & durability",
+          "dur": "0:25",
+          "zone": "—"
+        },
+        {
+          "id": "w16-2",
+          "day": "Wed",
+          "disc": "Swim",
+          "focus": "Threshold sets",
+          "dur": "1:05",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w16-3",
+          "day": "Thu",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w16-4",
+          "day": "Fri",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w16-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "1:55",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w16-6",
+          "day": "Sat",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "1:15",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w16-7",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Threshold intervals",
+          "dur": "0:50",
+          "zone": "Z3–Z4"
+        },
+        {
+          "id": "w16-8",
+          "day": "Sun",
+          "disc": "Run",
+          "focus": "Tempo",
+          "dur": "0:30",
+          "zone": "Z3–Z4"
+        }
+      ],
+      "w17": [
+        {
+          "id": "w17-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w17-1",
+          "day": "Tue",
+          "disc": "Run",
+          "focus": "Race-pace brick run",
+          "dur": "0:45",
+          "zone": "Z3"
+        },
+        {
+          "id": "w17-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Race-pace brick run",
+          "dur": "1:30",
+          "zone": "Z3"
+        },
+        {
+          "id": "w17-3",
+          "day": "Thu",
+          "disc": "Run",
+          "focus": "Race-pace brick run",
+          "dur": "0:45",
+          "zone": "Z3"
+        },
+        {
+          "id": "w17-4",
+          "day": "Fri",
+          "disc": "Swim",
+          "focus": "Race-pace sets",
+          "dur": "0:25",
+          "zone": "Z3"
+        },
+        {
+          "id": "w17-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Race-pace hold",
+          "dur": "2:45",
+          "zone": "Z3"
+        },
+        {
+          "id": "w17-6",
+          "day": "Sat",
+          "disc": "Swim",
+          "focus": "Race-pace sets",
+          "dur": "1:00",
+          "zone": "Z3"
+        },
+        {
+          "id": "w17-7",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Race-pace hold",
+          "dur": "1:50",
+          "zone": "Z3"
+        },
+        {
+          "id": "w17-8",
+          "day": "Sun",
+          "disc": "Strength",
+          "focus": "Maintenance",
+          "dur": "0:30",
+          "zone": "—"
+        }
+      ],
+      "w18": [
+        {
+          "id": "w18-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w18-1",
+          "day": "Tue",
+          "disc": "Strength",
+          "focus": "Maintenance",
+          "dur": "0:25",
+          "zone": "—"
+        },
+        {
+          "id": "w18-2",
+          "day": "Wed",
+          "disc": "Run",
+          "focus": "Race-pace brick run",
+          "dur": "0:50",
+          "zone": "Z3"
+        },
+        {
+          "id": "w18-3",
+          "day": "Thu",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w18-4",
+          "day": "Fri",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w18-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Race-pace hold",
+          "dur": "2:25",
+          "zone": "Z3"
+        },
+        {
+          "id": "w18-6",
+          "day": "Sat",
+          "disc": "Run",
+          "focus": "Race-pace brick run",
+          "dur": "1:30",
+          "zone": "Z3"
+        },
+        {
+          "id": "w18-7",
+          "day": "Sun",
+          "disc": "Bike",
+          "focus": "Race-pace hold",
+          "dur": "1:10",
+          "zone": "Z3"
+        },
+        {
+          "id": "w18-8",
+          "day": "Sun",
+          "disc": "Swim",
+          "focus": "Race-pace sets",
+          "dur": "1:10",
+          "zone": "Z3"
+        }
+      ],
+      "w19": [
+        {
+          "id": "w19-0",
+          "day": "Mon",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w19-1",
+          "day": "Tue",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w19-2",
+          "day": "Wed",
+          "disc": "Swim",
+          "focus": "Sharpen",
+          "dur": "1:10",
+          "zone": "Z2"
+        },
+        {
+          "id": "w19-3",
+          "day": "Thu",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w19-4",
+          "day": "Fri",
+          "disc": "Rest",
+          "focus": "Recovery & mobility",
+          "dur": "—",
+          "zone": "—"
+        },
+        {
+          "id": "w19-5",
+          "day": "Sat",
+          "disc": "Bike",
+          "focus": "Openers",
+          "dur": "2:25",
+          "zone": "Z2"
+        },
+        {
+          "id": "w19-6",
+          "day": "Sat",
+          "disc": "Run",
+          "focus": "Shakeout",
+          "dur": "0:45",
+          "zone": "Z1–Z2"
+        },
+        {
+          "id": "w19-7",
+          "day": "Sun",
+          "disc": "Run",
+          "focus": "Shakeout",
+          "dur": "1:40",
+          "zone": "Z1–Z2"
+        }
+      ]
+    },
+    "done": {},
+    "actuals": {},
+    "chartmode": "weekly",
+    "charthidden": {},
+    "view": {
+      "week": 0
+    },
+    "updatedAt": 1767571200000
+  }
+}
