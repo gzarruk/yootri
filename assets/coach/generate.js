@@ -57,6 +57,16 @@ const MAX_LONG_SHARE = 0.7;
 
 const demandFor = (raceType) => RACE_DEMAND[raceType] ?? RACE_DEMAND[DEFAULT_RACE];
 
+/**
+ * Total race-specific work a distance calls for, in minutes — the sum of the
+ * long-session targets above. Exported so the validator can ask whether a
+ * plan's volume bears any relation to the race it is aimed at, without a second
+ * definition of what each distance demands. Falls back exactly as generation
+ * does, so the two never disagree about an unrecognised race type.
+ */
+export const raceDemandMinutes = (raceType) =>
+  Object.values(demandFor(raceType)).reduce((a, b) => a + b, 0);
+
 const FOCUS = {
   Swim: { Prep: 'Technique drills', Base: 'Endurance sets', Build: 'Threshold sets', Peak: 'Race-pace sets', Race: 'Sharpen' },
   Bike: { Prep: 'Endurance spin', Base: 'Long ride', Build: 'Threshold intervals', Peak: 'Race-pace hold', Race: 'Openers' },

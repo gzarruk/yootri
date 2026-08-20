@@ -18,6 +18,7 @@ import { normalizeProfile, DAYS, DISCIPLINES } from './profile.js';
 import { generateWeek } from './generate.js';
 import { trailingCompliance, weekCompliance } from './actuals.js';
 import { suggest } from './adapt.js';
+import { seasonFit, volumeBeyondRace } from './validate.js';
 import { durToMin } from './duration.js';
 
 const clone = (x) => structuredClone(x);
@@ -232,6 +233,13 @@ const HANDLERS = {
       if (last && last.block === w.block) last.weeks++;
       else runs.push({ block: w.block, weeks: 1, startWeek: weekLabel(w.absWeek) });
     }
+    // Whether the budget actually fits the athlete's week. Without this the
+    // model has to notice for itself that annualHours and the weekly minutes
+    // below disagree, which is exactly the kind of judgement that belongs in
+    // tested code rather than in its head.
+    const fit = seasonFit(p.season, p.profile);
+    const beyond = volumeBeyondRace(p.season, p.profile);
+
     return ok({
       totalWeeks: weekCount(p),
       annualHours: Math.round(p.profile.annualHours),
@@ -240,6 +248,15 @@ const HANDLERS = {
       startDate: p.start,
       blocks: runs,
       weeklyPlannedMinutes: p.season.map((w) => weekCompliance(p, w.absWeek).plannedMinutes),
+      fit: fit ? {
+        weeklyCapacityMinutes: fit.capacityMinutes,
+        variationRetained: Number(fit.retained.toFixed(3)),
+        clippedWeeks: fit.clippedWeeks,
+        suggestedAnnualHours: fit.suggestedAnnualHours,
+        // Null unless the volume is out of proportion to the race, so its
+        // presence is itself the finding.
+        raceDemandMultiple: beyond ? Number(beyond.multiple.toFixed(1)) : null,
+      } : null,
     });
   },
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { TOOL_DEFS, createSession, callTool, sessionDiff } from '../assets/coach/tools.js';
-import { loadPlan, sessionsAt } from '../assets/coach/plan.js';
+import { loadPlan, newPlan, sessionsAt } from '../assets/coach/plan.js';
 import { setActual } from '../assets/coach/actuals.js';
 import { durToMin } from '../assets/coach/duration.js';
 
@@ -277,4 +277,44 @@ test('a suggested tool call is handed back in the numbering the tools accept', (
   for (const x of withAction) {
     assert.equal(x.action.input.week, 3, 'the suggestion should target the week asked about');
   }
+});
+
+test('get_plan_summary states whether the budget fits the athlete week', () => {
+  // Left to itself the model would have to spot that annualHours and
+  // weeklyPlannedMinutes disagree. The conclusion belongs in tested code.
+  const flat = newPlan({
+    name: 'Flat', startISO: '2026-01-05', now: 0,
+    profile: { annualHours: 800, availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
+  });
+  const out = parse(call(createSession(flat), 'get_plan_summary'));
+  assert.ok(out.fit, 'the summary carries a fit reading');
+  assert.equal(out.fit.weeklyCapacityMinutes, 690);
+  assert.equal(out.fit.suggestedAnnualHours, 400);
+  assert.ok(out.fit.variationRetained < 0.1);
+});
+
+test('a plan whose budget fits says so rather than going quiet', () => {
+  const ok = newPlan({
+    name: 'Fits', startISO: '2026-01-05', now: 0,
+    profile: { annualHours: 400, availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
+  });
+  const out = parse(call(createSession(ok), 'get_plan_summary'));
+  assert.equal(out.fit.variationRetained, 1);
+});
+
+test('get_plan_summary says when the volume outstrips the race', () => {
+  const big = { Mon: 600, Tue: 600, Wed: 600, Thu: 600, Fri: 600, Sat: 600, Sun: 600 };
+  const out = parse(call(createSession(newPlan({
+    name: 'Overkill', startISO: '2026-01-05', now: 0,
+    profile: { annualHours: 2000, raceType: 'sprint', availability: big },
+  })), 'get_plan_summary'));
+  assert.equal(Math.round(out.fit.raceDemandMultiple), 24);
+});
+
+test('a plan in proportion to its race reports no multiple to worry about', () => {
+  const out = parse(call(createSession(newPlan({
+    name: 'Sane', startISO: '2026-01-05', now: 0,
+    profile: { annualHours: 500, raceType: '70.3' },
+  })), 'get_plan_summary'));
+  assert.equal(out.fit.raceDemandMultiple, null);
 });

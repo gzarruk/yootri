@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { validateWeek, validateSeason } from '../assets/coach/validate.js';
+import { validateWeek, validateSeason, seasonFit } from '../assets/coach/validate.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { fitToRace } from '../assets/coach/season.js';
 import { generateWeek } from '../assets/coach/generate.js';
@@ -189,4 +189,152 @@ test('without load data the recovery rule falls back to counting weeks', () => {
   // skipping the check there would be worse than being conservative.
   assert.ok(codes(validateSeason(seasonOf([600, 610, 620, 630, 640, 650]), { profile }))
     .includes('recovery-overdue'));
+});
+
+/* ---- seasonFit: does the athlete's week actually fit the hour budget? ------ */
+
+const availOf = (mins, annualHours) => normalizeProfile({ availability: mins, annualHours });
+const DEFAULT_WEEK = { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 }; // 11.5h
+
+test('seasonFit reports full variation retained when nothing is clipped', () => {
+  const fit = seasonFit(fitToRace({ annualHours: 400, weeks: 16 }), availOf(DEFAULT_WEEK));
+  assert.equal(fit.retained, 1);
+  assert.equal(fit.clippedWeeks, 0);
+  assert.equal(fit.capacityMinutes, 690);
+});
+
+test('seasonFit reports a collapsed season when the budget outruns the week', () => {
+  const fit = seasonFit(fitToRace({ annualHours: 800, weeks: 16 }), availOf(DEFAULT_WEEK));
+  assert.ok(fit.retained < 0.1, `expected a flattened season, got ${fit.retained}`);
+  assert.equal(fit.clippedWeeks, 11);
+});
+
+test('seasonFit names the annual hours that would fit the athlete week', () => {
+  // 11.5h capacity against the model's peak multiplier of 1.5 -> 11.5 * 52 / 1.5.
+  const fit = seasonFit(fitToRace({ annualHours: 800, weeks: 16 }), availOf(DEFAULT_WEEK));
+  assert.equal(fit.suggestedAnnualHours, 400);
+});
+
+test('the suggested annual hours follow the athlete own availability', () => {
+  const busy = seasonFit(fitToRace({ annualHours: 800, weeks: 16 }),
+    availOf({ Mon: 0, Tue: 45, Wed: 60, Thu: 45, Fri: 0, Sat: 120, Sun: 90 })); // 6h
+  const roomy = seasonFit(fitToRace({ annualHours: 1600, weeks: 16 }),
+    availOf({ Mon: 120, Tue: 150, Wed: 150, Thu: 150, Fri: 120, Sat: 300, Sun: 240 })); // 20.5h
+  assert.equal(busy.suggestedAnnualHours, 210);
+  assert.equal(roomy.suggestedAnnualHours, 710);
+});
+
+test('a season taking the suggested hours no longer collapses', () => {
+  const fit = seasonFit(fitToRace({ annualHours: 400, weeks: 16 }), availOf(DEFAULT_WEEK));
+  assert.equal(fit.retained, 1);
+});
+
+test('seasonFit declines to judge a season too short to periodise', () => {
+  assert.equal(seasonFit(fitToRace({ annualHours: 800, weeks: 3 }), availOf(DEFAULT_WEEK)), null);
+});
+
+test('seasonFit declines to judge a season with no variation to lose', () => {
+  const flat = fitToRace({ annualHours: 800, weeks: 16 }).map((w) => ({ ...w, hours: 10 }));
+  assert.equal(seasonFit(flat, availOf(DEFAULT_WEEK)), null);
+});
+
+test('seasonFit declines to judge a profile with no time at all', () => {
+  const none = seasonFit(fitToRace({ annualHours: 800, weeks: 16 }), availOf(anyDay(0)));
+  assert.equal(none, null);
+});
+
+test('seasonFit still measures a plan carrying no load multipliers', () => {
+  // Migrated and hand-built plans have no `load`; the fit is still measurable,
+  // but there is no honest way to name a replacement budget.
+  const noLoad = fitToRace({ annualHours: 800, weeks: 16 }).map(({ load, ...w }) => w);
+  const fit = seasonFit(noLoad, availOf(DEFAULT_WEEK));
+  assert.ok(fit.retained < 0.1);
+  assert.equal(fit.suggestedAnnualHours, null);
+});
+
+/* ---- the season-flattened rule ------------------------------------------- */
+
+/** A season as validateSeason wants it: model weeks plus their built sessions. */
+const seasonWith = (annualHours, prof, weeks = 16) =>
+  fitToRace({ annualHours, weeks }).map((w) => ({
+    ...w,
+    sessions: generateWeek({
+      hours: w.hours, block: w.block, profile: prof, idPrefix: `w${w.absWeek}`,
+    }).sessions,
+  }));
+
+test('a budget that flattens the season is flagged', () => {
+  const prof = availOf(DEFAULT_WEEK, 800);
+  const issues = validateSeason(seasonWith(800, prof), { profile: prof });
+  const hit = issues.find((i) => i.code === 'season-flattened');
+  assert.ok(hit, `expected season-flattened, got ${codes(issues)}`);
+  assert.match(hit.message, /800/);
+  assert.match(hit.message, /400/);
+});
+
+test('flattening is the athlete call, not an impossibility', () => {
+  const prof = availOf(DEFAULT_WEEK, 800);
+  const hit = validateSeason(seasonWith(800, prof), { profile: prof })
+    .find((i) => i.code === 'season-flattened');
+  assert.equal(hit.level, 'warn');
+  assert.equal(hit.weekIndex, null, 'the whole season is the subject, not one week');
+});
+
+test('a budget the week can absorb is not flagged', () => {
+  const prof = availOf(DEFAULT_WEEK, 400);
+  const issues = validateSeason(seasonWith(400, prof), { profile: prof });
+  assert.ok(!codes(issues).includes('season-flattened'), `got ${codes(issues)}`);
+});
+
+test('the stock 500-hour plan is left alone', () => {
+  // The default sits at 63% variation retained: clipped, but still visibly
+  // periodised. Warning here would be the wolf-crying this rule exists to avoid.
+  const prof = availOf(DEFAULT_WEEK, 500);
+  const issues = validateSeason(seasonWith(500, prof), { profile: prof });
+  assert.ok(!codes(issues).includes('season-flattened'), `got ${codes(issues)}`);
+});
+
+/* ---- volume-beyond-race: a plan aimed at the wrong size of race ----------- */
+
+const BIG_WEEK = { Mon: 600, Tue: 600, Wed: 600, Thu: 600, Fri: 600, Sat: 600, Sun: 600 };
+const raceProf = (annualHours, availability, raceType) =>
+  normalizeProfile({ annualHours, availability, raceType });
+
+test('a sprint plan with a professional training load is flagged', () => {
+  const prof = raceProf(2000, BIG_WEEK, 'sprint');
+  const issues = validateSeason(seasonWith(2000, prof), { profile: prof });
+  const hit = issues.find((i) => i.code === 'volume-beyond-race');
+  assert.ok(hit, `expected volume-beyond-race, got ${codes(issues)}`);
+  assert.equal(hit.level, 'warn');
+  assert.equal(hit.weekIndex, null);
+  assert.match(hit.message, /sprint/);
+});
+
+test('plausible builds at every distance are left alone', () => {
+  for (const [raceType, annualHours] of
+    [['sprint', 300], ['olympic', 400], ['70.3', 500], ['ironman', 700]]) {
+    const prof = raceProf(annualHours, DEFAULT_WEEK, raceType);
+    const issues = validateSeason(seasonWith(annualHours, prof), { profile: prof });
+    assert.ok(!codes(issues).includes('volume-beyond-race'),
+      `${raceType} at ${annualHours}h should be fine, got ${codes(issues)}`);
+  }
+});
+
+test('a new sprint plan inheriting the default hours is not flagged', () => {
+  // The New plan panel carries the current profile across, so a sprint plan
+  // routinely starts at the stock 500 hours. Warning there would be the same
+  // wolf-crying as flagging the default season.
+  const prof = raceProf(500, BIG_WEEK, 'sprint');
+  const issues = validateSeason(seasonWith(500, prof), { profile: prof });
+  assert.ok(!codes(issues).includes('volume-beyond-race'), `got ${codes(issues)}`);
+});
+
+test('volume the athlete has no time to do is not held against the race', () => {
+  // 2000 hours on an 11.5h week never becomes 57h of training — it is clipped
+  // to 11.5h, which is unremarkable for a sprint. season-flattened is the rule
+  // that belongs to this plan, and it should be the only one that fires.
+  const prof = raceProf(2000, DEFAULT_WEEK, 'sprint');
+  const out = codes(validateSeason(seasonWith(2000, prof), { profile: prof }));
+  assert.ok(out.includes('season-flattened'), `expected the flattening rule, got ${out}`);
+  assert.ok(!out.includes('volume-beyond-race'), `got ${out}`);
 });

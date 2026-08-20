@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { generateWeek, weekMinutes } from '../assets/coach/generate.js';
+import { generateWeek, weekMinutes, raceDemandMinutes } from '../assets/coach/generate.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
 
@@ -288,4 +288,16 @@ test('rounding drift is absorbed by ordinary sessions, not the long one', () => 
   const { sessions, budgetMinutes } = generateWeek({ hours: 10, block: 'Base 2', profile: p });
   assert.equal(weekMinutes(sessions), budgetMinutes, 'budget still has to balance');
   assert.equal(longestOf(sessions, 'Bike'), 165, 'the long ride should sit exactly on race demand');
+});
+
+test('the race-specific work a distance calls for is available to callers', () => {
+  // The validator needs this to judge whether a plan's volume suits its race.
+  // Owning it here keeps one definition of what a distance demands.
+  assert.equal(raceDemandMinutes('sprint'), 145);   // 30 swim + 75 bike + 40 run
+  assert.equal(raceDemandMinutes('ironman'), 525);
+});
+
+test('an unknown race distance falls back the same way generation does', () => {
+  assert.equal(raceDemandMinutes('duathlon'), raceDemandMinutes('70.3'));
+  assert.equal(raceDemandMinutes(undefined), raceDemandMinutes('70.3'));
 });
