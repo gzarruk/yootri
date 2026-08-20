@@ -19,15 +19,40 @@ import { join } from 'node:path';
 const ROOT = new URL('../', import.meta.url);
 const HTML = readFileSync(new URL('index.html', ROOT), 'utf8');
 
-/** The `<script type="module">` blocks, each tagged with the line it opens on. */
-function moduleScripts() {
+const OPEN = '<script';
+const CLOSE = '</script';
+
+/** The `<script type="module">` blocks, each tagged with the line it opens on.
+
+   Scanned by hand rather than with `/<script\b[^>]*>([\s\S]*?)<\/script>/gi`,
+   which is the obvious way and is wrong twice over: HTML tag names are
+   case-insensitive, and a browser ends a script at `</script foo="bar">` just
+   as readily as at `</script>`. Neither is likely in a file we write ourselves
+   — but a scanner that quietly finds nothing would make every check below pass
+   for the wrong reason, and CodeQL flags the regex form on sight. */
+function moduleScripts(html = HTML) {
+  const hay = html.toLowerCase();
   const out = [];
-  const re = /<script\b([^>]*)>([\s\S]*?)<\/script>/g;
-  for (let m; (m = re.exec(HTML)); ) {
-    if (!/type\s*=\s*['"]module['"]/.test(m[1])) continue;
-    out.push({ line: HTML.slice(0, m.index).split('\n').length, body: m[2] });
+  let i = 0;
+  for (;;) {
+    const open = hay.indexOf(OPEN, i);
+    if (open === -1) return out;
+    i = open + OPEN.length;
+    if (/[a-z0-9]/.test(hay[i] || '')) continue;   // `<scripts…>` is a different tag
+    const attrsEnd = hay.indexOf('>', i);
+    if (attrsEnd === -1) return out;               // an unclosed tag: nothing to read
+    const close = hay.indexOf(CLOSE, attrsEnd + 1);
+    if (close === -1) return out;                  // unterminated: nothing to read
+    const closeEnd = hay.indexOf('>', close);
+    if (closeEnd === -1) return out;
+    if (/\btype\s*=\s*['"]?module\b/i.test(html.slice(i, attrsEnd))) {
+      out.push({
+        line: html.slice(0, open).split('\n').length,
+        body: html.slice(attrsEnd + 1, close),
+      });
+    }
+    i = closeEnd + 1;
   }
-  return out;
 }
 
 /* Comments are stripped before scanning for imports so that a commented-out
@@ -69,6 +94,16 @@ function bindsDefault(clause) {
 const SCRIPTS = moduleScripts();
 const IMPORTS = SCRIPTS.flatMap(staticImports);
 const LOCAL = IMPORTS.filter((i) => i.spec.startsWith('.'));
+
+test('the script scanner is not fooled by tag case or a lax closing tag', () => {
+  const found = moduleScripts(
+    '<SCRIPT TYPE="module">const a = 1;</SCRIPT foo="bar">' +
+    '<script type="module">const b = 2;</script >' +
+    '<script>const c = 3;</script>' +
+    '<scripts type="module">not a script tag</scripts>',
+  );
+  assert.deepEqual(found.map((s) => s.body), ['const a = 1;', 'const b = 2;']);
+});
 
 test('index.html still has module scripts to check', () => {
   // Without this the three tests below would pass by finding nothing at all.
@@ -119,7 +154,7 @@ function isLocalPath(ref) {
 
 test('every local asset index.html references is in the repo', () => {
   const refs = new Set();
-  for (const m of HTML.matchAll(/\b(?:href|src)\s*=\s*"([^"]+)"/g)) refs.add(m[1]);
+  for (const m of HTML.matchAll(/\b(?:href|src)\s*=\s*"([^"]+)"/gi)) refs.add(m[1]);
   // The example plan is fetched, not linked, and a 404 there is just as broken.
   for (const m of HTML.matchAll(/\bfetch\(\s*['"]([^'"]+)['"]/g)) refs.add(m[1]);
 
