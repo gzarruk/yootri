@@ -6,7 +6,7 @@ A triathlon training planner that fits a season to the hours you actually have,
 and keeps it in your own browser. It is free, open source, and has no server of
 its own — no account is required, and nothing is uploaded unless you ask it to be.
 
-Live at **https://yootri.gzarruk.com**
+Live at **https://deuxlatis.github.io/yootri/**
 
 ![](assets/screenshot.png)
 
@@ -85,7 +85,7 @@ An export wraps the whole plan record in a small envelope:
 {
   "_type": "im703-plan",
   "version": 1,
-  "exportedFrom": "yootri.gzarruk.com",
+  "exportedFrom": "deuxlatis.github.io/yootri",
   "plan": { "...": "the fields below" }
 }
 ```

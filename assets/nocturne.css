@@ -1,8 +1,8 @@
 /*
-  Nocturne design system — shared foundation for gzarruk.com and its subpages.
+  Nocturne design system — the shared visual foundation this app is built on.
   Quiet, compact, dark blue-grey UI; Inter type; a single blurple accent used
   as line/glow, never a flood. Tokens and component classes recreated from the
-  design handoff (design_handoff_gzarruk_site/README.md).
+  design handoff.
 
   Pages add only their page-specific layout/components in a local <style>.
 */

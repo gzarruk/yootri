@@ -18,3 +18,6 @@ RELEASE-CHECKLIST.md
 
 # Browser-automation debris: console logs that capture real sign-in flows.
 .playwright-mcp/
+
+# quarantine — device_bash cannot delete; remove this folder yourself
+_to_delete/

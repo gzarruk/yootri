@@ -29,7 +29,7 @@ import { parseISO } from './dates.js';
 export const ENVELOPE_TYPE = 'im703-plan';
 export const ENVELOPE_VERSION = 1;
 
-const DEFAULT_ORIGIN = 'yootri.gzarruk.com';
+const DEFAULT_ORIGIN = 'deuxlatis.github.io/yootri';
 const HELP = 'An import wants the .json file that "Export this plan" writes.';
 
 /** The object written to a file. `plan` is the stored record minus the chat. */

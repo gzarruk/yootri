@@ -9,7 +9,7 @@ configure the coach.
 
 Please report it privately, through GitHub:
 
-**[Open a private security advisory](https://github.com/gzarruk/yootri/security/advisories/new)**
+**[Open a private security advisory](https://github.com/DeuxLatis/yootri/security/advisories/new)**
 
 That keeps the report between us until there is a fix. Please do not open a
 public issue for a security problem — the app holds people's own API keys, and a
@@ -19,7 +19,7 @@ Useful things to include: what an attacker gains, the steps to reproduce, and
 the browser you saw it in.
 
 For ordinary bugs that are not security problems, the
-[issue tracker](https://github.com/gzarruk/yootri/issues) is the right place.
+[issue tracker](https://github.com/DeuxLatis/yootri/issues) is the right place.
 
 ## What you can expect
 
@@ -37,7 +37,7 @@ expectations accordingly:
 
 ## What gets fixed
 
-The deployed site at <https://yootri.gzarruk.com> and the current `main` branch.
+The deployed site at <https://deuxlatis.github.io/yootri/> and the current `main` branch.
 
 Released tags are not patched. If you are running an older tag or an older fork,
 the fix is to take a newer version. A copy you already have keeps working — that
