@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { generateWeek, weekMinutes, raceDemandMinutes } from '../assets/coach/generate.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
+import { dayBudgets } from '../assets/coach/shape.js';
 
 const anyDay = (mins) => Object.fromEntries(DAYS.map((d) => [d, mins]));
 const gen = (opts = {}) =>
@@ -177,12 +178,26 @@ test('the long ride stops growing once it meets race demand', () => {
   // Ample capacity on purpose. Under a capacity squeeze the engine is *supposed*
   // to keep filling available time, long ride included — that behaviour is
   // covered by the over-committed test above and would mask this one.
+  //
+  // Measured from 14h up, which is where the week's shape first budgets a day
+  // big enough to hold a 70.3 ride. Below that the ride is capped by its day
+  // rather than by race demand, which is the shape table's whole point: a light
+  // week is a recovery week and does not get a three-hour ride.
   const at = (h) => longestOf(gen({ hours: h, profile: { availability: anyDay(300) } }).sessions, 'Bike');
-  const base = at(10);
-  assert.ok(base >= 150, `a 10h week should already reach a race-length ride, got ${base}`);
+  const demand = 165; // 70.3, from RACE_DEMAND
   for (const h of [14, 18, 22]) {
-    assert.ok(at(h) <= base + 5, `long ride kept growing at ${h}h: ${base} -> ${at(h)}`);
+    assert.equal(at(h), demand, `long ride should sit on race demand at ${h}h`);
   }
+  // Nine more hours a week buys more rides, not a longer one.
+  assert.ok(at(22) <= at(14), 'the long ride must not scale with weekly volume');
+});
+
+test('a day the shape makes bigger than race demand does not inflate the ride much', () => {
+  // At 12h the table budgets 3h for Saturday but a 70.3 ride is anchored at
+  // 2:45. The 15 minutes left over cannot become a session of their own, so the
+  // ride absorbs them — a bounded overshoot, not a return to volume-scaling.
+  const ride = longestOf(gen({ hours: 12, profile: { availability: anyDay(300) } }).sessions, 'Bike');
+  assert.ok(ride <= 165 + 20, `long ride overshot race demand by too much: ${ride}`);
 });
 
 test('extra weekly volume becomes extra sessions, not a longer long ride', () => {
@@ -287,7 +302,11 @@ test('rounding drift is absorbed by ordinary sessions, not the long one', () => 
   });
   const { sessions, budgetMinutes } = generateWeek({ hours: 10, block: 'Base 2', profile: p });
   assert.equal(weekMinutes(sessions), budgetMinutes, 'budget still has to balance');
-  assert.equal(longestOf(sessions, 'Bike'), 165, 'the long ride should sit exactly on race demand');
+  // The long ride fills its prescribed day exactly. Shaving it to absorb
+  // rounding is what this guards against, so an off-by-a-block here is a
+  // failure even though the week as a whole still balances.
+  const biggestDay = Math.max(...Object.values(dayBudgets({ budgetMinutes, profile: p }).perDay));
+  assert.equal(longestOf(sessions, 'Bike'), biggestDay, 'the long ride should fill its day exactly');
 });
 
 test('the race-specific work a distance calls for is available to callers', () => {
@@ -300,4 +319,109 @@ test('the race-specific work a distance calls for is available to callers', () =
 test('an unknown race distance falls back the same way generation does', () => {
   assert.equal(raceDemandMinutes('duathlon'), raceDemandMinutes('70.3'));
   assert.equal(raceDemandMinutes(undefined), raceDemandMinutes('70.3'));
+});
+
+/* --- the week's shape ------------------------------------------------------
+   A week's days used to be budgeted straight from `availability`, so whichever
+   day had the most time absorbed the week. These pin the shape table taking that
+   job over: availability is now only the ceiling. */
+
+test('no day is scheduled beyond the shape the table prescribes for the week', () => {
+  const profile = normalizeProfile({});
+  for (const hours of [4.5, 6.5, 8.5, 10.5]) {
+    const { sessions } = generateWeek({ hours, block: 'Base 2', profile });
+    const budgets = dayBudgets({ budgetMinutes: hours * 60, profile }).perDay;
+    const perDay = {};
+    for (const s of sessions) perDay[s.day] = (perDay[s.day] ?? 0) + durToMin(s.dur);
+    for (const d of DAYS) {
+      assert.ok((perDay[d] ?? 0) <= budgets[d],
+        `${hours}h: ${d} got ${perDay[d] ?? 0} against a ${budgets[d]} budget`);
+    }
+  }
+});
+
+test('every day the shape budgets gets used, not just the roomiest ones', () => {
+  // Session counts come from what each discipline wants, which cannot know the
+  // week's shape left a short Friday open. Without a pass to fill those gaps the
+  // shape's own minutes go unspent and the week quietly comes in under budget.
+  const profile = normalizeProfile({ availability: anyDay(180) });
+  const { sessions, budgetMinutes } = generateWeek({ hours: 5, block: 'Base 2', profile });
+  const budgets = dayBudgets({ budgetMinutes, profile }).perDay;
+  const perDay = {};
+  for (const s of sessions) perDay[s.day] = (perDay[s.day] ?? 0) + durToMin(s.dur);
+  for (const d of DAYS) {
+    if (budgets[d] >= 30) {
+      assert.ok((perDay[d] ?? 0) > 0, `${d} is budgeted ${budgets[d]} minutes but holds nothing`);
+    }
+  }
+  assert.equal(weekMinutes(sessions), budgetMinutes);
+});
+
+test('a light week no longer piles itself onto the biggest available day', () => {
+  // The default profile has 4 h free on Saturday, so greedy packing put 185 of a
+  // 6.5 h week's 390 minutes there — 47% of the week, with Friday left empty.
+  const { sessions } = generateWeek({
+    hours: 6.5, block: 'Base 2', profile: normalizeProfile({}),
+  });
+  const perDay = {};
+  for (const s of sessions) perDay[s.day] = (perDay[s.day] ?? 0) + durToMin(s.dur);
+  const biggest = Math.max(...DAYS.map((d) => perDay[d] ?? 0));
+  assert.ok(biggest <= 390 / 3, `biggest day holds ${biggest} of 390 minutes`);
+});
+
+test('the long session gives way to the day budget on a light week', () => {
+  // Race demand wants a 165-minute 70.3 ride; a 6:30 week only budgets 90 for
+  // Saturday. The day budget wins — a light week is a recovery week.
+  const profile = normalizeProfile({ raceType: '70.3' });
+  const { sessions } = generateWeek({ hours: 6.5, block: 'Base 2', profile });
+  const budgets = dayBudgets({ budgetMinutes: 390, profile }).perDay;
+  const longest = sessions.reduce((a, s) => Math.max(a, durToMin(s.dur)), 0);
+  assert.ok(longest > 0, 'the week should still hold real sessions');
+  assert.ok(longest <= Math.max(...DAYS.map((d) => budgets[d])),
+    `longest session is ${longest}, biggest day budget is ${Math.max(...DAYS.map((d) => budgets[d]))}`);
+});
+
+test('the long session still reaches race demand when the week is big enough', () => {
+  // The other half of the trade: shaping must not cost a real athlete their long
+  // ride on the weeks that are meant to build it.
+  const { sessions } = generateWeek({
+    hours: 15,
+    block: 'Base 2',
+    profile: normalizeProfile({ raceType: '70.3', availability: anyDay(300) }),
+  });
+  const longestBike = sessions
+    .filter((s) => s.disc === 'Bike')
+    .reduce((a, s) => Math.max(a, durToMin(s.dur)), 0);
+  assert.ok(longestBike >= 150, `long ride is only ${longestBike} minutes`);
+});
+
+test('a rest day spreads its hours over the week instead of shrinking it', () => {
+  const profile = normalizeProfile({
+    availability: { Mon: 0, Tue: 180, Wed: 180, Thu: 180, Fri: 180, Sat: 360, Sun: 300 },
+  });
+  const { sessions, budgetMinutes } = generateWeek({ hours: 12, block: 'Base 2', profile });
+  assert.equal(weekMinutes(sessions), budgetMinutes, 'the week keeps its whole budget');
+  assert.ok(sessions.filter((s) => s.day === 'Mon').every((s) => durToMin(s.dur) === 0));
+});
+
+test('an hour-long week is one session, not a scatter of unusable slivers', () => {
+  const { sessions, budgetMinutes } = generateWeek({
+    hours: 1, block: 'Base 2', profile: normalizeProfile({ availability: anyDay(180) }),
+  });
+  assert.equal(weekMinutes(sessions), budgetMinutes);
+});
+
+test('switching the shape off never builds more than the week asked for', () => {
+  // With shaping off a day's budget is its whole availability, so the gap-filling
+  // pass has no ceiling of its own — it has to stop at the week's own budget or
+  // it will happily fill seven empty days for a one-hour week.
+  for (const hours of [0, 1, 4, 8]) {
+    const { sessions, budgetMinutes } = generateWeek({
+      hours,
+      block: 'Base 2',
+      profile: normalizeProfile({ availability: anyDay(300), weekShape: { enabled: false } }),
+    });
+    assert.ok(weekMinutes(sessions) <= budgetMinutes,
+      `${hours}h built ${weekMinutes(sessions)} against a ${budgetMinutes} budget`);
+  }
 });

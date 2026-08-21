@@ -14,7 +14,7 @@
    consequences of its own pending changes before proposing them. */
 
 import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans } from './plan.js';
-import { normalizeProfile, DAYS, DISCIPLINES } from './profile.js';
+import { normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES } from './profile.js';
 import { generateWeek } from './generate.js';
 import { trailingCompliance, weekCompliance } from './actuals.js';
 import { suggest } from './adapt.js';
@@ -196,6 +196,29 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'set_week_shape',
+    description:
+      'Steer how a week\'s hours fall across its days. The engine already spreads a rest day\'s hours over the rest of the week; this says where they should land ("push them to the weekend"), pins a day to a fixed length, or hands the week back to plain availability. A STANDING rule: it reshapes every week in the season.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        spread: {
+          type: 'string',
+          description: `Where displaced hours go: ${SPREAD_MODES.join(', ')}, or a weekday name to send them all to one day.`,
+        },
+        pins: {
+          type: 'object',
+          description: 'Weekday to an exact number of minutes, e.g. {"Wed": 45}. A pin fixes the day; availability only caps it.',
+          additionalProperties: { type: 'integer' },
+        },
+        enabled: {
+          type: 'boolean',
+          description: 'False falls back to filling each day up to its available time, with no prescribed shape.',
+        },
+      },
+    },
+  },
+  {
     name: 'move_session',
     description:
       'Move one session to a different day of its week, keeping its duration and type. Use this for scheduling clashes rather than regenerating the week.',
@@ -274,6 +297,7 @@ const HANDLERS = {
       availability: p.profile.availability,
       constraints: p.profile.constraints,
       splits: p.profile.splits ?? null,
+      weekShape: resolveWeekShape(p.profile),
     });
   },
 
@@ -379,6 +403,48 @@ const HANDLERS = {
     }
     s.draft = refit(base, { profile });
     return ok(`Split set for ${input.block}. Season refitted.`);
+  },
+
+  set_week_shape(s, input) {
+    const base = draftOf(s);
+    const shape = { ...resolveWeekShape(base.profile) };
+
+    if (input.spread !== undefined) {
+      const spread = String(input.spread);
+      if (!SPREAD_MODES.includes(spread) && !DAYS.includes(spread)) {
+        return fail(`"${spread}" is not a spread policy. Use one of: ${SPREAD_MODES.join(', ')}, or a weekday.`);
+      }
+      shape.spread = spread;
+    }
+
+    if (input.pins !== undefined) {
+      if (!input.pins || typeof input.pins !== 'object') return fail('pins must be an object of weekday to minutes.');
+      const pins = {};
+      for (const [day, v] of Object.entries(input.pins)) {
+        if (!DAYS.includes(day)) {
+          return fail(`"${day}" is not a weekday. Use one of: ${DAYS.join(', ')}.`);
+        }
+        const mins = Number(v);
+        if (!Number.isFinite(mins) || mins < 0) return fail(`the pin for ${day} must be zero or more minutes.`);
+        pins[day] = Math.round(mins);
+      }
+      shape.pins = pins;
+    }
+
+    if (input.enabled !== undefined) shape.enabled = input.enabled !== false;
+
+    s.draft = refit(base, { profile: { ...base.profile, weekShape: shape } });
+
+    const said = [
+      input.spread !== undefined ? `displaced hours go to ${shape.spread}` : null,
+      input.pins !== undefined
+        ? (Object.keys(shape.pins).length
+          ? `pinned ${Object.entries(shape.pins).map(([d, m]) => `${d} to ${m} min`).join(', ')}`
+          : 'pins cleared')
+        : null,
+      input.enabled !== undefined ? (shape.enabled ? 'shaping on' : 'shaping off') : null,
+    ].filter(Boolean);
+    return ok(`Week shape updated (${said.join('; ') || 'no change'}) and the season refitted.`);
   },
 
   move_session(s, input) {

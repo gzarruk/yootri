@@ -9,8 +9,9 @@
    athlete actually has, it fills the available time and reports the shortfall
    rather than quietly scheduling a week that cannot happen. */
 
-import { DAYS, allowedDays, maxPerWeek, weeklyAvailableMinutes } from './profile.js';
+import { DAYS, allowedDays, maxPerWeek } from './profile.js';
 import { minToDur, durToMin, REST_DUR } from './duration.js';
+import { dayBudgets } from './shape.js';
 
 const MIN_SESSION = 20; // below this it isn't a session, it's a gesture
 const ROUND_TO = 5;
@@ -105,13 +106,23 @@ export function weekMinutes(sessions) {
   return sessions.reduce((a, s) => a + durToMin(s.dur), 0);
 }
 
+/** Days a discipline can actually use this week: allowed by the athlete's own
+    constraints, and given enough of the week's shape to hold a session. Asking
+    `allowedDays` alone would count days the shape leaves empty, and every count
+    downstream — how many sessions fit, whether a discipline is worth keeping at
+    all — would be answered against days nothing can be placed on. */
+function usableDays(profile, disc, budgets) {
+  const floor = Math.max(MIN_SESSION, DISC[disc]?.min ?? MIN_SESSION);
+  return allowedDays(profile, disc).filter((d) => budgets.perDay[d] >= floor);
+}
+
 /** Decide how much of the week each discipline gets, dropping any that has
     nowhere to go or too little time to be worth scheduling, and giving its
     share back to the others. */
-function discTargets(target, block, profile) {
+function discTargets(target, block, profile, budgets) {
   const split = resolveSplit(block, profile);
   let live = Object.keys(split).filter(
-    (d) => allowedDays(profile, d).length > 0 && maxPerWeek(profile, d) > 0,
+    (d) => usableDays(profile, d, budgets).length > 0 && maxPerWeek(profile, d) > 0,
   );
 
   // Iterate: dropping a starved discipline raises everyone else's share, which
@@ -136,10 +147,10 @@ function discTargets(target, block, profile) {
 /** Split one discipline's time into individual session lengths, longest first.
     The first entry is the race-anchored long session where the discipline has
     one; everything else divides what is left. */
-function sessionSizes(disc, minutes, profile, raceType) {
+function sessionSizes(disc, minutes, profile, raceType, budgets) {
   const cfg = DISC[disc];
   const floor = Math.max(MIN_SESSION, cfg.min);
-  const cap = Math.min(maxPerWeek(profile, disc), allowedDays(profile, disc).length);
+  const cap = Math.min(maxPerWeek(profile, disc), usableDays(profile, disc, budgets).length);
   const demand = demandFor(raceType)[disc];
 
   if (!demand) {
@@ -159,11 +170,13 @@ function sessionSizes(disc, minutes, profile, raceType) {
   return [long, ...Array.from({ length: n - 1 }, () => rest / (n - 1))].sort((a, b) => b - a);
 }
 
-/** Place sessions on days, never exceeding a day's available time. Disciplines
-    with the longest single session are placed first so the long ride gets the
-    big day before anything else claims it. */
-function place(targets, profile, family, raceType) {
-  const remaining = Object.fromEntries(DAYS.map((d) => [d, profile.availability[d] || 0]));
+/** Place sessions on days, never exceeding the day's prescribed budget.
+    Disciplines with the longest single session are placed first so the long ride
+    gets the big day before anything else claims it — and because the shape puts
+    the big day where a coach would, that is now Saturday by prescription rather
+    than by whichever day happened to have the most room left over. */
+function place(targets, profile, family, raceType, budgets) {
+  const remaining = { ...budgets.perDay };
   const placed = [];
 
   const order = Object.keys(targets).sort(
@@ -171,8 +184,8 @@ function place(targets, profile, family, raceType) {
   );
 
   for (const disc of order) {
-    const sizes = sessionSizes(disc, targets[disc], profile, raceType);
-    const days = allowedDays(profile, disc);
+    const sizes = sessionSizes(disc, targets[disc], profile, raceType, budgets);
+    const days = usableDays(profile, disc, budgets);
     const used = new Set();
 
     for (const [rank, size] of sizes.entries()) {
@@ -197,19 +210,59 @@ function place(targets, profile, family, raceType) {
   return { placed, remaining };
 }
 
+/** Put something on the days the shape budgeted but the per-discipline pass
+    walked past. How many sessions a discipline splits into comes from what that
+    discipline wants, which has no way to know the week's shape left a short
+    Friday open. Left alone those minutes are unreachable — `reconcile` can only
+    grow sessions that already exist — so the week would come in under budget
+    with an empty day sitting next to the shortfall.
+
+    The day goes to whichever discipline is furthest below its own target, so
+    filling a gap also repairs the split the placement pass could not honour.
+
+    Bounded by what the week still owes, never by the day's own room: with the
+    shape switched off a day's "remaining" is its whole availability, and an
+    unbounded pass would cheerfully fill seven empty days for a one-hour week. */
+function fillGaps(placed, remaining, targets, profile, family, target) {
+  const spent = (disc) => placed.reduce((a, s) => a + (s.disc === disc ? s.minutes : 0), 0);
+  const count = (disc) => placed.filter((s) => s.disc === disc).length;
+  let short = target - placed.reduce((a, s) => a + s.minutes, 0);
+
+  for (const day of DAYS) {
+    if (short < MIN_SESSION) break;
+    if (remaining[day] < MIN_SESSION) continue;
+    if (placed.some((s) => s.day === day)) continue;
+
+    const disc = Object.keys(targets)
+      .filter((d) => remaining[day] >= Math.max(MIN_SESSION, DISC[d].min)
+        && count(d) < maxPerWeek(profile, d)
+        && allowedDays(profile, d).includes(day))
+      .sort((a, b) => targets[b] - spent(b) - (targets[a] - spent(a)))[0];
+    if (!disc) continue;
+
+    const mins = Math.min(remaining[day], DISC[disc].max, short);
+    if (mins < Math.max(MIN_SESSION, DISC[disc].min)) continue;
+    remaining[day] -= mins;
+    short -= mins;
+    placed.push({ day, disc, minutes: mins, family, isLong: false });
+  }
+}
+
 /** Round to whole 5-minute blocks, then push the total back toward the budget
     using whatever day capacity is left. */
 function reconcile(placed, remaining, target) {
+  // Round to the nearest block where the day can pay for it, down otherwise —
+  // and either way hand the difference back to the day. Rounding a session down
+  // frees time that the growth pass below is entitled to spend somewhere else;
+  // when `remaining` came from raw availability there was enough slack to hide
+  // that, but a day budgeted to the minute has none.
   for (const s of placed) {
     const rounded = roundTo(s.minutes);
-    const delta = rounded - s.minutes;
-    if (delta <= remaining[s.day]) {
-      remaining[s.day] -= delta;
-      s.minutes = rounded;
-    } else {
-      s.minutes = Math.floor(s.minutes / ROUND_TO) * ROUND_TO;
-      remaining[s.day] += s.minutes === 0 ? 0 : 0;
-    }
+    const next = rounded - s.minutes <= remaining[s.day]
+      ? rounded
+      : Math.floor(s.minutes / ROUND_TO) * ROUND_TO;
+    remaining[s.day] += s.minutes - next;
+    s.minutes = next;
   }
 
   const total = () => placed.reduce((a, s) => a + s.minutes, 0);
@@ -255,11 +308,16 @@ function reconcile(placed, remaining, target) {
 export function generateWeek({ hours, block, profile, idPrefix = 'w' }) {
   const family = blockFamily(block);
   const budgetMinutes = Math.max(0, Math.round((Number(hours) || 0) * 60));
-  const capacity = weeklyAvailableMinutes(profile);
-  const target = Math.min(budgetMinutes, capacity);
 
-  const targets = discTargets(target, block, profile);
-  const { placed, remaining } = place(targets, profile, family, profile.raceType);
+  // The shape table decides how the week falls across its days; availability is
+  // only the ceiling that shape is clipped to. `targetMinutes` is what the
+  // athlete can actually absorb — where a budget bigger than the week gets cut.
+  const budgets = dayBudgets({ budgetMinutes, profile });
+  const target = budgets.targetMinutes;
+
+  const targets = discTargets(target, block, profile, budgets);
+  const { placed, remaining } = place(targets, profile, family, profile.raceType, budgets);
+  fillGaps(placed, remaining, targets, profile, family, target);
   reconcile(placed, remaining, target);
 
   const work = placed

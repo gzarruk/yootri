@@ -13,6 +13,14 @@ const MINUTES_IN_DAY = 24 * 60;
 const RULES = ['onlyDays', 'avoidDays', 'maxPerWeek'];
 export const DISCIPLINES = ['Swim', 'Bike', 'Run', 'Strength'];
 
+/* How displaced minutes are redistributed when the week's prescribed shape
+   meets a day that cannot hold it. `proportional` hands them back in the shape's
+   own proportions; the others exist because "put it on the weekend" and "give it
+   to Wednesday" are things athletes actually say. A day name is also valid. */
+export const SPREAD_MODES = ['proportional', 'weekend', 'even'];
+
+export const DEFAULT_WEEK_SHAPE = { enabled: true, spread: 'proportional', pins: {} };
+
 export const DEFAULT_PROFILE = {
   annualHours: 500,
   raceDate: null,
@@ -68,6 +76,41 @@ function normalizeSplits(raw) {
   return Object.keys(out).length ? out : undefined;
 }
 
+/* Optional steering for how a week's hours fall across its days. The common
+   case needs none of this — a day set to 0 in `availability` is already a rest
+   day, and its hours already reappear elsewhere. These are for saying *where*.
+
+   Absent keys stay absent, exactly as splits do: writing defaults into every
+   profile would rewrite every stored plan on load to say nothing. */
+function normalizeWeekShape(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out = {};
+
+  if (raw.enabled === false) out.enabled = false;
+
+  const spread = String(raw.spread ?? '');
+  if (DAYS.includes(spread) || (SPREAD_MODES.includes(spread) && spread !== 'proportional')) {
+    out.spread = spread;
+  }
+
+  const pins = {};
+  for (const [day, v] of Object.entries(raw.pins ?? {})) {
+    if (!DAYS.includes(day)) continue;
+    const n = Number(v);
+    if (!Number.isFinite(n) || n < 0) continue;
+    pins[day] = clampMinutes(n);
+  }
+  if (Object.keys(pins).length) out.pins = pins;
+
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** The week shape a profile is asking for, with every default filled in. */
+export const resolveWeekShape = (profile) => ({
+  ...DEFAULT_WEEK_SHAPE,
+  ...(profile?.weekShape ?? {}),
+});
+
 /** Fill defaults, clamp nonsense, drop constraints we don't understand.
     Pure and idempotent: normalize(normalize(x)) deep-equals normalize(x). */
 export function normalizeProfile(raw = {}) {
@@ -80,6 +123,7 @@ export function normalizeProfile(raw = {}) {
 
   const annual = Number(raw.annualHours);
   const splits = normalizeSplits(raw.splits);
+  const weekShape = normalizeWeekShape(raw.weekShape);
 
   return {
     annualHours: Number.isFinite(annual) && annual > 0 ? annual : DEFAULT_PROFILE.annualHours,
@@ -88,6 +132,7 @@ export function normalizeProfile(raw = {}) {
     availability,
     constraints: (raw.constraints ?? []).map(normalizeConstraint).filter(Boolean),
     ...(splits ? { splits } : {}),
+    ...(weekShape ? { weekShape } : {}),
     experience: raw.experience ?? DEFAULT_PROFILE.experience,
     notes: raw.notes ?? DEFAULT_PROFILE.notes,
   };
