@@ -72,3 +72,29 @@ test('constraints that name an unknown rule are dropped, not obeyed blindly', ()
   const p = normalizeProfile({ constraints: [{ disc: 'Swim', rule: 'banana', value: 1 }] });
   assert.equal(p.constraints.length, 0);
 });
+
+test('a clean profile carries no week-shape overrides', () => {
+  // Same contract as splits: an absent override must not appear as data, or
+  // every stored plan gets rewritten on load for no reason.
+  assert.ok(!('weekShape' in normalizeProfile({})));
+});
+
+test('a week shape survives normalization', () => {
+  const p = normalizeProfile({ weekShape: { enabled: false, spread: 'weekend', pins: { Wed: 60 } } });
+  assert.deepEqual(p.weekShape, { enabled: false, spread: 'weekend', pins: { Wed: 60 } });
+});
+
+test('an unrecognised spread policy is dropped rather than obeyed', () => {
+  const p = normalizeProfile({ weekShape: { spread: 'whenever' } });
+  assert.equal(p.weekShape, undefined);
+});
+
+test('pins on days that do not exist are dropped', () => {
+  const p = normalizeProfile({ weekShape: { pins: { Wed: 60, Funday: 90, Thu: -5 } } });
+  assert.deepEqual(p.weekShape, { pins: { Wed: 60 } });
+});
+
+test('normalizing a week shape twice changes nothing', () => {
+  const once = normalizeProfile({ weekShape: { spread: 'even', pins: { Sat: 200 } } });
+  assert.deepEqual(normalizeProfile(once), once);
+});

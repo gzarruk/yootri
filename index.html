@@ -1132,7 +1132,8 @@
   import {
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft,
   } from './assets/coach/plan.js';
-  import { normalizeProfile } from './assets/coach/profile.js';
+  import { normalizeProfile, resolveWeekShape, SPREAD_MODES } from './assets/coach/profile.js';
+  import { dayBudgets } from './assets/coach/shape.js';
   import { generateWeek } from './assets/coach/generate.js';
   import {
     STATUSES, getActual, setActual, actualMinutes, weekCompliance, seasonActuals,
@@ -2378,8 +2379,23 @@
     $('ab-close').addEventListener('click', closePanel);
   }
 
+  const SPREAD_LABELS = {
+    proportional: 'Spread in the same proportions',
+    weekend: 'Go to the weekend',
+    even: 'Spread evenly across the week',
+  };
+
   function openSetupPanel() {
     const p = plan.profile;
+    const shape = resolveWeekShape(p);
+    const opt = (v, label, on) =>
+      '<option value="' + esc(v) + '"' + (on ? ' selected' : '') + '>' + esc(label) + '</option>';
+    const shapeOpts =
+      opt('on', 'Follow the recommended shape', shape.enabled) +
+      opt('off', 'Just fill the time available', !shape.enabled);
+    const spreadOpts =
+      SPREAD_MODES.map((m) => opt(m, SPREAD_LABELS[m], shape.spread === m)).join('') +
+      DAYS.map((d) => opt(d, 'Go to ' + d, shape.spread === d)).join('');
     const swimCap = (p.constraints.find((c) => c.disc === 'Swim' && c.rule === 'maxPerWeek') || {}).value;
     const planned = plan.season.reduce((a, w) => a + Math.round(w.hours * 60), 0);
     const opts = ['sprint', 'olympic', '70.3', 'ironman']
@@ -2405,7 +2421,21 @@
             '<input type="number" class="input" data-day="' + d + '" min="0" max="600" step="15" value="' +
             (p.availability[d] || 0) + '" /></label>').join('') +
         '</div>' +
-        '<p class="pnl-hint">A day set to 0 is a rest day — nothing will be scheduled on it.</p>' +
+        '<p class="pnl-hint">A day set to 0 is a rest day — nothing will be scheduled on it. ' +
+          'This is the <b>most</b> you could train, not what you will.</p>' +
+
+        '<span class="pnl-sub" style="display:block;margin-top:1rem">Planned each day (minutes)</span>' +
+        '<div class="pnl-days">' +
+          DAYS.map((d) => '<label>' + d +
+            '<input type="number" class="input" data-pin="' + d + '" min="0" max="600" step="5" value="' +
+            (shape.pins[d] ?? '') + '" /></label>').join('') +
+        '</div>' +
+        '<p class="pnl-hint" id="f-shape"></p>' +
+
+        '<div class="pnl-grid" style="margin-top:.9rem">' +
+          field('Daily distribution', '<select class="input" id="f-shape-on">' + shapeOpts + '</select>') +
+          field('Hours a rest day frees up', '<select class="input" id="f-spread">' + spreadOpts + '</select>') +
+        '</div>' +
       '</div>' +
       '<div class="pnl-act">' +
         '<button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>' +
@@ -2418,11 +2448,57 @@
     // Say it while the number is being typed, not after a preview. The season
     // keeps its current length here (previewRefit does not pass `weeks`), so
     // only the budget and the available time can move the fit.
-    renderFitHint();
-    $('f-annual').addEventListener('input', renderFitHint);
-    $('f-race-type').addEventListener('change', renderFitHint);
-    els.panelRoot.querySelectorAll('[data-day]').forEach((i) =>
-      i.addEventListener('input', renderFitHint));
+    const refresh = () => { renderFitHint(); renderShapeHint(); };
+    refresh();
+    $('f-annual').addEventListener('input', refresh);
+    $('f-race-type').addEventListener('change', refresh);
+    $('f-shape-on').addEventListener('change', refresh);
+    $('f-spread').addEventListener('change', refresh);
+    els.panelRoot.querySelectorAll('[data-day],[data-pin]').forEach((i) =>
+      i.addEventListener('input', refresh));
+  }
+
+  /* Everything the setup form is currently saying, as a profile. The form and
+     the preview must not disagree about what was typed, so both read it here. */
+  function setupProfile() {
+    const availability = {};
+    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => {
+      availability[i.dataset.day] = Number(i.value) || 0;
+    });
+    const pins = {};
+    els.panelRoot.querySelectorAll('[data-pin]').forEach((i) => {
+      if (i.value !== '') pins[i.dataset.pin] = Number(i.value) || 0;
+    });
+    return normalizeProfile({
+      ...plan.profile,
+      annualHours: Number($('f-annual').value) || plan.profile.annualHours,
+      raceType: $('f-race-type').value,
+      availability,
+      weekShape: { enabled: $('f-shape-on').value !== 'off', spread: $('f-spread').value, pins },
+    });
+  }
+
+  /* Show the shape the athlete is actually asking for, while they ask for it.
+     The numbers are placeholders rather than values: a day left blank follows
+     the recommendation, and typing over one pins it. Read on the season's
+     hardest week, which is the week people are really asking about. */
+  function renderShapeHint() {
+    const el = $('f-shape');
+    if (!el) return;
+    const profile = setupProfile();
+    const season = fitToRace({ annualHours: profile.annualHours, weeks: totalWeeks() });
+    const peak = season.reduce((a, w) => (w.hours > a.hours ? w : a), season[0]);
+    const budgets = dayBudgets({ budgetMinutes: Math.round(peak.hours * 60), profile }).perDay;
+
+    els.panelRoot.querySelectorAll('[data-pin]').forEach((i) => {
+      i.placeholder = String(budgets[i.dataset.pin] ?? 0);
+    });
+
+    const total = DAYS.reduce((a, d) => a + (budgets[d] || 0), 0);
+    el.innerHTML = profile.weekShape?.enabled === false
+      ? 'Each day will simply be filled up to the time available above.'
+      : 'Shown for your hardest week (<b>' + (fmtTotal(total) || '0m') + '</b>). ' +
+        'Leave a day blank to follow the recommended distribution; type a number to fix it.';
   }
 
   /* Would the hours being typed actually periodise inside the week being typed?
@@ -2431,13 +2507,9 @@
     const el = $('f-fit');
     if (!el) return;
 
-    const availability = {};
-    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => {
-      availability[i.dataset.day] = Number(i.value) || 0;
-    });
-    const annualHours = Number($('f-annual').value) || plan.profile.annualHours;
-    const raceType = $('f-race-type').value;
-    const profile = normalizeProfile({ ...plan.profile, annualHours, raceType, availability });
+    const profile = setupProfile();
+    const annualHours = profile.annualHours;
+    const raceType = profile.raceType;
     const season = fitToRace({ annualHours, weeks: totalWeeks() });
 
     // Two ways the numbers can be wrong, and they are mutually exclusive by
@@ -2467,22 +2539,14 @@
   }
 
   function previewRefit() {
-    const availability = {};
-    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => {
-      availability[i.dataset.day] = Number(i.value) || 0;
-    });
-
     const cap = $('f-swimcap').value;
     const constraints = plan.profile.constraints
       .filter((c) => !(c.disc === 'Swim' && c.rule === 'maxPerWeek'));
     if (cap !== '') constraints.push({ disc: 'Swim', rule: 'maxPerWeek', value: Number(cap) });
 
     const profile = normalizeProfile({
-      ...plan.profile,
-      annualHours: Number($('f-annual').value) || plan.profile.annualHours,
+      ...setupProfile(),
       raceDate: $('f-race').value || null,
-      raceType: $('f-race-type').value,
-      availability,
       constraints,
     });
 

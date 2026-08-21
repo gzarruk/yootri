@@ -318,3 +318,48 @@ test('a plan in proportion to its race reports no multiple to worry about', () =
   })), 'get_plan_summary'));
   assert.equal(out.fit.raceDemandMultiple, null);
 });
+
+/* The week's shape */
+
+test('get_profile reports the week shape so the coach need not infer it', () => {
+  const s = createSession(basePlan());
+  const prof = parse(call(s, 'get_profile'));
+  assert.ok('weekShape' in prof, 'the coach cannot steer what it cannot read');
+  assert.equal(prof.weekShape.enabled, true);
+  assert.equal(prof.weekShape.spread, 'proportional');
+});
+
+test('set_week_shape sends displaced hours where the athlete asked', () => {
+  const s = createSession(basePlan());
+  call(s, 'set_week_shape', { spread: 'weekend' });
+  assert.equal(parse(call(s, 'get_profile')).weekShape.spread, 'weekend');
+});
+
+test('set_week_shape pins a day to a fixed figure', () => {
+  const s = createSession(basePlan());
+  call(s, 'set_availability', { day: 'Wed', minutes: 180 });
+  call(s, 'set_week_shape', { pins: { Wed: 45 } });
+  const wk = parse(call(s, 'get_week', { week: 3 }));
+  const wed = wk.sessions.filter((x) => x.day === 'Wed').reduce((a, x) => a + x.minutes, 0);
+  assert.ok(wed <= 45, `Wednesday holds ${wed} minutes against a 45-minute pin`);
+});
+
+test('set_week_shape can hand the week back to plain availability', () => {
+  const s = createSession(basePlan());
+  call(s, 'set_week_shape', { enabled: false });
+  assert.equal(parse(call(s, 'get_profile')).weekShape.enabled, false);
+});
+
+test('set_week_shape rejects a spread policy it does not understand', () => {
+  const s = createSession(basePlan());
+  const r = call(s, 'set_week_shape', { spread: 'whenever' });
+  assert.equal(r.isError, true);
+  assert.equal(s.draft, null, 'a rejected call must not leave a half-made draft');
+});
+
+test('set_week_shape rejects a pin on something that is not a weekday', () => {
+  const s = createSession(basePlan());
+  const r = call(s, 'set_week_shape', { pins: { Funday: 60 } });
+  assert.equal(r.isError, true);
+  assert.equal(s.draft, null);
+});
