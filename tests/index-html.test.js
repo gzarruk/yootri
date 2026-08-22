@@ -169,6 +169,38 @@ test('every local asset index.html references is in the repo', () => {
   }
 });
 
+/** The sizes a .ico actually carries, read from its ICONDIR. A 0 byte means 256. */
+function icoSizes(buf) {
+  const count = buf.readUInt16LE(4);
+  return new Set(Array.from({ length: count }, (_, i) => {
+    const e = 6 + i * 16;
+    return `${buf[e] || 256}x${buf[e + 1] || 256}`;
+  }));
+}
+
+test('a favicon link that advertises a size really has that size', () => {
+  /* `sizes` is a promise to the browser: it picks an icon on the strength of
+     this attribute and only then downloads it. Advertise 32x32 and ship a file
+     holding nothing but a 16x16 and the tab gets a blurry upscale — with no
+     error anywhere to say so. This caught exactly that. */
+  const links = [...HTML.matchAll(/<link\b[^>]*\brel="icon"[^>]*>/gi)].map((m) => m[0]);
+  assert.ok(links.length > 0, 'index.html declares no icon links — has the markup changed?');
+
+  let checked = 0;
+  for (const tag of links) {
+    const sizes = tag.match(/\bsizes="([^"]+)"/i);
+    const href = tag.match(/\bhref="([^"]+)"/i);
+    if (!sizes || !href || !href[1].endsWith('.ico')) continue;
+    const path = href[1].split(/[?#]/)[0].replace(/^\//, '');
+    const have = icoSizes(readFileSync(new URL(path, ROOT)));
+    for (const want of sizes[1].trim().split(/\s+/)) {
+      assert.ok(have.has(want), `${path} is linked as sizes="${want}" but holds only ${[...have].join(', ')}`);
+      checked++;
+    }
+  }
+  assert.ok(checked > 0, 'no sized .ico link found — has the markup changed?');
+});
+
 /* ---- the boundary CLAUDE.md draws ---- */
 
 test('the engine never reaches into the page', () => {
