@@ -213,3 +213,20 @@ test('a missed session keeps its RPE and note, which can still be meaningful', (
   assert.equal(a.rpe, 9);
   assert.equal(a.note, 'flu');
 });
+
+test('an actual can name the activity it was logged from', () => {
+  const a = normalizeActual({ status: 'done', min: 42, activityId: 'garmin:17234567890' });
+  assert.equal(a.activityId, 'garmin:17234567890');
+});
+
+test('an actual without an activity has no activityId key at all', () => {
+  // Absent rather than null, so every actual stored before this existed is
+  // still deep-equal to what it normalizes to.
+  assert.equal('activityId' in normalizeActual({ status: 'done', min: 42 }), false);
+  assert.equal('activityId' in normalizeActual({ status: 'done', min: 42, activityId: '' }), false);
+});
+
+test('an activity id is bounded', () => {
+  const a = normalizeActual({ status: 'done', activityId: 'garmin:' + '9'.repeat(200) });
+  assert.equal(a.activityId.length, 64);
+});

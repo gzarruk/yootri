@@ -294,3 +294,29 @@ test('a plan file with no benchmarks at all imports with an empty list', () => {
   assert.equal(back.ok, true);
   assert.deepEqual(back.plan.benchmarks, []);
 });
+
+/* ---- synced activities travel; heart rate does not ---- */
+
+test('synced activities and their coverage survive the round trip', () => {
+  const activity = { id: 'garmin:1001', source: 'garmin', date: '2026-01-06', disc: 'Run', durationS: 3600 };
+  const sync = { source: 'garmin', from: '2025-12-01', through: '2026-01-10', at: 5 };
+  const p = { ...fullPlan(), activities: [activity], activitySync: sync };
+  const back = readPlanFile(JSON.stringify(exportEnvelope(p)));
+  assert.equal(back.ok, true);
+  assert.deepEqual(back.plan.activities, [activity]);
+  assert.deepEqual(back.plan.activitySync, sync);
+});
+
+test('a plan file carrying heart rate comes back without it', () => {
+  const activity = { id: 'garmin:1001', source: 'garmin', date: '2026-01-06', disc: 'Run', durationS: 3600,
+    hr: { avg: 173, max: 187 }, averageHR: 173 };
+  const file = JSON.stringify(exportEnvelope({ ...fullPlan(), activities: [activity] }));
+  const back = readPlanFile(file);
+  assert.equal(back.ok, true);
+  // Scoped to the activities: the rest of the plan carries timestamps like
+  // 1737000000000, which would match the digits for the wrong reason.
+  assert.deepEqual(back.plan.activities, [
+    { id: 'garmin:1001', source: 'garmin', date: '2026-01-06', disc: 'Run', durationS: 3600 },
+  ]);
+  assert.equal(JSON.stringify(back.plan.activities).includes('173'), false);
+});

@@ -618,3 +618,65 @@ test('a tune-up race week is built around the race day', () => {
   }
   assert.ok(week.some((x) => durToMin(x.dur) > 0), 'the days before it still hold the week');
 });
+
+/* ---- synced activities -------------------------------------------------- */
+
+const syncedRun = (over = {}) => ({
+  id: 'garmin:1001', source: 'garmin', date: '2026-01-06', time: '07:30', sport: 'running',
+  disc: 'Run', name: 'Morning Run', durationS: 3600, movingS: 3550, distanceM: 12000, ...over,
+});
+
+test('a plan always has an activity list, even one that predates them', () => {
+  assert.deepEqual(loadPlan(v2()).activities, []);
+  assert.equal('activitySync' in loadPlan(v2()), false, 'no sync means no coverage, not an empty one');
+});
+
+test('loadPlan cleans the activities it was handed', () => {
+  const p = loadPlan({ ...loadPlan(v2()), activities: [syncedRun(), { junk: true }, syncedRun({ name: 'Renamed' })] });
+  assert.deepEqual(p.activities, [syncedRun({ name: 'Renamed' })]);
+});
+
+test('loadPlan takes heart rate back off a hand-edited plan', () => {
+  const p = loadPlan({ ...loadPlan(v2()), activities: [{ ...syncedRun(), hr: { avg: 173, max: 187 }, avgHr: 173 }] });
+  assert.equal(JSON.stringify(p.activities).includes('173'), false);
+  assert.equal(JSON.stringify(p.activities).includes('187'), false);
+});
+
+test('loadPlan keeps a valid sync coverage and drops a broken one', () => {
+  const base = loadPlan(v2());
+  const good = { source: 'garmin', from: '2025-12-01', through: '2026-01-10', at: 5 };
+  assert.deepEqual(loadPlan({ ...base, activitySync: good }).activitySync, good);
+  assert.equal('activitySync' in loadPlan({ ...base, activitySync: { from: 'x' } }), false);
+});
+
+test('loadPlan stays idempotent once activities are on the plan', () => {
+  const once = loadPlan({ ...loadPlan(v2()), activities: [syncedRun()],
+    activitySync: { source: 'garmin', from: '2025-12-01', through: '2026-01-10', at: 5 } });
+  assert.deepEqual(loadPlan(once), once);
+});
+
+test('a new season carries the synced history across, like benchmarks', () => {
+  const sync = { source: 'garmin', from: '2025-12-01', through: '2026-01-10', at: 5 };
+  const p = newPlan({ name: 'Next', startISO: '2026-02-02', activities: [syncedRun()], activitySync: sync });
+  assert.deepEqual(p.activities, [syncedRun()]);
+  assert.deepEqual(p.activitySync, sync);
+  assert.deepEqual(newPlan({ name: 'Fresh', startISO: '2026-02-02' }).activities, []);
+});
+
+test('applyDraft keeps activities synced after the draft was taken', () => {
+  // The coach snapshots a draft at its first tool call. A sync that lands while
+  // the athlete is still reading the diff must not be rolled back by Apply.
+  const p = loadPlan(v2());
+  const draft = structuredClone(p);
+  const synced = { ...p, activities: [syncedRun()],
+    activitySync: { source: 'garmin', from: '2025-12-01', through: '2026-01-10', at: 5 } };
+  const applied = applyDraft(synced, draft);
+  assert.deepEqual(applied.activities, synced.activities);
+  assert.deepEqual(applied.activitySync, synced.activitySync);
+});
+
+test('applyDraft does not invent coverage for a plan that never synced', () => {
+  const p = loadPlan(v2());
+  const applied = applyDraft(p, structuredClone(p));
+  assert.equal('activitySync' in applied, false);
+});
