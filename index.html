@@ -1356,6 +1356,7 @@
     ingestSynced, mergeActivities, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, bridgeErrorMessage,
   } from './assets/coach/synced.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
+  import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
 
   /* =========================================================================
      Data model — static sample plan. Swap this (and the storage layer below)
@@ -2498,7 +2499,11 @@
      what "today" is, and the heart rate this browser synced from Garmin. The
      plan never carries heart rate, so it can only come from here. */
   function coachContext() {
-    return { today: toISO(new Date()), hrById: hrLookup(readHrStore()) };
+    return {
+      today: toISO(new Date()),
+      hrById: hrLookup(readHrStore()),
+      hrThresholds: normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) ?? null,
+    };
   }
 
   function openCoach() {
@@ -2506,7 +2511,7 @@
     if (!coach) coach = { session: createSession(plan, ctx), busy: false };
     coach.session.plan = plan;   // always reason about the plan as it is now
     coach.session.today = ctx.today;
-    coach.session.device = { ...coach.session.device, hrById: ctx.hrById };
+    coach.session.device = { ...coach.session.device, hrById: ctx.hrById, hrThresholds: ctx.hrThresholds };
     if (!getKey()) return renderKeyForm();
     renderCoach();
   }
@@ -3041,7 +3046,7 @@
     ['What is stored if you sign in.',
       'From Google: an account identifier, your email address and your display name. From yootri: your plans — the schedule, your profile settings, which sessions you marked done, what you logged against them, including any note you typed, and any activities you synced from Garmin. It is held in Google Cloud Firestore, in ' + mustSet(PRIVACY_REGION, 'PRIVACY_REGION') + '. Google acts as the processor.'],
     ['Activities from Garmin.',
-      'Only if you run the Garmin bridge on your own computer and pair this browser with it. The activities it reads — date and start time, sport, duration, distance, power, the effort rating you gave, and the activity’s name — are kept with the plan you synced them into, so they sync with it when you are signed in and are included when you export it. The average and maximum heart rate of each activity stay in this browser: they are never written into a plan, never synced and never exported.'],
+      'Only if you run the Garmin bridge on your own computer and pair this browser with it. The activities it reads — date and start time, sport, duration, distance, power, the effort rating you gave, and the activity’s name — are kept with the plan you synced them into, so they sync with it when you are signed in and are included when you export it. The average and maximum heart rate of each activity stay in this browser: they are never written into a plan, never synced and never exported, and so do any heart-rate thresholds you enter for working out training load. If you use the coach, the training load figures it reads — some of them worked out from that heart rate — go to the AI provider you configured, along with the rest of what it reads.'],
     ['What never leaves this browser, signed in or not.',
       'Your AI provider API key and every coach conversation, which are stripped before anything is sent, and heart rate read from Garmin, which is never put on a plan at all. None of these is in an export either.'],
     ['What it is used for.',
@@ -4572,6 +4577,9 @@
 
   const GARMIN_CONFIG_KEY = 'yootri_garmin';
   const GARMIN_HR_KEY = 'yootri_activity_hr';
+  // Heart-rate thresholds for training load: this browser only, like the heart
+  // rate they are applied to.
+  const HR_THRESHOLDS_KEY = 'yootri_hr_thresholds';
   const GARMIN_DEFAULT_URL = 'http://127.0.0.1:8765';
   // Loopback only, so the token cannot be sent anywhere but this computer.
   const GARMIN_URL_RE = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
@@ -4624,6 +4632,7 @@
         'this plan and sync with it; their heart rate stays in this browser and is never written into a plan, ' +
         'synced or exported.' + (synced ? ' ' + synced + ' synced ' + (synced === 1 ? 'activity is' : 'activities are') + ' on this plan.' : '') + '</p>' +
       (message ? '<div class="diff-issues"><b class="' + (tone === 'ok' ? 'ok' : 'err') + '">' + esc(message) + '</b></div>' : '') +
+      (synced ? trainingLoadSectionHTML() : '') +
       '<div class="pnl-act">' +
         (garminConfig() ? '<button type="button" class="btn btn-ghost spacer" id="gm-forget">Disconnect this browser</button>' : '') +
         (synced ? '<button type="button" class="btn btn-ghost' + (garminConfig() ? '' : ' spacer') + '" id="gm-clear">Remove synced activities</button>' : '') +
@@ -4639,6 +4648,8 @@
     const invalid = 'The address must be http://127.0.0.1:<port> or http://localhost:<port>, and the token is the long one `make garmin` prints.';
 
     $('gm-close').addEventListener('click', closePanel);
+    const loadSave = $('gm-load-save');
+    if (loadSave) loadSave.addEventListener('click', saveTrainingLoadSettings);
     $('gm-test').addEventListener('click', async () => {
       const c = typed();
       if (!valid(c)) { openGarminSetupPanel(invalid); return; }
@@ -4666,6 +4677,7 @@
     if (forget) forget.addEventListener('click', () => {
       remove(GARMIN_CONFIG_KEY);
       remove(GARMIN_HR_KEY);
+      remove(HR_THRESHOLDS_KEY);
       closePanel();
       renderToolbar();
       setStatus('Garmin disconnected from this browser');
@@ -4686,6 +4698,71 @@
       renderAll();
       openGarminSetupPanel('Synced activities removed from this plan.', 'ok');
     });
+  }
+
+  /* ---- Training load settings, shown in the Garmin panel -------------------
+
+     FTP and CSS are the athlete's own references and go on the plan (as
+     `loadRefs`), so they sync. Heart-rate thresholds do not: they stay in this
+     browser beside the heart rate they are applied to. Nothing computed from
+     either is stored — load is worked out when it is shown (load.js). */
+
+  const cssText = (secs) => (secs ? Math.floor(secs / 60) + ':' + String(Math.round(secs % 60)).padStart(2, '0') : '');
+
+  function trainingLoadSectionHTML() {
+    const refs = plan.loadRefs || {};
+    const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
+    const t = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
+    const r = trainingLoad(plan.activities || [], {
+      today: toISO(new Date()), weeks: 4, thresholds: t, hrById: hrLookup(readHrStore()), sync: plan.activitySync,
+    });
+    const scored = Object.values(r.byMethod).reduce((a, b) => a + b, 0);
+    const unscored = r.weeks.reduce((a, w) => a + w.unscored, 0);
+    const trimpOpt = (v, label) => '<option value="' + v + '"' + (hr.trimp === v ? ' selected' : '') + '>' + label + '</option>';
+    return '<h3 class="pnl-h3">Training load</h3>' +
+      '<p class="pnl-hint">A number per session where an hour at threshold is 100: from power for rides, pace for ' +
+        'runs and swims, your effort rating for strength, and heart rate for the rest. ' +
+        'Runs use your training paces’ result; the rest needs the references below.</p>' +
+      (scored
+        ? '<dl class="imp-facts">' +
+            '<div><dt>' + esc(r.labels.chronic) + '</dt><dd>' + r.chronic + '</dd></div>' +
+            '<div><dt>' + esc(r.labels.acute) + '</dt><dd>' + r.acute + '</dd></div>' +
+            '<div><dt>History</dt><dd>' + r.historyDays + ' days</dd></div>' +
+          '</dl>' +
+          (unscored ? '<p class="pnl-hint">' + unscored + ' session' + (unscored === 1 ? '' : 's') +
+            ' in the last four weeks could not be scored yet.</p>' : '')
+        : '<p class="pnl-hint">No session can be scored yet.</p>') +
+      '<div class="pnl-grid">' +
+        field('FTP (watts)', '<input type="number" class="input" id="gm-ftp" min="50" max="600" value="' + esc(refs.ftpW || '') + '" />') +
+        field('CSS (per 100 m)', '<input type="text" class="input" id="gm-css" placeholder="1:40" value="' + esc(cssText(refs.cssSecPer100m)) + '" />') +
+        field('Threshold heart rate', '<input type="number" class="input" id="gm-lthr" min="80" max="220" value="' + esc(hr.lthr || '') + '" />') +
+        field('Maximum heart rate', '<input type="number" class="input" id="gm-hrmax" min="100" max="230" value="' + esc(hr.max || '') + '" />') +
+        field('Resting heart rate', '<input type="number" class="input" id="gm-hrrest" min="25" max="100" value="' + esc(hr.rest || '') + '" />') +
+        field('Heart-rate formula', '<select class="input" id="gm-trimp">' +
+          '<option value=""' + (hr.trimp ? '' : ' selected') + '>Choose…</option>' +
+          trimpOpt('male', 'Banister, men') + trimpOpt('female', 'Banister, women') + '</select>') +
+      '</div>' +
+      '<p class="pnl-hint">FTP and CSS are saved with the plan. The heart-rate figures stay in this browser.</p>' +
+      '<div class="pnl-act"><button type="button" class="btn btn-secondary" id="gm-load-save">Save training load settings</button></div>';
+  }
+
+  function saveTrainingLoadSettings() {
+    const val = (id) => $(id).value.trim();
+    const css = parseClock(val('gm-css'));
+    const refs = normalizeLoadRefs({ ftpW: val('gm-ftp'), cssSecPer100m: css });
+    if (refs) plan.loadRefs = refs;
+    else delete plan.loadRefs;
+    const hr = normalizeHrThresholds({
+      lthr: val('gm-lthr'), max: val('gm-hrmax'), rest: val('gm-hrrest'), trimp: val('gm-trimp'),
+    });
+    if (hr) save(HR_THRESHOLDS_KEY, hr);
+    else remove(HR_THRESHOLDS_KEY);
+    persistPlan();
+    if (coach && coach.session) {
+      coach.session.plan = plan;
+      coach.session.device = { ...coach.session.device, hrThresholds: hr ?? null };
+    }
+    openGarminSetupPanel('Training load settings saved.', 'ok');
   }
 
   /* `?garmin=setup` opens the pairing panel once and leaves the address bar

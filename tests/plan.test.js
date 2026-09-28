@@ -680,3 +680,26 @@ test('applyDraft does not invent coverage for a plan that never synced', () => {
   const applied = applyDraft(p, structuredClone(p));
   assert.equal('activitySync' in applied, false);
 });
+
+/* ---- training-load references (FTP, CSS) ---- */
+
+test('load references are cleaned on the way in, and absent stays absent', () => {
+  const base = loadPlan(v2());
+  assert.equal('loadRefs' in base, false);
+  const p = loadPlan({ ...base, loadRefs: { ftpW: 250, cssSecPer100m: 98, hr: 170 } });
+  assert.deepEqual(p.loadRefs, { ftpW: 250, cssSecPer100m: 98 });
+  assert.equal('loadRefs' in loadPlan({ ...base, loadRefs: { ftpW: 9999 } }), false);
+  assert.deepEqual(loadPlan(p), p, 'idempotent');
+});
+
+test('a new season keeps the load references, like benchmarks', () => {
+  const p = newPlan({ name: 'Next', startISO: '2026-02-02', loadRefs: { ftpW: 250 } });
+  assert.deepEqual(p.loadRefs, { ftpW: 250 });
+});
+
+test('applyDraft keeps load references set after the draft was taken', () => {
+  const p = loadPlan(v2());
+  const draft = structuredClone(p);
+  const applied = applyDraft({ ...p, loadRefs: { ftpW: 250 } }, draft);
+  assert.deepEqual(applied.loadRefs, { ftpW: 250 });
+});

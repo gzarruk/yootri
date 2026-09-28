@@ -21,6 +21,7 @@ import { weekIndexOf, weekdayOf } from './calendar.js';
 import { normalizeEvents, secondaryRaces, seedEventsFromProfile } from './events.js';
 import { normalizeBenchmarks } from './paces.js';
 import { normalizeActivities, normalizeActivitySync } from './synced.js';
+import { normalizeLoadRefs } from './load.js';
 
 const clone = (x) => structuredClone(x);
 const weekKey = (absWeek) => `w${absWeek}`;
@@ -43,17 +44,21 @@ export function loadPlan(raw) {
   const benchmarks = normalizeBenchmarks(p.benchmarks);
   const activities = normalizeActivities(p.activities);
   const activitySync = normalizeActivitySync(p.activitySync) ?? undefined;
+  const loadRefs = normalizeLoadRefs(p.loadRefs);
 
   // Avoid handing back a needlessly different object for an already-clean plan,
   // so `loadPlan(loadPlan(x))` stays deep-equal to `loadPlan(x)`.
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (same(profile, p.profile) && same(benchmarks, p.benchmarks)
-    && same(activities, p.activities) && same(activitySync, p.activitySync)) return p;
+    && same(activities, p.activities) && same(activitySync, p.activitySync)
+    && same(loadRefs, p.loadRefs)) return p;
   const out = { ...p, profile, benchmarks, activities };
   // No sync means no coverage — absent, not an empty span somebody could read
-  // as "covered nothing".
+  // as "covered nothing". Load references likewise: absent until entered.
   if (activitySync) out.activitySync = activitySync;
   else delete out.activitySync;
+  if (loadRefs) out.loadRefs = loadRefs;
+  else delete out.loadRefs;
   return out;
 }
 
@@ -345,6 +350,10 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
   next.activities = plan.activities ?? [];
   if (plan.activitySync) next.activitySync = plan.activitySync;
   else delete next.activitySync;
+  // FTP and CSS are entered in a panel that writes straight to the plan, so the
+  // same holds for them: a draft from before they were entered cannot undo them.
+  if (plan.loadRefs) next.loadRefs = plan.loadRefs;
+  else delete next.loadRefs;
 
   return next;
 }
@@ -385,10 +394,11 @@ const emptyWeek = (idPrefix) =>
  * @param {object[]} [opts.benchmarks] inherited running results
  * @param {object[]} [opts.activities] inherited synced activities
  * @param {object} [opts.activitySync] the days those activities cover
+ * @param {object} [opts.loadRefs] inherited FTP and CSS
  * @param {'fitted'|'empty'} [opts.mode]
  */
 export function newPlan({
-  name, startISO, raceDate = null, raceType, profile, benchmarks, activities, activitySync,
+  name, startISO, raceDate = null, raceType, profile, benchmarks, activities, activitySync, loadRefs,
   mode = 'fitted', id, now = Date.now(),
 } = {}) {
   // Carry the athlete's own constraints across — their week has not changed
@@ -439,6 +449,7 @@ export function newPlan({
     // best evidence of what they can train next month, whichever race is next.
     activities: normalizeActivities(activities),
     ...(normalizeActivitySync(activitySync) ? { activitySync: normalizeActivitySync(activitySync) } : {}),
+    ...(normalizeLoadRefs(loadRefs) ? { loadRefs: normalizeLoadRefs(loadRefs) } : {}),
     done: {},
     actuals: {},
     chat: [],

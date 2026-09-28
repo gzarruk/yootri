@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   MILE_METERS, ZONES, ZONE_FOR_LABEL,
   oxygenCost, fractionAtDuration, velocityAtCost, vdotFrom, pacesFrom, formatPace,
-  normalizeBenchmark, normalizeBenchmarks, currentBenchmark, upsertBenchmark, removeBenchmark,
+  normalizeBenchmark, normalizeBenchmarks, currentBenchmark, upsertBenchmark, removeBenchmark, thresholdSpeedFrom,
   paceTableFor,
 } from '../assets/coach/paces.js';
 
@@ -296,4 +296,14 @@ test('no current benchmark means no pace table', () => {
 test('a benchmark picked from a Garmin sync keeps its source', () => {
   const b = normalizeBenchmark({ id: 'bm-g', date: '2026-09-20', distanceMeters: 10000, timeSeconds: 2520, source: 'garmin' });
   assert.equal(b.source, 'garmin');
+});
+
+test('threshold speed is the pace the benchmark says could be held for an hour', () => {
+  const tenK = [{ id: 'b', date: '2026-09-01', distanceMeters: 10000, timeSeconds: 2400, source: 'manual', current: true }];
+  const mps = thresholdSpeedFrom(tenK);
+  // Self-consistent with the model it comes from: an hour at that speed is a
+  // race the same VDOT predicts.
+  const hour = vdotFrom({ distanceMeters: mps * 3600, timeSeconds: 3600 });
+  assert.ok(Math.abs(hour - vdotFrom(tenK[0])) < 0.05, `${hour} vs ${vdotFrom(tenK[0])}`);
+  assert.equal(thresholdSpeedFrom([]), null);
 });

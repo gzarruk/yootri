@@ -278,3 +278,18 @@ test('if the page talks to the bridge, the privacy notice says what it keeps', (
   assert.match(notice, /Garmin/, 'the notice does not mention synced Garmin activities');
   assert.match(notice, /heart rate/i, 'the notice does not say where heart rate is kept');
 });
+
+test('if heart-rate thresholds are kept, the privacy notice says where load figures go', () => {
+  /* Load worked out from heart rate reaches the athlete's AI provider when the
+     coach reads it. The notice has to say so before the page can do it. */
+  if (!HTML.includes('yootri_hr_thresholds')) return;
+  const start = HTML.indexOf('const PRIVACY_SECTIONS');
+  const notice = HTML.slice(start, HTML.indexOf('];', start));
+  assert.match(notice, /training load/i);
+  assert.match(notice, /AI provider/);
+});
+
+test('heart-rate thresholds are kept in this browser, never on a plan', () => {
+  if (!HTML.includes('yootri_hr_thresholds')) return;
+  assert.equal(/plan\.hrThresholds|plan\.loadRefs\s*=\s*\{[^}]*(lthr|rest|max)/.test(HTML), false);
+});

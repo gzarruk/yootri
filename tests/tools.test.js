@@ -738,3 +738,58 @@ test('a benchmark offer is passed through to the model', () => {
   assert.ok(offer);
   assert.equal(offer.offer.kind, 'benchmark');
 });
+
+/* ---- training load ---- */
+
+const loadPlanFixture = () => ({
+  ...historyPlan(),
+  loadRefs: { ftpW: 250 },
+  benchmarks: [{ id: 'b', date: '2026-09-01', distanceMeters: 10000, timeSeconds: 2400, source: 'manual', current: true }],
+});
+
+test('get_training_load reports the two averages and what the figures rest on', () => {
+  const s = createSession(loadPlanFixture(), { today: '2026-09-28' });
+  const r = call(s, 'get_training_load', { weeks: 4 });
+  assert.equal(r.isError, false, r.content);
+  const t = parse(r);
+  assert.equal(t.weeks.length, 4);
+  assert.ok(t.chronic > 0 && t.acute > 0);
+  assert.deepEqual(Object.keys(t.byMethod).sort(), ['pace', 'power']);
+  assert.match(t.labels.chronic, /chronic training load/);
+  assert.equal(s.draft, null);
+});
+
+test('get_training_load says what would let more sessions be scored', () => {
+  const s = createSession({ ...historyPlan(), benchmarks: [] }, { today: '2026-09-28' });
+  const t = parse(call(s, 'get_training_load', {}));
+  assert.ok(t.missing.ftp > 0 || t.missing['run-threshold'] > 0);
+  assert.ok(Array.isArray(t.howToScoreMore) && t.howToScoreMore.length > 0);
+});
+
+test('heart rate can score a session, and still never reaches the model', () => {
+  const p = loadPlanFixture();
+  p.activities = [...p.activities, { id: 'garmin:yoga', source: 'garmin', date: '2026-09-23', disc: 'Other', durationS: 3600 }];
+  const hrById = new Map([['garmin:yoga', { avg: 173, max: 187 }]]);
+  const hrThresholds = { lthr: 170, max: 190, rest: 50, trimp: 'male' };
+  const s = createSession(p, { today: '2026-09-28', hrById, hrThresholds });
+  const r = call(s, 'get_training_load', { weeks: 2 });
+  assert.equal(parse(r).byMethod['heart-rate'], 1);
+  noHr(r.content.replace(/"heart-rate"/g, '"hr-method"'));
+  const acts = call(s, 'get_activities', { from: '2026-09-20' });
+  const yoga = parse(acts).activities.find((x) => x.id === 'garmin:yoga');
+  assert.equal(yoga.load.method, 'heart-rate');
+  assert.equal(typeof yoga.load.value, 'number');
+  noHr(acts.content.replace(/"heart-rate"/g, '"hr-method"'));
+});
+
+test('get_activities carries each session’s load and how it was worked out', () => {
+  const s = createSession(loadPlanFixture(), { today: '2026-09-28' });
+  const ride = parse(call(s, 'get_activities', { from: '2026-09-20', discipline: 'Bike' })).activities[0];
+  assert.deepEqual(Object.keys(ride.load).sort(), ['method', 'value']);
+  assert.equal(ride.load.method, 'power');
+});
+
+test('the load tool says it describes training, not the athlete', () => {
+  const d = TOOL_DEFS.find((t) => t.name === 'get_training_load').description;
+  assert.match(d, /training, not the athlete/i);
+});

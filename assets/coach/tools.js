@@ -26,6 +26,7 @@ import { weekIndexOf, weekdayOf } from './calendar.js';
 import { weeksUntil, parseISO, toISO, addDays } from './dates.js';
 import { trainingHistory, HISTORY_DISCIPLINES } from './history.js';
 import { SYNCED_DISCIPLINES } from './synced.js';
+import { loadThresholds, activityLoad, trainingLoad } from './load.js';
 import {
   EVENT_KINDS, EVENT_PRIORITIES, RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES,
   STORABLE_RACE_TYPES, raceTypeLabel, normalizeEvents, upsertEvent, removeEvent,
@@ -36,6 +37,24 @@ const clone = (x) => structuredClone(x);
 const weekKey = (w) => `w${w}`;
 const ok = (data) => ({ content: typeof data === 'string' ? data : JSON.stringify(data), isError: false });
 const fail = (msg) => ({ content: msg, isError: true });
+
+/* Training load reads thresholds from three places: the running benchmark and
+   the plan's FTP/CSS (both on the plan), and heart-rate thresholds (this
+   browser only, carried on the session). */
+const thresholdsFor = (s, p) =>
+  loadThresholds({ benchmarks: p.benchmarks ?? [], loadRefs: p.loadRefs, hrThresholds: s.device?.hrThresholds });
+
+/* What to tell the athlete when sessions could not be scored, by what was missing. */
+const SCORE_MORE = {
+  ftp: 'Enter an FTP (Garmin panel, Training load) to score rides from power.',
+  power: 'Rides without power can only be scored from heart rate.',
+  'run-threshold': 'Add a running result in Training paces to score runs from pace.',
+  css: 'Enter a CSS swim pace (Garmin panel, Training load) to score swims.',
+  distance: 'Sessions recorded without a distance cannot be scored from pace.',
+  rpe: 'Strength sessions need an effort rating in Garmin to be scored.',
+  'heart-rate': 'Sessions recorded without heart rate cannot fall back on it.',
+  'hr-thresholds': 'Heart-rate thresholds (entered on this device) would let heart rate score the rest.',
+};
 
 /** A working session: the stored plan, plus whatever the model has proposed.
 
@@ -323,6 +342,16 @@ export const TOOL_DEFS = [
         discipline: { type: 'string', description: 'Only this discipline: Swim, Bike, Run, Strength or Other.' },
         limit: { type: 'integer', description: 'At most this many, up to 100. Default 30.' },
       },
+      required: [],
+    },
+  },
+  {
+    name: 'get_training_load',
+    description:
+      'Training load from synced activities, on a scale where an hour at threshold is 100: the total per week, and the chronic (42-day) and acute (7-day) averages as of today. Each session is scored the most direct way its data allows — power for rides, pace for runs and swims, the effort rating for strength, heart rate otherwise — and sessions nothing can score are counted, with what would let them be. These numbers describe training, not the athlete: use them to compare weeks and to judge how steeply volume is rising, and draw no conclusion about how the athlete is. Say how many days of history they rest on; a chronic figure built on a few weeks is still climbing. It never contains heart rate.',
+    input_schema: {
+      type: 'object',
+      properties: { weeks: { type: 'integer', description: 'How many full weeks before this one, 1-26. Default 8.' } },
       required: [],
     },
   },
@@ -631,8 +660,23 @@ const HANDLERS = {
     });
   },
 
+  get_training_load(s, input) {
+    const p = current(s);
+    const today = s.today ?? p.activitySync?.through ?? null;
+    if (!(p.activities ?? []).length || !today) {
+      return ok('Nothing has been synced from Garmin for this plan, so there is no training load to work out.');
+    }
+    const r = trainingLoad(p.activities, {
+      today, weeks: Number(input.weeks) || 8, thresholds: thresholdsFor(s, p), hrById: s.device?.hrById ?? new Map(),
+      sync: p.activitySync,
+    });
+    return ok({ ...r, howToScoreMore: Object.keys(r.missing).map((k) => SCORE_MORE[k]).filter(Boolean) });
+  },
+
   get_activities(s, input) {
     const p = current(s);
+    const thresholds = thresholdsFor(s, p);
+    const hrById = s.device?.hrById ?? new Map();
     if (input.discipline != null && !SYNCED_DISCIPLINES.includes(input.discipline)) {
       return fail(`"${input.discipline}" is not a discipline here. Use one of: ${SYNCED_DISCIPLINES.join(', ')}.`);
     }
@@ -667,6 +711,7 @@ const HANDLERS = {
         rpe: a.rpe,
         race: a.race,
         loggedAs: loggedAs.get(a.id) ?? null,
+        load: (({ value, method }) => ({ value, method }))(activityLoad(a, thresholds, hrById.get(a.id) ?? null)),
       }));
     if (!list.length) return ok(`No synced activities between ${from ?? 'the start'} and ${to ?? 'now'}.`);
     return ok({ from, to, activities: list });

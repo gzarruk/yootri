@@ -320,3 +320,8 @@ test('a plan file carrying heart rate comes back without it', () => {
   ]);
   assert.equal(JSON.stringify(back.plan.activities).includes('173'), false);
 });
+
+test('load references travel with the plan', () => {
+  const back = readPlanFile(JSON.stringify(exportEnvelope({ ...fullPlan(), loadRefs: { ftpW: 250, cssSecPer100m: 98 } })));
+  assert.deepEqual(back.plan.loadRefs, { ftpW: 250, cssSecPer100m: 98 });
+});
