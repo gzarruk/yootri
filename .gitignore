@@ -18,3 +18,12 @@ RELEASE-CHECKLIST.md
 
 # Browser-automation debris: console logs that capture real sign-in flows.
 .playwright-mcp/
+
+# The Garmin bridge's local environment. Its session and pairing token live in
+# ~/.config/yootri, never here — these two names are listed anyway, so a copy
+# made by hand into the tree can never be committed.
+tools/garmin-bridge/.venv/
+__pycache__/
+.pytest_cache/
+garmin-tokens.json
+garmin-bridge-token
