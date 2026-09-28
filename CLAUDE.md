@@ -12,6 +12,10 @@ the repo root by GitHub Pages — **anything committed here is public**.
   live, so they can be tested without a browser.
 - `assets/nocturne.css` — the "Nocturne" design-system base.
 - `tests/` — `npm test` (plain `node --test`, no test framework).
+- `tools/garmin-bridge/` — the one part that is not plain files: a small Python
+  program (run with `uv`) that signs in to Garmin on the athlete's own machine
+  and answers the page on 127.0.0.1. `make garmin-test` runs its tests; CI runs
+  them too. See "Garmin" below.
 
 Because assets use relative paths and ES modules need a real origin, serve the
 folder rather than opening the file: `make dev` (see `tools/dev-server.mjs`).
@@ -36,6 +40,8 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `events.js` | The athlete's events. Races carry a *priority*: one is `primary` and is the only source of the plan's race date and distance, any number are `secondary` and get a taper landed on them. Also holds the lists of distances a race may be, and what each one is called on screen. |
 | `paces.js` | Running paces. Daniels' VDOT model over one benchmark result, and the benchmark list that holds it — the one-is-flagged shape `events.js` used before races needed three states. |
 | `activities.js` | Reading an activity export. Garmin's activity CSV, plus the arithmetic the page's TCX/GPX readers need. Total, like `portable.js`. |
+| `synced.js` | Activities synced from the Garmin bridge: the one boundary heart rate crosses (`splitSynced`), the allowlist a stored activity is held to, merging, sync windows and coverage, and the device-only heart-rate store's shape. Pure — the page fetches and stores. |
+| `match.js` | Which synced activity was which planned session: same date, same discipline, closest duration. Proposes actuals; never writes one, never over the athlete's own log. |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
@@ -124,13 +130,30 @@ once rather than leaving past weeks asserting last spring's fitness. What
 generation does write is `paceZone`, a band name, resolved from the session's
 own zone label so a card can never show "Z3–Z4" beside a band saying "easy".
 
-**Heart rate is not ingested, anywhere, and that is load-bearing rather than
-incidental.** The whole plan except `chat` syncs to Firestore, so a heart-rate
-field that reached a plan would be one sync from being stored. `activities.js`
-reads past those columns at the parse boundary and has a test asserting the
-value never survives; the Strava mapper in `index.html` does the same. Before
-adding it, read `../yootri-rnd/FINDINGS.md` (25 Aug) and §9 item 4 of the
-private legal note.
+**Heart rate never goes on a plan, and that is load-bearing rather than
+incidental.** The whole plan except `chat` syncs to Firestore and exports to a
+file, so a heart-rate field that reached a plan would be one sync from being
+stored. File imports and the Strava mapper still read past it entirely
+(`activities.js` has a test asserting the value never survives). Garmin sync is
+the one place it is read, since 28 Sep, and only per activity (average and
+maximum — no daily data of any kind): `splitSynced` in `synced.js` is the only
+function that touches it, and hands it back *separately* for the page to keep in
+this browser's own storage (`yootri_activity_hr`). The activity that goes on the
+plan carries none of it, and `normalizeSyncedActivity` is an allowlist that
+`loadPlan` also runs, so a hand-edited plan file cannot put it back. Anything
+later derived from it (training load) is computed at read time and never
+stored. Before widening what is read, read `../yootri-rnd/FINDINGS.md` (25 Aug
+and 28 Sep) and §9 item 4 of the private legal note.
+
+**Garmin.** Garmin's developer program only takes businesses, so the page asks
+`tools/garmin-bridge` — run by the athlete on their own machine, for their own
+account — on 127.0.0.1. It is off unless a browser has been paired
+(`?garmin=setup`), the way Strava is. Synced activities are *history*, not plan
+content: storing them changes no session, so they are written directly rather
+than through a draft (the same exception `commitBenchmarks` makes), while
+logging them against sessions goes through `setActual` like the session modal.
+`applyDraft` takes `activities` and `activitySync` from the stored plan, as it
+does `chat`, so a coach draft taken before a sync cannot roll it back.
 
 Plans are schema v3: absolute week keys (`w0`…`w15`), materialized sessions, and
 a stored `season`. A plan is self-contained, so changing the engine never

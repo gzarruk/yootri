@@ -244,3 +244,37 @@ test('no cloud call runs without consent', () => {
     assert.match(m[1], /hasSyncConsent\(\)/, `${fn} no longer checks hasSyncConsent()`);
   }
 });
+
+/* ---- the Garmin bridge ---- */
+
+test('the Garmin button is hidden until this browser is paired', () => {
+  /* The published page must not advertise a flow no visitor can use: the
+     button only appears once this browser holds a bridge address and token. */
+  const m = HTML.match(/<button\b[^>]*\bid="garmin-btn"[^>]*>/);
+  assert.ok(m, 'the Garmin button is gone from the toolbar');
+  assert.match(m[0], /class="[^"]*\bhidden\b/, 'the Garmin button is visible before anything is paired');
+});
+
+test('the pairing token can only ever be sent to this computer', () => {
+  /* The token goes wherever the stored address says. An address that is not a
+     loopback one — typed by mistake, or planted — must not be accepted. */
+  const m = HTML.match(/const GARMIN_URL_RE = (\/.+\/);/);
+  assert.ok(m, 'GARMIN_URL_RE is gone from index.html');
+  const re = new Function(`return ${m[1]}`)();
+  for (const ok of ['http://127.0.0.1:8765', 'http://localhost:8765', 'http://127.0.0.1:18765']) {
+    assert.equal(re.test(ok), true, ok);
+  }
+  for (const bad of ['https://evil.test', 'http://127.0.0.1.evil.test:8765', 'http://localhost:8765/x',
+    'http://10.0.0.2:8765', 'http://localhost', 'http://127.0.0.1:8765@evil.test']) {
+    assert.equal(re.test(bad), false, bad);
+  }
+});
+
+test('if the page talks to the bridge, the privacy notice says what it keeps', () => {
+  if (!HTML.includes('/v1/activities')) return;
+  const start = HTML.indexOf('const PRIVACY_SECTIONS');
+  const end = HTML.indexOf('];', start);
+  const notice = HTML.slice(start, end);
+  assert.match(notice, /Garmin/, 'the notice does not mention synced Garmin activities');
+  assert.match(notice, /heart rate/i, 'the notice does not say where heart rate is kept');
+});

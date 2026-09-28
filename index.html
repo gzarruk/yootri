@@ -980,6 +980,7 @@
     background: color-mix(in srgb, var(--color-text) 6%, transparent); }
   .diff-issues ul { margin: .3rem 0 0; padding-left: 1.1rem; }
   .diff-issues .err { color: #e08a6c; }
+  .diff-issues .ok { color: #84c08f; }
   .diff-empty { font-size: .85rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
   .pnl-h3 { margin: 1.25rem 0 .45rem; font-size: .72rem; font-weight: 600;
     letter-spacing: .06em; text-transform: uppercase;
@@ -1000,6 +1001,9 @@
   .bm-list .bm-tag { font-size: .68rem; letter-spacing: .05em; text-transform: uppercase;
     color: color-mix(in srgb, var(--color-text) 55%, transparent); }
   .bm-list .btn { padding: .2rem .55rem; font-size: .74rem; min-height: 0; }
+  .gm-list label { display: flex; align-items: center; gap: .55rem; width: 100%; cursor: pointer; }
+  .gm-list .bm-what { margin-right: auto; }
+  .card-actual .ph-watch { font-size: .85em; vertical-align: -.05em; }
   .card-meta .pace { font-variant-numeric: tabular-nums; }
   .imp-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: .6rem 1rem; margin: 1rem 0 .8rem; }
@@ -1226,6 +1230,13 @@
       <button type="button" class="btn btn-secondary" id="add-event-btn">
         <i class="ph ph-flag-pennant" aria-hidden="true"></i> Add event
       </button>
+      <!-- Reads activities from the Garmin bridge running on this computer
+           (tools/garmin-bridge). Not the cloud Sync button further along: this
+           one talks only to 127.0.0.1. Hidden until this browser is paired, so
+           the published page offers nothing a visitor cannot use. -->
+      <button type="button" class="btn btn-secondary hidden" id="garmin-btn">
+        <i class="ph ph-watch" aria-hidden="true"></i> Garmin
+      </button>
 
       <span class="seg" role="group" aria-label="View" id="view-seg">
         <label class="seg-opt"><input type="radio" name="view" value="week" />Week</label>
@@ -1341,6 +1352,10 @@
     STANDARD_DISTANCES, readActivitiesCsv, normalizeActivity, benchmarkCandidates, parseClock,
     trackDistanceMeters, lapTotals,
   } from './assets/coach/activities.js';
+  import {
+    ingestSynced, mergeActivities, nextSyncWindow, nextActivitySync, mergeHrStore, bridgeErrorMessage,
+  } from './assets/coach/synced.js';
+  import { matchActivities, MATCH } from './assets/coach/match.js';
 
   /* =========================================================================
      Data model — static sample plan. Swap this (and the storage layer below)
@@ -1607,7 +1622,7 @@
     undoBtn: $('undo-btn'),
     summary: $('summary'), board: $('board'), boardwrap: $('boardwrap'),
     calwrap: $('calwrap'), calendar: $('calendar'), viewSeg: $('view-seg'),
-    addEventBtn: $('add-event-btn'),
+    addEventBtn: $('add-event-btn'), garminBtn: $('garmin-btn'),
     chartCompleted: $('chart-completed'), chartmodeSeg: $('chartmode-seg'),
     chartScroll: $('chart-scroll'), chartSvg: $('chart-svg'), chartTip: $('chart-tip'),
     chartLegend: $('chart-legend'), modalRoot: $('modal-root'), dialogRoot: $('dialog-root'),
@@ -1654,6 +1669,7 @@
 
   function renderToolbar() {
     els.viewSeg.querySelectorAll('input[name="view"]').forEach((r) => { r.checked = r.value === state.view; });
+    els.garminBtn.classList.toggle('hidden', !garminConfig());
 
     if (state.view === 'month') {
       els.weekPos.textContent = fmtMonthISO(firstOfMonth(calMonth()));
@@ -1727,7 +1743,28 @@
     const rpe = a.rpe != null ? ' · RPE ' + a.rpe : '';
     if (did === planned && a.min == null) return rpe ? '<span class="card-actual">as planned' + rpe + '</span>' : '';
     const cls = did < planned ? ' short' : '';
-    return '<span class="card-actual' + cls + '">did ' + esc(fmtTotal(did) || '0m') + rpe + '</span>';
+    const from = syncedActivity(a.activityId);
+    const watch = from
+      ? '<i class="ph ph-watch" aria-label="From Garmin" title="From Garmin' + (from.name ? ': ' + esc(from.name) : '') + '"></i> '
+      : '';
+    return '<span class="card-actual' + cls + '">' + watch + 'did ' + esc(fmtTotal(did) || '0m') +
+      esc(syncedDetail(from)) + rpe + '</span>';
+  }
+
+  /* The synced activity an actual was logged from, if it is still on the plan. */
+  const syncedActivity = (id) => (id ? (plan.activities || []).find((x) => x.id === id) || null : null);
+
+  /* Distance and how fast, for a card: pace for a run, power for a ride, pace
+     per 100 m for a swim. Heart rate is not shown, here or anywhere. */
+  function syncedDetail(a) {
+    if (!a || !a.distanceM) return '';
+    const km = a.distanceM / 1000;
+    const secs = a.movingS || a.durationS;
+    let how = '';
+    if (a.disc === 'Run') how = formatPace(secs / km) + '/km';
+    else if (a.disc === 'Swim') how = formatPace(secs / (a.distanceM / 100)) + '/100m';
+    else if (a.disc === 'Bike' && a.avgPowerW) how = a.avgPowerW + ' W';
+    return ' · ' + (a.disc === 'Swim' ? Math.round(a.distanceM) + ' m' : km.toFixed(1) + ' km') + (how ? ' · ' + how : '');
   }
 
   /* The pace band a Run card should show, resolved at draw time rather than
@@ -2961,7 +2998,7 @@
 
   const PRIVACY_CONTACT = 'gzarruk@gmail.com';
   const PRIVACY_REGION = 'eur3 (Europe)';
-  const PRIVACY_VERSION = '2026-08-23';
+  const PRIVACY_VERSION = '2026-09-28';
 
   const mustSet = (v, name) => v || '\u26a0 SET ' + name + ' BEFORE PUBLISHING';
 
@@ -2971,9 +3008,11 @@
     ['Signed out, nothing is collected.',
       'yootri stores your plans in this browser and works fully without an account. Everything below applies only if you choose to sign in.'],
     ['What is stored if you sign in.',
-      'From Google: an account identifier, your email address and your display name. From yootri: your plans — the schedule, your profile settings, which sessions you marked done, and what you logged against them, including any note you typed. It is held in Google Cloud Firestore, in ' + mustSet(PRIVACY_REGION, 'PRIVACY_REGION') + '. Google acts as the processor.'],
+      'From Google: an account identifier, your email address and your display name. From yootri: your plans — the schedule, your profile settings, which sessions you marked done, what you logged against them, including any note you typed, and any activities you synced from Garmin. It is held in Google Cloud Firestore, in ' + mustSet(PRIVACY_REGION, 'PRIVACY_REGION') + '. Google acts as the processor.'],
+    ['Activities from Garmin.',
+      'Only if you run the Garmin bridge on your own computer and pair this browser with it. The activities it reads — date and start time, sport, duration, distance, power, the effort rating you gave, and the activity’s name — are kept with the plan you synced them into, so they sync with it when you are signed in and are included when you export it. The average and maximum heart rate of each activity stay in this browser: they are never written into a plan, never synced and never exported.'],
     ['What never leaves this browser, signed in or not.',
-      'Your AI provider API key, and every coach conversation. These are stripped before anything is sent and are not in an export either.'],
+      'Your AI provider API key and every coach conversation, which are stripped before anything is sent, and heart rate read from Garmin, which is never put on a plan at all. None of these is in an export either.'],
     ['What it is used for.',
       'Making your plans available on your other devices. That is the only purpose. There is no analytics, no tracking, no advertising, and your data is never shared or sold.'],
     ['The basis for it.',
@@ -3092,8 +3131,8 @@
       '<h2>Turn on sync?</h2>' +
       '<p class="pnl-sub">You are signed in. Nothing has been sent yet.</p>' +
       '<div class="legal">' +
-        '<p>Turning sync on copies your plans — the schedule, your profile, what you marked done and what you logged — to Google Cloud Firestore, so they follow you to your other devices. Your Google email address and display name are stored alongside them.</p>' +
-        '<p><b>Your API key and your coach conversations are never sent</b>, signed in or not.</p>' +
+        '<p>Turning sync on copies your plans — the schedule, your profile, what you marked done and what you logged, and any activities you synced from Garmin — to Google Cloud Firestore, so they follow you to your other devices. Your Google email address and display name are stored alongside them.</p>' +
+        '<p><b>Your API key, your coach conversations and heart rate from Garmin are never sent</b>, signed in or not.</p>' +
         '<p>You can turn this off and delete everything at any time, from the privacy notice in the footer. Either way your plans stay in this browser.</p>' +
       '</div>' +
       '<div class="pnl-act">' +
@@ -3715,11 +3754,12 @@
     if (!pendingUndo) return;
     if (pendingUndo.kind === 'refit') {
       const prev = pendingUndo.plan;
+      const label = pendingUndo.label || 'Re-fit undone';
       clearUndo();
       adoptPlan(prev);
       persistPlan();
       renderAll();
-      setStatus('Re-fit undone');
+      setStatus(label);
       return;
     }
     const { plan: p, index, wasCurrent, autoCreatedId } = pendingUndo;
@@ -4479,6 +4519,298 @@
     }
   }
 
+  /* ---- Garmin, through a bridge on this computer ----------------------------
+
+     Garmin offers no route a static page can use: its developer program only
+     takes businesses, and the library that signs in the way Garmin's own app
+     does cannot run in a browser. So the athlete runs tools/garmin-bridge on
+     their own machine and this page asks it, on 127.0.0.1, for recent
+     activities. Nothing here holds a Garmin credential — the bridge keeps the
+     session; this browser keeps only the bridge's address and a pairing token.
+
+     Like Strava, it is off unless this browser was told about it: the button
+     appears once `?garmin=setup` has been used to pair. Nobody browsing the
+     published page is offered a flow they cannot use.
+
+     What comes back goes through synced.js, which splits heart rate off before
+     anything touches the plan. Heart rate is kept in this browser's own storage
+     under GARMIN_HR_KEY and never on a plan, so it cannot sync or export. The
+     activities themselves are history rather than plan content, so they are
+     written directly, the same exception `commitBenchmarks` makes; logging them
+     against sessions goes through `setActual`, as the session modal does. */
+
+  const GARMIN_CONFIG_KEY = 'yootri_garmin';
+  const GARMIN_HR_KEY = 'yootri_activity_hr';
+  const GARMIN_DEFAULT_URL = 'http://127.0.0.1:8765';
+  // Loopback only, so the token cannot be sent anywhere but this computer.
+  const GARMIN_URL_RE = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
+  const GARMIN_TIMEOUT_MS = 120000;
+
+  function garminConfig() {
+    const cfg = readJson(GARMIN_CONFIG_KEY);
+    return cfg && GARMIN_URL_RE.test(cfg.url) && typeof cfg.token === 'string' && cfg.token.length >= 16 ? cfg : null;
+  }
+
+  const readHrStore = () => readJson(GARMIN_HR_KEY);
+  const writeHrStore = (store) => save(GARMIN_HR_KEY, store);
+
+  const bridgeError = (code) =>
+    Object.assign(new Error(bridgeErrorMessage(code, { secure: location.protocol === 'https:' })), { code });
+
+  async function bridgeFetch(path, cfg = garminConfig()) {
+    if (!cfg) throw bridgeError('not_configured');
+    let res;
+    try {
+      res = await fetch(cfg.url + path, {
+        headers: { Authorization: 'Bearer ' + cfg.token },
+        cache: 'no-store',
+        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(GARMIN_TIMEOUT_MS) : undefined,
+      });
+    } catch (e) {
+      // A refused connection, a blocked one (Safari, or Chrome's local network
+      // prompt answered no) and a timeout all look the same from here.
+      throw bridgeError('unreachable');
+    }
+    let body = null;
+    try { body = await res.json(); } catch (e) { throw bridgeError('bad_response'); }
+    if (!res.ok || !body || body.ok !== true) throw bridgeError((body && body.error && body.error.code) || 'bad_response');
+    if (body.api !== 1) throw bridgeError('api_version');
+    return body;
+  }
+
+  function openGarminSetupPanel(message, tone) {
+    const cfg = garminConfig() || { url: GARMIN_DEFAULT_URL, token: '' };
+    const synced = (plan.activities || []).length;
+    panelShell(
+      '<h2>Garmin</h2>' +
+      '<p class="pnl-sub">Pair this browser with the Garmin bridge running on this computer. Start it with ' +
+        '<code>make garmin</code>: it prints the address and the pairing token to paste here.</p>' +
+      '<div class="pnl-grid">' +
+        field('Bridge address', '<input type="text" class="input" id="gm-url" value="' + esc(cfg.url) + '" spellcheck="false" />') +
+        field('Pairing token', '<input type="password" class="input" id="gm-token" value="' + esc(cfg.token) + '" autocomplete="off" spellcheck="false" />') +
+      '</div>' +
+      '<p class="pnl-hint">For your own Garmin account, on your own computer. The activities it reads are kept with ' +
+        'this plan and sync with it; their heart rate stays in this browser and is never written into a plan, ' +
+        'synced or exported.' + (synced ? ' ' + synced + ' synced ' + (synced === 1 ? 'activity is' : 'activities are') + ' on this plan.' : '') + '</p>' +
+      (message ? '<div class="diff-issues"><b class="' + (tone === 'ok' ? 'ok' : 'err') + '">' + esc(message) + '</b></div>' : '') +
+      '<div class="pnl-act">' +
+        (garminConfig() ? '<button type="button" class="btn btn-ghost spacer" id="gm-forget">Disconnect this browser</button>' : '') +
+        (synced ? '<button type="button" class="btn btn-ghost' + (garminConfig() ? '' : ' spacer') + '" id="gm-clear">Remove synced activities</button>' : '') +
+        '<button type="button" class="btn btn-ghost" id="gm-close">Close</button>' +
+        '<button type="button" class="btn btn-secondary" id="gm-test">Test</button>' +
+        '<button type="button" class="btn btn-primary" id="gm-save">Save</button>' +
+      '</div>',
+      'Garmin',
+    );
+
+    const typed = () => ({ url: $('gm-url').value.trim().replace(/\/+$/, ''), token: $('gm-token').value.trim() });
+    const valid = (c) => GARMIN_URL_RE.test(c.url) && c.token.length >= 16;
+    const invalid = 'The address must be http://127.0.0.1:<port> or http://localhost:<port>, and the token is the long one `make garmin` prints.';
+
+    $('gm-close').addEventListener('click', closePanel);
+    $('gm-test').addEventListener('click', async () => {
+      const c = typed();
+      if (!valid(c)) { openGarminSetupPanel(invalid); return; }
+      try {
+        const st = await bridgeFetch('/v1/status', c);
+        openGarminSetupPanel(st.connected
+          ? 'Connected. The bridge is signed in to Garmin.'
+          : 'Connected, but the bridge is not signed in to Garmin yet. Run `make garmin-login` in a terminal.',
+        st.connected ? 'ok' : 'err');
+        $('gm-url').value = c.url; $('gm-token').value = c.token;
+      } catch (e) {
+        openGarminSetupPanel(e.message);
+        $('gm-url').value = c.url; $('gm-token').value = c.token;
+      }
+    });
+    $('gm-save').addEventListener('click', () => {
+      const c = typed();
+      if (!valid(c)) { openGarminSetupPanel(invalid); return; }
+      if (!save(GARMIN_CONFIG_KEY, c)) { openGarminSetupPanel('This browser would not store the pairing.'); return; }
+      closePanel();
+      renderToolbar();
+      setStatus('Paired with the Garmin bridge');
+    });
+    const forget = $('gm-forget');
+    if (forget) forget.addEventListener('click', () => {
+      remove(GARMIN_CONFIG_KEY);
+      remove(GARMIN_HR_KEY);
+      closePanel();
+      renderToolbar();
+      setStatus('Garmin disconnected from this browser');
+    });
+    const clear = $('gm-clear');
+    if (clear) clear.addEventListener('click', () => {
+      const gone = new Set((plan.activities || []).map((x) => x.id));
+      const store = readHrStore();
+      if (store && store.byId) {
+        for (const id of gone) delete store.byId[id];
+        writeHrStore(store);
+      }
+      // What was logged stays logged: the actuals are the athlete's record of
+      // the session, and only the watch's copy of it is being let go.
+      plan.activities = [];
+      delete plan.activitySync;
+      persistPlan();
+      renderAll();
+      openGarminSetupPanel('Synced activities removed from this plan.', 'ok');
+    });
+  }
+
+  /* `?garmin=setup` opens the pairing panel once and leaves the address bar
+     clean, so a reload or a bookmark does not reopen it. It waits behind the
+     first-run notice rather than covering it. */
+  function maybeOpenGarminSetup() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('garmin') !== 'setup') return;
+    params.delete('garmin');
+    const rest = params.toString();
+    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
+    if (ackSeen()) openGarminSetupPanel();
+  }
+
+  let garminBusy = false;
+  let garminReview = null;
+
+  async function syncFromGarmin() {
+    if (garminBusy) return;
+    const today = toISO(new Date());
+    const span = nextSyncWindow(plan.activitySync, { today });
+    garminBusy = true;
+    els.garminBtn.disabled = true;
+    setStatus('Reading Garmin…');
+    let body;
+    try {
+      body = await bridgeFetch('/v1/activities?since=' + span.since + '&until=' + span.until);
+    } catch (e) {
+      garminBusy = false;
+      els.garminBtn.disabled = false;
+      setStatus('Garmin: not synced', true);
+      openGarminSetupPanel(e.message);
+      return;
+    }
+    garminBusy = false;
+    els.garminBtn.disabled = false;
+
+    const got = ingestSynced(body.activities, { source: 'garmin' });
+    const merged = mergeActivities(plan.activities, got.activities, { today });
+    writeHrStore(mergeHrStore(readHrStore(), got.hr, { today }));
+    plan.activities = merged.activities;
+    plan.activitySync = nextActivitySync(plan.activitySync,
+      { source: 'garmin', since: body.since, until: body.until, at: now() });
+    persistPlan();
+    if (coach && coach.session) coach.session.plan = plan;
+
+    const found = matchActivities(plan, plan.activities, { from: body.since, to: body.until });
+    renderAll();
+    setStatus('Garmin: ' + got.activities.length + ' activit' + (got.activities.length === 1 ? 'y' : 'ies') + ' read');
+    openGarminReviewPanel({
+      ...found,
+      read: got.activities.length,
+      since: body.since,
+      until: body.until,
+      unreadable: (Array.isArray(body.skipped) ? body.skipped.length : 0) + got.rejected,
+    });
+  }
+
+  const MATCH_REASONS = {
+    'no-session': 'no planned session that day',
+    'session-logged': 'that session is already logged',
+    'already-linked': 'already logged',
+    'outside-plan': 'outside this plan’s weeks',
+    'too-short': 'under ' + MATCH.minMinutes + ' minutes',
+    'not-matchable': 'not a discipline the plan schedules',
+  };
+
+  function openGarminReviewPanel(r) {
+    garminReview = r;
+    const day = (iso) => fmtLongDate(iso);
+    const rows = r.proposals.map((x, i) =>
+      '<li><label>' +
+        '<input type="checkbox" data-gm-pick="' + i + '" checked />' +
+        '<span class="bm-what">' + esc(x.disc) + ' · ' + esc(fmtTotal(x.plannedMin)) + ' planned → did ' +
+          esc(fmtTotal(x.actual.min) || '0m') + '</span>' +
+        '<span class="bm-when">Week ' + (x.absWeek + 1) + ' · ' + esc(day(x.date)) + '</span>' +
+        '<span class="bm-tag">' + esc(x.actual.status) + '</span>' +
+      '</label></li>').join('');
+    const extras = r.extra.map((x) =>
+      '<li><span class="bm-what">' + esc(x.disc) + ' · ' + esc(fmtTotal(x.min) || '0m') + '</span>' +
+        '<span class="bm-when">' + esc(day(x.date)) + '</span>' +
+        '<span class="bm-tag">' + esc(MATCH_REASONS[x.reason] || x.reason) + '</span></li>').join('');
+
+    panelShell(
+      '<h2>From Garmin</h2>' +
+      '<p class="pnl-sub">' + r.read + ' activit' + (r.read === 1 ? 'y' : 'ies') + (r.all ? ' synced to this plan, ' : ' read, ') +
+        esc(day(r.since)) + ' – ' + esc(day(r.until)) + '. ' +
+        (r.proposals.length === 1
+          ? 'One matches a planned session. Untick it if it is wrong, then log it.'
+          : r.proposals.length
+            ? r.proposals.length + ' match planned sessions. Untick any that are wrong, then log them.'
+            : 'None of them match a planned session that is not already logged.') +
+      '</p>' +
+      (rows ? '<ul class="bm-list gm-list">' + rows + '</ul>' : '') +
+      (extras
+        ? '<h3 class="pnl-h3">Not logged against a session</h3>' +
+          '<p class="pnl-hint">Kept in this plan’s training history, where the coach can see them.</p>' +
+          '<ul class="bm-list">' + extras + '</ul>'
+        : '') +
+      (r.unreadable ? '<p class="pnl-hint">' + r.unreadable + ' could not be read and ' + (r.unreadable === 1 ? 'was' : 'were') + ' skipped.</p>' : '') +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="gm-close">Close</button>' +
+        (r.all ? '' : '<button type="button" class="btn btn-secondary" id="gm-all">Check everything synced</button>') +
+        (rows ? '<button type="button" class="btn btn-primary" id="gm-log">Log these</button>' : '') +
+      '</div>',
+      'From Garmin',
+    );
+    $('gm-close').addEventListener('click', closePanel);
+    const log = $('gm-log');
+    if (log) log.addEventListener('click', logGarminMatches);
+    const all = $('gm-all');
+    if (all) all.addEventListener('click', reviewAllSynced);
+  }
+
+  /* A sync only looks again at the last few days, so matches from an earlier
+     sync that were closed rather than logged would otherwise never come back.
+     This reads every activity on the plan; logged sessions and activities
+     already logged are skipped exactly as they are after a sync. */
+  function reviewAllSynced() {
+    const acts = plan.activities || [];
+    const cover = plan.activitySync;
+    openGarminReviewPanel({
+      ...matchActivities(plan, acts),
+      read: acts.length,
+      since: cover ? cover.from : (acts[0] || {}).date,
+      until: cover ? cover.through : (acts[acts.length - 1] || {}).date,
+      unreadable: 0,
+      all: true,
+    });
+  }
+
+  function logGarminMatches() {
+    const picked = [...els.panelRoot.querySelectorAll('[data-gm-pick]')]
+      .filter((b) => b.checked)
+      .map((b) => garminReview.proposals[Number(b.getAttribute('data-gm-pick'))])
+      .filter(Boolean);
+    closePanel();
+    if (!picked.length) return;
+
+    const snapshot = JSON.parse(JSON.stringify(plan));
+    let next = plan;
+    for (const x of picked) next = setActual(next, x.sessionId, x.actual);
+    plan = next;
+    state.done = plan.done;
+    persistPlan();
+    if (coach && coach.session) coach.session.plan = plan;
+
+    clearUndo();
+    pendingUndo = { kind: 'refit', plan: snapshot, label: 'Logging from Garmin undone' };
+    els.undoBtn.classList.remove('hidden');
+    undoTimer = setTimeout(clearUndo, UNDO_MS);
+
+    renderAll();
+    setStatus('Logged ' + picked.length + ' session' + (picked.length === 1 ? '' : 's') + ' from Garmin');
+  }
+
   /* ---- Small dialogs (name entry / confirm) reusing the modal styles ---- */
 
   function nameDialog(title, initial, okLabel) {
@@ -4898,6 +5230,7 @@
   });
 
   els.addEventBtn.addEventListener('click', () => openEventPanel(null));
+  els.garminBtn.addEventListener('click', syncFromGarmin);
 
   // Chart: hover, mode toggle, legend
   function hoverFromEvent(e) {
@@ -5002,6 +5335,9 @@
   // in the address bar has to be spent on the way in. Does nothing at all
   // unless this browser was told about Strava and is actually coming back.
   resumeStravaConnect();
+
+  // `?garmin=setup` pairs this browser with the bridge (see the Garmin section).
+  maybeOpenGarminSetup();
 
   // The Firebase module (below) is a deferred module, so it loads after this
   // classic script. Bind when it signals ready; if it never loads, stay local.
