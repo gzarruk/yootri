@@ -283,3 +283,9 @@ test('laps add up to the activity', () => {
   assert.deepEqual(lapTotals([{ distanceMeters: 'x' }, { distanceMeters: 100, timeSeconds: 30 }]),
     { distanceMeters: 100, timeSeconds: 30 });
 });
+
+test('a candidate can say where it came from', () => {
+  const run = { date: '2026-06-15', distanceMeters: 10000, timeSeconds: 2520, type: 'running', title: '10K' };
+  assert.equal(benchmarkCandidates([run], { today: '2026-06-20' })[0].source, 'file', 'a file, unless told otherwise');
+  assert.equal(benchmarkCandidates([run], { today: '2026-06-20', source: 'garmin' })[0].source, 'garmin');
+});

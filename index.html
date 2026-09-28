@@ -1322,7 +1322,7 @@
     STATUSES, getActual, setActual, actualMinutes, weekCompliance, seasonActuals,
   } from './assets/coach/actuals.js';
   import { minToDur } from './assets/coach/duration.js';
-  import { createSession, sessionDiff, callTool } from './assets/coach/tools.js';
+  import { createSession, sessionDiff, callTool, adviceCall } from './assets/coach/tools.js';
   import { newPlan, FALLBACK_WEEKS, mintPlanId } from './assets/coach/plan.js';
   import {
     exportEnvelope, readPlanFile, adoptImported, summarizePlan,
@@ -1353,7 +1353,7 @@
     trackDistanceMeters, lapTotals,
   } from './assets/coach/activities.js';
   import {
-    ingestSynced, mergeActivities, nextSyncWindow, nextActivitySync, mergeHrStore, bridgeErrorMessage,
+    ingestSynced, mergeActivities, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, bridgeErrorMessage,
   } from './assets/coach/synced.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
 
@@ -2267,18 +2267,39 @@
         (x.action
           ? '<button type="button" class="btn btn-secondary" data-advice="' + i + '">Preview</button>'
           : '') +
+        (x.offer && x.offer.kind === 'benchmark'
+          ? '<button type="button" class="btn btn-secondary" data-offer="' + i + '">Use for paces</button>'
+          : '') +
       '</div>').join('') + '</div>';
 
     els.adviceRoot.querySelectorAll('[data-advice]').forEach((btn) => {
       btn.addEventListener('click', () => {
         // Route it through the same tools → draft → diff → apply path the coach
         // uses, so a suggestion is reviewed exactly like any other proposal.
+        // adviceCall turns the engine's 0-based week into the 1-based one every
+        // tool takes; passing the action straight through pinned the week before.
         const s = list[Number(btn.dataset.advice)];
-        const session = createSession(plan);
-        const r = callTool(session, s.action.tool, s.action.input);
+        const session = createSession(plan, coachContext());
+        const call = adviceCall(s.action);
+        const r = callTool(session, call.tool, call.input);
         if (r.isError) { setStatus(r.content, true); return; }
         draft = session.draft;
         renderDiff(sessionDiff(session));
+      });
+    });
+
+    // A faster synced run, offered as the result the paces come from. Adopted
+    // the way any picked result is: it changes no session, so no draft.
+    els.adviceRoot.querySelectorAll('[data-offer]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const c = list[Number(btn.dataset.offer)].offer.candidate;
+        state.benchmarks = upsertBenchmark(state.benchmarks, {
+          id: 'bm-' + uid4(), date: c.date, distanceMeters: c.distanceMeters, timeSeconds: c.timeSeconds,
+          label: c.label, source: 'garmin', current: true,
+        });
+        persistPlan();
+        renderAll();
+        setStatus('Paces now from your ' + fmtDistance(c.distanceMeters) + ' in ' + fmtClock(c.timeSeconds));
       });
     });
   }
@@ -2473,9 +2494,19 @@
   const getKey = (provider) => lsGet((provider || coachSettings().provider).keyStorageKey);
   const setKey = (provider, v) => lsSet((provider || coachSettings().provider).keyStorageKey, v);
 
+  /* What the coach's recorded-training tools need that the plan does not hold:
+     what "today" is, and the heart rate this browser synced from Garmin. The
+     plan never carries heart rate, so it can only come from here. */
+  function coachContext() {
+    return { today: toISO(new Date()), hrById: hrLookup(readHrStore()) };
+  }
+
   function openCoach() {
-    if (!coach) coach = { session: createSession(plan), busy: false };
+    const ctx = coachContext();
+    if (!coach) coach = { session: createSession(plan, ctx), busy: false };
     coach.session.plan = plan;   // always reason about the plan as it is now
+    coach.session.today = ctx.today;
+    coach.session.device = { ...coach.session.device, hrById: ctx.hrById };
     if (!getKey()) return renderKeyForm();
     renderCoach();
   }
@@ -3470,7 +3501,7 @@
 
     if (fromCoach) {
       // The proposal is now the plan; the coach starts again from it.
-      coach.session = createSession(plan);
+      coach.session = createSession(plan, coachContext());
     }
 
     renderAll();

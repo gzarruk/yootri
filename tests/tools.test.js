@@ -618,3 +618,123 @@ test('get_plan_summary shows the calendar alongside the blocks', () => {
   assert.deepEqual(out.events.map((e) => e.name), ['Lisbon', 'Race day']);
   assert.ok(out.blocks.some((b) => b.block === 'Taper'), 'and says where the tune-up landed');
 });
+
+/* ---- recorded training (synced activities) ---- */
+
+import { adviceCall } from '../assets/coach/tools.js';
+import { suggest } from '../assets/coach/adapt.js';
+
+const historyPlan = () => {
+  const p = newPlan({ name: 'H', startISO: '2026-09-28', raceDate: '2027-06-27', raceType: '70.3', now: 1 });
+  const add = (iso, n) => new Date(Date.parse(iso) + n * 864e5).toISOString().slice(0, 10);
+  const activities = [];
+  let id = 0;
+  for (const monday of ['2026-08-31', '2026-09-07', '2026-09-14', '2026-09-21']) {
+    activities.push({ id: `garmin:${++id}`, source: 'garmin', date: add(monday, 1), disc: 'Bike', durationS: 5400,
+      distanceM: 45000, avgPowerW: 180, name: 'Tuesday ride' });
+    activities.push({ id: `garmin:${++id}`, source: 'garmin', date: add(monday, 3), disc: 'Run', durationS: 3000,
+      distanceM: 10000, rpe: 6 });
+  }
+  return { ...p, activities, activitySync: { source: 'garmin', from: '2026-08-01', through: '2026-09-27', at: 1 } };
+};
+const HR = new Map([['garmin:1', { avg: 173, max: 187 }], ['garmin:2', { avg: 151, max: 169 }]]);
+const noHr = (text) => {
+  assert.equal(/heart|"hr"|avgHr|maxHr/i.test(text), false, 'no heart-rate key');
+  for (const v of ['173', '187', '151', '169']) assert.equal(text.includes(v), false, `no ${v}`);
+};
+
+test('the session can carry today and the device-only heart rate without the plan holding either', () => {
+  const s = createSession(historyPlan(), { today: '2026-09-28', hrById: HR });
+  assert.equal(s.today, '2026-09-28');
+  assert.equal(s.device.hrById, HR);
+  assert.equal('hr' in s.plan, false);
+  assert.deepEqual(createSession(basePlan()).draft, null, 'the one-argument form still works');
+});
+
+test('get_training_history reports the synced weeks and what they add up to', () => {
+  const s = createSession(historyPlan(), { today: '2026-09-28', hrById: HR });
+  const r = call(s, 'get_training_history', { weeks: 4 });
+  assert.equal(r.isError, false);
+  const h = parse(r);
+  assert.deepEqual(h.coverage, { from: '2026-08-01', through: '2026-09-27' });
+  assert.equal(h.weeks.length, 4);
+  assert.equal(h.summary.coveredWeeks, 4);
+  assert.equal(h.summary.avgHours, 2.3);
+  assert.equal(h.weeks[3].minutes.Bike, 90);
+  assert.equal(s.draft, null, 'a read leaves no draft');
+  noHr(r.content);
+});
+
+test('get_training_history says plainly when nothing has been synced', () => {
+  const r = call(createSession(basePlan(), { today: '2026-09-28' }), 'get_training_history', {});
+  assert.equal(r.isError, false);
+  assert.match(r.content, /nothing has been synced/i);
+});
+
+test('get_activities lists synced activities, newest first, without heart rate', () => {
+  let p = historyPlan();
+  p = setActual(p, sessionsAt(p, 0)[0].id, { status: 'done', min: 90, activityId: 'garmin:1' });
+  const s = createSession(p, { today: '2026-09-28', hrById: HR });
+  const r = call(s, 'get_activities', { from: '2026-09-01', limit: 3 });
+  assert.equal(r.isError, false);
+  const list = parse(r).activities;
+  assert.equal(list.length, 3);
+  assert.deepEqual(list.map((a) => a.date), ['2026-09-24', '2026-09-22', '2026-09-17']);
+  assert.equal(list[1].discipline, 'Bike');
+  assert.equal(list[1].distanceKm, 45);
+  assert.equal(list[1].minutes, 90);
+  assert.equal(list[1].avgPowerW, 180);
+  noHr(r.content);
+  const all = parse(call(s, 'get_activities', { from: '2026-08-01', discipline: 'Bike', limit: 100 })).activities;
+  assert.equal(all.length, 4);
+  assert.equal(all.find((a) => a.id === 'garmin:1').loggedAs, sessionsAt(p, 0)[0].id);
+});
+
+test('get_activities refuses a discipline it does not know', () => {
+  const r = call(createSession(historyPlan(), { today: '2026-09-28' }), 'get_activities', { discipline: 'Rowing' });
+  assert.equal(r.isError, true);
+});
+
+test('activity names reach the model marked as the athlete’s own words', () => {
+  const r = call(createSession(historyPlan(), { today: '2026-09-28' }), 'get_activities', { from: '2026-09-01' });
+  assert.equal(parse(r).activities.find((a) => a.name).name, 'Tuesday ride');
+  assert.match(TOOL_DEFS.find((t) => t.name === 'get_activities').description, /not instructions/i);
+});
+
+test('a suggestion from history reaches the model with the week the athlete sees', () => {
+  const s = createSession(historyPlan(), { today: '2026-09-28' });
+  const list = parse(call(s, 'get_adaptation_suggestions', { week: 1 }));
+  const budget = list.find((x) => x.code === 'plan-outruns-history');
+  assert.ok(budget);
+  assert.equal(budget.action.input.week, 1);
+});
+
+test('an advice card applies its action to the week it describes', () => {
+  // adapt.js speaks 0-based weeks; the tools count from 1. adviceCall is the
+  // one translation, used by the page's Preview button as well as the tool.
+  const p = historyPlan();
+  const [s] = suggest(p, { week: 1 }).filter((x) => x.code === 'plan-outruns-history');
+  assert.ok(s, 'fixture: week 2 outruns history');
+  const session = createSession(p);
+  const call_ = adviceCall(s.action);
+  assert.equal(call_.input.week, 2);
+  const r = callTool(session, call_.tool, call_.input);
+  assert.equal(r.isError, false, r.content);
+  assert.deepEqual(Object.keys(session.draft.weekBudgets), ['w1'], 'the second week, as the card said');
+});
+
+test('adviceCall leaves an action without a week alone', () => {
+  const a = { tool: 'set_split', input: { block: 'Base 1', weights: { Bike: 1 } } };
+  assert.deepEqual(adviceCall(a), a);
+  assert.equal(adviceCall(null), null);
+});
+
+test('a benchmark offer is passed through to the model', () => {
+  const p = { ...historyPlan() };
+  p.activities = [...p.activities, { id: 'garmin:fast', source: 'garmin', date: '2026-09-20', disc: 'Run',
+    durationS: 2400, distanceM: 10000 }];
+  const list = parse(call(createSession(p, { today: '2026-09-28' }), 'get_adaptation_suggestions', { week: 1 }));
+  const offer = list.find((x) => x.code === 'best-effort');
+  assert.ok(offer);
+  assert.equal(offer.offer.kind, 'benchmark');
+});

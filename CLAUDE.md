@@ -42,6 +42,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `activities.js` | Reading an activity export. Garmin's activity CSV, plus the arithmetic the page's TCX/GPX readers need. Total, like `portable.js`. |
 | `synced.js` | Activities synced from the Garmin bridge: the one boundary heart rate crosses (`splitSynced`), the allowlist a stored activity is held to, merging, sync windows and coverage, and the device-only heart-rate store's shape. Pure — the page fetches and stores. |
 | `match.js` | Which synced activity was which planned session: same date, same discipline, closest duration. Proposes actuals; never writes one, never over the athlete's own log. |
+| `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
@@ -154,6 +155,14 @@ than through a draft (the same exception `commitBenchmarks` makes), while
 logging them against sessions goes through `setActual` like the session modal.
 `applyDraft` takes `activities` and `activitySync` from the stored plan, as it
 does `chat`, so a coach draft taken before a sync cannot roll it back.
+
+The coach proposes from that history the same way it proposes anything: the
+judgement is in `adapt.js` (`HISTORY_THRESHOLDS` — silent under three covered
+weeks, never an increase, never a week already under way), each suggestion
+names a tool call, and the change goes through draft → diff → apply. A
+suggestion's action speaks the engine's 0-based week; `adviceCall` in
+`tools.js` is the one translation to the tools' 1-based weeks, for the model
+and for the page's Preview button alike.
 
 Plans are schema v3: absolute week keys (`w0`…`w15`), materialized sessions, and
 a stored `season`. A plan is self-contained, so changing the engine never

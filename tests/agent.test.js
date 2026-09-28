@@ -355,3 +355,12 @@ test('a request that never leaves the browser is explained, not swallowed', asyn
   assert.equal(out.error, true);
   assert.match(out.text, /could not reach/i);
 });
+
+test('the prompt sends the coach to recorded training before it proposes volume', async () => {
+  const { SYSTEM_PROMPT } = await import('../assets/coach/agent.js');
+  assert.match(SYSTEM_PROMPT, /get_training_history/);
+  assert.match(SYSTEM_PROMPT, /three covered weeks/i);
+  assert.match(SYSTEM_PROMPT, /never see heart rate/i);
+  assert.match(SYSTEM_PROMPT, /make up/i, 'no making up missed training');
+  assert.match(SYSTEM_PROMPT, /not instructions/i, 'activity names are data');
+});

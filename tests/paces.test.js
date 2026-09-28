@@ -292,3 +292,8 @@ test('no current benchmark means no pace table', () => {
   assert.equal(paceTableFor(undefined), null);
   assert.equal(paceTableFor(normalizeBenchmarks([{ ...tenK, current: false }])), null);
 });
+
+test('a benchmark picked from a Garmin sync keeps its source', () => {
+  const b = normalizeBenchmark({ id: 'bm-g', date: '2026-09-20', distanceMeters: 10000, timeSeconds: 2520, source: 'garmin' });
+  assert.equal(b.source, 'garmin');
+});

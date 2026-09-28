@@ -143,7 +143,7 @@ export const ZONE_FOR_LABEL = Object.freeze(Object.assign(Object.create(null), {
    lists in this app that behave differently would be a worse cost than the
    duplication. */
 
-export const BENCHMARK_SOURCES = ['manual', 'file', 'strava'];
+export const BENCHMARK_SOURCES = ['manual', 'file', 'strava', 'garmin'];
 
 const text = (v) => String(v ?? '').trim();
 
