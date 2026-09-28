@@ -611,10 +611,7 @@
   /* ---- Month calendar ---- */
 
   .im-calwrap { margin-top: 6px; }
-  .cal-bar {
-    display: flex; align-items: center; justify-content: space-between;
-    gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
-  }
+  .cal-bar { margin-bottom: 10px; }
   .cal-hint { font-size: .8rem; color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 
   .im-cal { display: flex; flex-direction: column; gap: 6px; }
@@ -1222,6 +1219,13 @@
       <button type="button" class="btn btn-secondary" id="coach-btn">
         <i class="ph ph-chat-teardrop-text" aria-hidden="true"></i> Coach
       </button>
+      <!-- In the toolbar rather than in the calendar bar, so a race can be put
+           on the calendar from either view. It used to live inside #calwrap,
+           which meant it disappeared with the month grid — and a race is a thing
+           you think of while looking at the week you are training. -->
+      <button type="button" class="btn btn-secondary" id="add-event-btn">
+        <i class="ph ph-flag-pennant" aria-hidden="true"></i> Add event
+      </button>
 
       <span class="seg" role="group" aria-label="View" id="view-seg">
         <label class="seg-opt"><input type="radio" name="view" value="week" />Week</label>
@@ -1254,9 +1258,6 @@
     <div class="im-calwrap hidden" id="calwrap">
       <div class="cal-bar">
         <span class="cal-hint">Click a week to open it on the board. Drag a session to any day.</span>
-        <button type="button" class="btn btn-secondary" id="add-event-btn">
-          <i class="ph ph-flag-pennant" aria-hidden="true"></i> Add event
-        </button>
       </div>
       <div class="im-cal" id="calendar"></div>
     </div>
