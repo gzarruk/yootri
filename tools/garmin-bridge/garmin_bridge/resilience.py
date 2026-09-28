@@ -52,9 +52,9 @@ class TokenBucket:
 
 
 def backoff(
-    attempt: int, *, rate_limited: bool, min_wait: float = 2.0, max_wait: float = 120.0,
+    attempt: int, *, min_wait: float = 2.0, max_wait: float = 120.0,
     rng: Callable[[], float] = random.random,
 ) -> float:
-    """Exponential, with jitter; four times harder after a 429."""
-    base = min_wait * (2**attempt) * (4 if rate_limited else 1)
+    """Exponential, with jitter."""
+    base = min_wait * (2**attempt)
     return float(min(max_wait, base) * (0.5 + 0.5 * rng()))

@@ -6,8 +6,13 @@ list, for those legs one at a time) and for nothing else — no daily data, no
 files, no profile.
 
 Every call goes through ``_call``: wait for the token bucket, call, translate
-any failure into a ``BridgeError``, retry only what is transient, and hand
-refreshed session tokens back so they can be saved.
+any failure into a ``BridgeError``, retry only an outage, and hand refreshed
+session tokens back so they can be saved.
+
+A rate limit is *not* retried, unlike in GARMIN-CLAUDE, whose scheduler could
+afford to wait. Here a person pressed a button: retrying a 429 for minutes only
+extends Garmin's limit, and outlasts the page's timeout, which would then say
+the bridge did not answer instead of saying to wait.
 """
 
 from __future__ import annotations
@@ -75,10 +80,9 @@ class GarminClient:
                 result = method(*args, **kwargs)
             except Exception as exc:  # noqa: BLE001 - every failure is translated
                 error = translate_error(exc)
-                transient = isinstance(error, RateLimited | Unavailable)
-                if isinstance(error, AuthRequired) or not transient or attempt >= self._retries:
+                if not isinstance(error, Unavailable) or attempt >= self._retries:
                     raise error from exc
-                delay = backoff(attempt, rate_limited=isinstance(error, RateLimited), rng=self._rng)
+                delay = backoff(attempt, rng=self._rng)
                 log.warning("Garmin %s: %s, retrying in %.0fs", name, error.code, delay)
                 self._sleep(delay)
                 continue
@@ -129,7 +133,9 @@ def fetch_activities(
             try:
                 detail = client.get_activity(child_id)
             except BridgeError as error:
-                if isinstance(error, AuthRequired):
+                # A lost session or a rate limit applies to every leg alike:
+                # stop rather than ask again for each one.
+                if isinstance(error, AuthRequired | RateLimited):
                     raise
                 skipped.append({"id": child_id, "reason": "leg-unavailable"})
                 continue

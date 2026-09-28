@@ -8,7 +8,7 @@ from garminconnect import (
 )
 
 from garmin_bridge.client import GarminClient, fetch_activities
-from garmin_bridge.errors import AuthRequired, Unavailable
+from garmin_bridge.errors import AuthRequired, RateLimited, Unavailable
 from tests import payloads
 from tests.fakes import ALLOWED_CALLS, FakeGarmin
 
@@ -43,20 +43,35 @@ def test_ranges_are_fetched_in_thirty_day_chunks_oldest_first():
     ]
 
 
-def test_a_rate_limit_is_retried_after_a_backoff():
+def test_a_rate_limit_is_reported_at_once_not_retried():
+    # A person pressed a button. Retrying a 429 for minutes only extends
+    # Garmin's limit and outlasts the page's timeout, which would then report
+    # "the bridge did not answer" instead of "wait".
+    def limited(*_a, **_k):
+        raise GarminConnectTooManyRequestsError("429")
+
+    sleeper = Sleeper()
+    api = FakeGarmin(responses={"get_activities_by_date": limited})
+    with pytest.raises(RateLimited):
+        client_for(api, sleep=sleeper).list_activities(date(2026, 9, 1), date(2026, 9, 2))
+    assert len(api.calls) == 1
+    assert sleeper.slept == []
+
+
+def test_an_outage_is_retried_after_a_backoff():
     attempts = []
 
     def flaky(*_a, **_k):
         attempts.append(1)
         if len(attempts) == 1:
-            raise GarminConnectTooManyRequestsError("429")
+            raise GarminConnectConnectionError("API Error 503")
         return [payloads.run()]
 
     sleeper = Sleeper()
     api = FakeGarmin(responses={"get_activities_by_date": flaky})
     result = client_for(api, sleep=sleeper).list_activities(date(2026, 9, 1), date(2026, 9, 2))
     assert [r["activityId"] for r in result] == [1001]
-    assert sleeper.slept == [8.0]
+    assert sleeper.slept == [2.0]
 
 
 def test_an_auth_failure_is_not_retried():
@@ -150,3 +165,15 @@ def test_the_bridge_asks_garmin_for_activities_and_nothing_else():
     })
     fetch_activities(client_for(api), date(2026, 9, 1), date(2026, 9, 6))
     assert api.called() <= ALLOWED_CALLS
+
+
+def test_a_rate_limit_while_fetching_legs_stops_the_fetch():
+    parent = payloads.triathlon()[0]
+
+    def limited(_aid):
+        raise GarminConnectTooManyRequestsError("429")
+
+    api = FakeGarmin(responses={"get_activities_by_date": [parent], "get_activity": limited})
+    with pytest.raises(RateLimited):
+        fetch_activities(client_for(api), date(2026, 9, 6), date(2026, 9, 6))
+    assert sum(1 for name, _, _ in api.calls if name == "get_activity") == 1

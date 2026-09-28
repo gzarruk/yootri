@@ -35,13 +35,7 @@ def test_tokens_refill_with_time():
 def test_backoff_doubles_and_is_capped():
     low = lambda: 0.0  # noqa: E731
     high = lambda: 1.0  # noqa: E731
-    assert backoff(0, rate_limited=False, rng=high) == 2.0
-    assert backoff(1, rate_limited=False, rng=high) == 4.0
-    assert backoff(0, rate_limited=False, rng=low) == 1.0
-    assert backoff(10, rate_limited=False, rng=high) == 120.0
-
-
-def test_a_rate_limit_backs_off_four_times_harder():
-    high = lambda: 1.0  # noqa: E731
-    assert backoff(0, rate_limited=True, rng=high) == 8.0
-    assert backoff(1, rate_limited=True, rng=high) == 16.0
+    assert backoff(0, rng=high) == 2.0
+    assert backoff(1, rng=high) == 4.0
+    assert backoff(0, rng=low) == 1.0
+    assert backoff(10, rng=high) == 120.0
