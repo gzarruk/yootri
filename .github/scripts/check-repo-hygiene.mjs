@@ -64,6 +64,8 @@ const SECRETS = [
   [/\bAKIA[0-9A-Z]{16}\b/, 'an AWS access key id'],
   [/\bxox[baprs]-[A-Za-z0-9-]{12,}\b/, 'a Slack token'],
   [/"type"\s*:\s*"service_account"/, 'a Google service-account key'],
+  // The session the Garmin bridge saves: whoever holds it can read the account.
+  [/"di_(?:refresh_)?token"\s*:\s*"[A-Za-z0-9._-]{20,}"/, 'a Garmin Connect session token'],
 ];
 
 /** Text we can usefully scan: skips binaries and anything implausibly large. */

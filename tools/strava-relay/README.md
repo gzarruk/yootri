@@ -16,11 +16,13 @@ Strava subscription. That is enough for you and is not enough to ship, so this
 is built as a convenience for one person rather than as something the app
 offers everybody.
 
-The Garmin route was considered and is closed: the Garmin Connect Developer
-Program is [business-only](https://developer.garmin.com/gc-developer-program/program-faq/)
+Garmin's official route is closed: the Garmin Connect Developer Program is
+[business-only](https://developer.garmin.com/gc-developer-program/program-faq/)
 ("available for enterprise use… only for business use"), and its Activity API
 delivers by push to a registered webhook — a server holding other people's
-training data, which is the thing yootri is built not to have.
+training data, which is the thing yootri is built not to have. For one person's
+own account there is instead [`tools/garmin-bridge`](../garmin-bridge/README.md),
+which runs on that person's own computer and holds nobody else's data.
 
 ## What the Worker does, and what it refuses to do
 

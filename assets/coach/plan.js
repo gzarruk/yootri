@@ -20,6 +20,8 @@ import { weeksUntil } from './dates.js';
 import { weekIndexOf, weekdayOf } from './calendar.js';
 import { normalizeEvents, secondaryRaces, seedEventsFromProfile } from './events.js';
 import { normalizeBenchmarks } from './paces.js';
+import { normalizeActivities, normalizeActivitySync } from './synced.js';
+import { normalizeLoadRefs } from './load.js';
 
 const clone = (x) => structuredClone(x);
 const weekKey = (absWeek) => `w${absWeek}`;
@@ -30,17 +32,34 @@ const weekKey = (absWeek) => `w${absWeek}`;
     `events`: the page normalizes those on its way into `state`, but benchmarks
     are read straight off the plan by the card renderer *and* by the coach tool.
     Cleaning them at the one door every reader comes through is what stops those
-    two disagreeing about which result the paces came from. */
+    two disagreeing about which result the paces came from.
+
+    Synced activities are cleaned here for a stronger reason: this is the door a
+    plan file, a cloud copy and local storage all come through, and the
+    activity normalizer is an allowlist. A plan edited by hand to carry heart
+    rate loses it here, before anything can sync or export it again. */
 export function loadPlan(raw) {
   const p = migratePlan(raw);
   const profile = normalizeProfile(p.profile);
   const benchmarks = normalizeBenchmarks(p.benchmarks);
+  const activities = normalizeActivities(p.activities);
+  const activitySync = normalizeActivitySync(p.activitySync) ?? undefined;
+  const loadRefs = normalizeLoadRefs(p.loadRefs);
 
   // Avoid handing back a needlessly different object for an already-clean plan,
   // so `loadPlan(loadPlan(x))` stays deep-equal to `loadPlan(x)`.
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  if (same(profile, p.profile) && same(benchmarks, p.benchmarks)) return p;
-  return { ...p, profile, benchmarks };
+  if (same(profile, p.profile) && same(benchmarks, p.benchmarks)
+    && same(activities, p.activities) && same(activitySync, p.activitySync)
+    && same(loadRefs, p.loadRefs)) return p;
+  const out = { ...p, profile, benchmarks, activities };
+  // No sync means no coverage — absent, not an empty span somebody could read
+  // as "covered nothing". Load references likewise: absent until entered.
+  if (activitySync) out.activitySync = activitySync;
+  else delete out.activitySync;
+  if (loadRefs) out.loadRefs = loadRefs;
+  else delete out.loadRefs;
+  return out;
 }
 
 export const weekCount = (plan) => plan.season.length;
@@ -325,6 +344,17 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
   // transcript from the draft would rewind it and swallow the coach's own answer.
   next.chat = plan.chat ?? [];
 
+  // Synced activities are history, like completions and logs, and for the same
+  // snapshot reason: a sync that lands while the athlete is reading the diff
+  // must not be rolled back by pressing Apply.
+  next.activities = plan.activities ?? [];
+  if (plan.activitySync) next.activitySync = plan.activitySync;
+  else delete next.activitySync;
+  // FTP and CSS are entered in a panel that writes straight to the plan, so the
+  // same holds for them: a draft from before they were entered cannot undo them.
+  if (plan.loadRefs) next.loadRefs = plan.loadRefs;
+  else delete next.loadRefs;
+
   return next;
 }
 
@@ -362,10 +392,14 @@ const emptyWeek = (idPrefix) =>
  * @param {string} [opts.raceType]
  * @param {object} [opts.profile]   inherited availability/constraints/splits
  * @param {object[]} [opts.benchmarks] inherited running results
+ * @param {object[]} [opts.activities] inherited synced activities
+ * @param {object} [opts.activitySync] the days those activities cover
+ * @param {object} [opts.loadRefs] inherited FTP and CSS
  * @param {'fitted'|'empty'} [opts.mode]
  */
 export function newPlan({
-  name, startISO, raceDate = null, raceType, profile, benchmarks, mode = 'fitted', id, now = Date.now(),
+  name, startISO, raceDate = null, raceType, profile, benchmarks, activities, activitySync, loadRefs,
+  mode = 'fitted', id, now = Date.now(),
 } = {}) {
   // Carry the athlete's own constraints across — their week has not changed
   // just because the race has — but never the previous race.
@@ -411,6 +445,11 @@ export function newPlan({
     // Carried across for the same reason the constraints are: the athlete's
     // 10 km did not get slower because they picked a new race.
     benchmarks: normalizeBenchmarks(benchmarks),
+    // And the synced history: what the athlete trained last month is still the
+    // best evidence of what they can train next month, whichever race is next.
+    activities: normalizeActivities(activities),
+    ...(normalizeActivitySync(activitySync) ? { activitySync: normalizeActivitySync(activitySync) } : {}),
+    ...(normalizeLoadRefs(loadRefs) ? { loadRefs: normalizeLoadRefs(loadRefs) } : {}),
     done: {},
     actuals: {},
     chat: [],

@@ -41,7 +41,12 @@ export function normalizeActual(raw) {
   // form. RPE and note survive — "sick, felt terrible" is still worth keeping.
   if (ZERO_STATUSES.has(raw.status)) min = null;
 
-  return { status: raw.status, min, rpe, note: String(raw.note ?? '').slice(0, 500) };
+  const out = { status: raw.status, min, rpe, note: String(raw.note ?? '').slice(0, 500) };
+  // The activity this was logged from, when it came from a sync. Absent rather
+  // than null when there is none, so an actual stored before this existed is
+  // still exactly what it normalizes to.
+  if (raw.activityId) out.activityId = String(raw.activityId).slice(0, 64);
+  return out;
 }
 
 export function getActual(plan, sessionId) {

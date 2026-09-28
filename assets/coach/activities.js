@@ -235,8 +235,9 @@ function standardFor(meters) {
  * @param {object} [opts]
  * @param {string} [opts.today] ISO day to measure the window back from
  * @param {number} [opts.days]  how far back to look
+ * @param {string} [opts.source] where the efforts came from, carried onto each candidate
  */
-export function benchmarkCandidates(activities, { today, days = DEFAULT_WINDOW_DAYS } = {}) {
+export function benchmarkCandidates(activities, { today, days = DEFAULT_WINDOW_DAYS, source = 'file' } = {}) {
   const to = parseISO(today) ?? new Date();
   const from = toISO(addDays(to, -Math.abs(Number(days) || DEFAULT_WINDOW_DAYS)));
 
@@ -263,7 +264,7 @@ export function benchmarkCandidates(activities, { today, days = DEFAULT_WINDOW_D
         timeSeconds: a.timeSeconds,
         label: a.title || standard.label,
         standard: standard.key,
-        source: 'file',
+        source,
         vdot,
       });
     }

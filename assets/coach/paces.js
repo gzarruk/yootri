@@ -81,6 +81,19 @@ export function vdotFrom(benchmark) {
 }
 
 /**
+ * The running speed, in metres per second, that the current benchmark says
+ * could be held for an hour — threshold, for training load (load.js). It is the
+ * same Daniels model the pace bands come from, asked a different question, so
+ * it adds no number of its own: the one-hour share of VDOT is
+ * `fractionAtDuration(60)`, about 0.89. Null without a usable benchmark.
+ */
+export function thresholdSpeedFrom(benchmarks) {
+  const vdot = vdotFrom(currentBenchmark(benchmarks));
+  if (!vdot) return null;
+  return positive(velocityAtCost(vdot * fractionAtDuration(60)) / 60);
+}
+
+/**
  * The four pace bands for a VDOT, in **seconds per kilometre**, fast end first.
  * Null in, null out — a table of NaN rendered onto a session card is worse than
  * no table at all.
@@ -143,7 +156,7 @@ export const ZONE_FOR_LABEL = Object.freeze(Object.assign(Object.create(null), {
    lists in this app that behave differently would be a worse cost than the
    duplication. */
 
-export const BENCHMARK_SOURCES = ['manual', 'file', 'strava'];
+export const BENCHMARK_SOURCES = ['manual', 'file', 'strava', 'garmin'];
 
 const text = (v) => String(v ?? '').trim();
 

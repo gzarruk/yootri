@@ -29,6 +29,13 @@ import { weekCompliance, getActual, actualMinutes } from './actuals.js';
 import { seasonFit, MIN_VARIATION_RETAINED } from './validate.js';
 import { durToMin } from './duration.js';
 import { weekCount } from './plan.js';
+import { weeklyHistory, summarizeHistory, HISTORY_DISCIPLINES } from './history.js';
+import { asRunEffort } from './synced.js';
+import { benchmarkCandidates, STANDARD_DISTANCES } from './activities.js';
+import { currentBenchmark, vdotFrom } from './paces.js';
+import { resolveSplit } from './generate.js';
+import { dateOf } from './calendar.js';
+import { parseISO, toISO, addDays, mondayOf } from './dates.js';
 
 export const THRESHOLDS = {
   under: 0.7,        // below this over the trailing window, propose easing off
@@ -44,8 +51,42 @@ export const THRESHOLDS = {
   overWeeks: 3,      // evidence needed to propose adding load
 };
 
+/* The rules that read synced history (history.js) rather than the plan's own
+   log. Stricter than the ones above, because history is evidence about the
+   athlete rather than about the plan: they say nothing on fewer than
+   `minCovered` synced weeks, never propose an increase, and never touch a week
+   that has already started — rebuilding a week under way could move a session
+   somebody has already logged. Hand-chosen and unfitted, like THRESHOLDS. */
+export const HISTORY_THRESHOLDS = {
+  lookback: 4,           // synced weeks read before the planned week
+  minCovered: 3,         // …of which at least this many must be covered by a sync
+  minWeeklyHours: 2,     // below this recorded average there is no baseline to plan from
+  splitDrift: 0.10,      // share points off the block's split worth a mention
+  splitMinHours: 10,     // …over at least this much recorded training
+  splitRound: 0.05,      // proposed split weights come in steps of this
+  longJump: 1.25,        // planned long session this much longer than the longest recorded…
+  longJumpMinutes: 20,   // …and at least this many minutes longer
+  bestEffortMargin: 0.5, // VDOT points a synced run must beat the current benchmark by
+  bestEffortDays: 42,    // only efforts this recent are offered
+};
+
 const weekKey = (w) => `w${w}`;
 const round1 = (n) => Math.round(n * 10) / 10;
+const shiftISO = (iso, days) => toISO(addDays(parseISO(iso), days));
+const pct = (x) => `${Math.round(x * 100)}%`;
+const fmtMin = (m) => {
+  const h = Math.floor(m / 60);
+  const r = Math.round(m % 60);
+  return h ? (r ? `${h}h ${r}m` : `${h}h`) : `${r}m`;
+};
+const fmtClock = (secs) => {
+  const s = Math.round(secs);
+  const h = Math.floor(s / 3600);
+  const mm = String(Math.floor((s % 3600) / 60)).padStart(h ? 2 : 1, '0');
+  const ss = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+};
+const NOUN = { Swim: 'swim', Bike: 'ride', Run: 'run', Strength: 'strength session' };
 
 /** Compliance rows for the `n` weeks before `week`, newest last. */
 function window_(plan, week, n) {
@@ -123,8 +164,12 @@ export function suggest(plan, { week } = {}) {
     });
   }
 
+  /* --- Synced history. Before the week-one return: a plan's first week is
+     exactly when what somebody trained before it matters most. ------------ */
+  out.push(...historyRules(plan, here));
+
   // Everything below reads the logged past, and week one has none.
-  if (here <= 0) return out;
+  if (here <= 0) return oneBudgetPerWeek(out);
 
   /* --- Doing consistently less than planned ----------------------------- */
   const shortWindow = window_(plan, here, THRESHOLDS.underWeeks);
@@ -215,6 +260,163 @@ export function suggest(plan, { week } = {}) {
           evidence: { discipline: name, ratio: round1(ratio), plannedMinutes: r.planned, actualMinutes: r.actual },
         });
       }
+    }
+  }
+
+  return oneBudgetPerWeek(out);
+}
+
+/* Two rules can each want to set the same week's budget. Offering both would
+   ask the athlete to choose between numbers; the lower one is the proposal,
+   because backing off needs less evidence than piling on. The others keep
+   their message and lose their button. */
+function oneBudgetPerWeek(list) {
+  const lowest = new Map();
+  for (const s of list) {
+    if (s.action?.tool !== 'set_week_budget') continue;
+    const held = lowest.get(s.action.input.week);
+    if (!held || s.action.input.hours < held.action.input.hours) lowest.set(s.action.input.week, s);
+  }
+  return list.map((s) =>
+    (s.action?.tool === 'set_week_budget' && lowest.get(s.action.input.week) !== s ? { ...s, action: null } : s));
+}
+
+/** Shares of a split's weights, over the planned disciplines. */
+function sharesOf(weights) {
+  const entries = HISTORY_DISCIPLINES.map((d) => [d, Math.max(0, Number(weights?.[d]) || 0)]);
+  const total = entries.reduce((a, [, w]) => a + w, 0);
+  return Object.fromEntries(entries.map(([d, w]) => [d, total > 0 ? w / total : 0]));
+}
+
+/** Recorded shares as split weights in steps of `step`, summing to exactly 1,
+    with every discipline in `keep` given at least one step. */
+function roundedWeights(share, keep, step) {
+  const units = Math.round(1 / step);
+  const discs = HISTORY_DISCIPLINES.filter((d) => share[d] > 0 || keep.includes(d));
+  const raw = discs.map((d) => ({ d, x: share[d] * units }));
+  const got = raw.map(({ d, x }) => ({ d, n: Math.max(1, Math.floor(x)), rest: x - Math.floor(x) }));
+  let left = units - got.reduce((a, g) => a + g.n, 0);
+  for (const g of [...got].sort((a, b) => b.rest - a.rest)) {
+    if (left <= 0) break;
+    g.n++;
+    left--;
+  }
+  while (left < 0) {
+    const big = got.filter((g) => g.n > 1).sort((a, b) => b.n - a.n)[0];
+    if (!big) break;
+    big.n--;
+    left++;
+  }
+  return Object.fromEntries(got.map((g) => [g.d, Math.round(g.n * step * 100) / 100]));
+}
+
+function historyRules(plan, here) {
+  const out = [];
+  const H = HISTORY_THRESHOLDS;
+  const sync = plan.activitySync;
+  const acts = plan.activities ?? [];
+  if (!sync || !sync.through || !acts.length) return out;
+
+  /* --- A synced run faster than the benchmark the paces come from -------- */
+  const current = currentBenchmark(plan.benchmarks ?? []);
+  const currentVdot = current ? vdotFrom(current) : null;
+  const candidates = benchmarkCandidates(acts.map(asRunEffort).filter(Boolean),
+    { today: sync.through, days: H.bestEffortDays, source: 'garmin' });
+  const better = candidates.find((c) =>
+    (currentVdot == null || c.vdot >= currentVdot + H.bestEffortMargin) && (!current || c.date > current.date));
+  if (better) {
+    const label = STANDARD_DISTANCES.find((d) => d.key === better.standard)?.label ?? 'run';
+    out.push({
+      code: 'best-effort',
+      severity: 'info',
+      message: current
+        ? `Your ${label} on ${better.date} (${fmtClock(better.timeSeconds)}) is faster than the result your ` +
+          'paces come from. Use it for your paces?'
+        : `Your ${label} on ${better.date} (${fmtClock(better.timeSeconds)}) could set your training paces, ` +
+          'which have no result to come from yet. Use it?',
+      evidence: { date: better.date, standard: better.standard, timeSeconds: better.timeSeconds,
+        vdot: round1(better.vdot), currentVdot: currentVdot == null ? null : round1(currentVdot) },
+      action: null,
+      offer: { kind: 'benchmark', candidate: better },
+    });
+  }
+
+  /* --- Everything else is about the planned week, which must not have
+         started, and needs enough covered weeks before it. -------------- */
+  const monday = dateOf(plan.start, here, 'Mon');
+  if (!monday || monday <= mondayOf(sync.through)) return out;
+  const rows = weeklyHistory(acts, { from: shiftISO(monday, -7 * H.lookback), weeks: H.lookback, sync });
+  const summary = summarizeHistory(rows);
+  if (summary.coveredWeeks < H.minCovered) return out;
+
+  const weeklyHours = rows.filter((r) => r.covered).map((r) => round1(r.minutes / 60));
+  const avgHours = summary.avgMinutes / 60;
+  const plannedHours = hoursOf(plan, here);
+  const seen = `your last ${summary.coveredWeeks} synced weeks`;
+
+  /* --- The plan asks for a bigger step than the recorded weeks support --- */
+  const pinned = plan.weekBudgets?.[weekKey(here)] != null;
+  if (!pinned && avgHours >= H.minWeeklyHours && plannedHours > avgHours * THRESHOLDS.maxRamp) {
+    const hours = Math.floor(avgHours * THRESHOLDS.maxRamp * 10) / 10;
+    out.push({
+      code: 'plan-outruns-history',
+      severity: 'warn',
+      message:
+        `${seen[0].toUpperCase() + seen.slice(1)} averaged ${round1(avgHours)}h. Week ${here + 1} plans ` +
+        `${round1(plannedHours)}h — more than a ${pct(THRESHOLDS.maxRamp - 1)} step up from that. ` +
+        `${hours}h would build from what you have actually been training.`,
+      evidence: { weeks: H.lookback, coveredWeeks: summary.coveredWeeks, weeklyHours, avgHours: round1(avgHours),
+        plannedHours: round1(plannedHours), missing: [] },
+      action: { tool: 'set_week_budget', input: { week: here, hours } },
+    });
+  }
+
+  /* --- Where the time has actually gone, against the block's split ------ */
+  const block = plan.season?.[here]?.block;
+  const planned = sharesOf(resolveSplit(block, plan.profile));
+  const recorded = summary.share;
+  if (block && summary.totalMinutes / 60 >= H.splitMinHours) {
+    const drifting = HISTORY_DISCIPLINES.filter((d) => Math.abs(recorded[d] - planned[d]) >= H.splitDrift);
+    if (drifting.length) {
+      const scheduled = HISTORY_DISCIPLINES.filter((d) => planned[d] > 0);
+      // A proposal that sets a scheduled discipline to nothing because it was
+      // not recorded would take it out of the block. That is a conversation,
+      // not a button.
+      const proposable = scheduled.every((d) => recorded[d] > 0);
+      out.push({
+        code: 'split-drift',
+        severity: 'info',
+        message:
+          `Over ${seen}, ` +
+          drifting.map((d) => `${d.toLowerCase()} was ${pct(recorded[d])} of your training`).join(', ') +
+          ` — ${block} plans ` + drifting.map((d) => pct(planned[d])).join(', ') + '.' +
+          (proposable ? ' Matching the block to what you do is one option; the plan’s split is another.' : ''),
+        evidence: { block, coveredWeeks: summary.coveredWeeks, totalHours: round1(summary.totalMinutes / 60),
+          recorded, planned: Object.fromEntries(HISTORY_DISCIPLINES.map((d) => [d, Math.round(planned[d] * 1000) / 1000])) },
+        action: proposable
+          ? { tool: 'set_split', input: { block, weights: roundedWeights(recorded, scheduled, H.splitRound) } }
+          : null,
+      });
+    }
+  }
+
+  /* --- A long session well beyond anything recorded ---------------------- */
+  const sessions = plan.weeks?.[weekKey(here)] ?? [];
+  for (const disc of HISTORY_DISCIPLINES) {
+    const longest = summary.longest[disc];
+    if (!longest) continue;
+    const plannedLong = Math.max(0, ...sessions.filter((s) => s.disc === disc).map((s) => durToMin(s.dur)));
+    if (plannedLong >= longest.minutes * H.longJump && plannedLong - longest.minutes >= H.longJumpMinutes) {
+      out.push({
+        code: 'long-session-jump',
+        severity: 'info',
+        message:
+          `Week ${here + 1}’s longest ${NOUN[disc]} is ${fmtMin(plannedLong)}; the longest in ${seen} ` +
+          `was ${fmtMin(longest.minutes)}, on ${longest.date}.`,
+        evidence: { discipline: disc, longestPlanned: plannedLong, longestRecorded: longest.minutes,
+          recordedOn: longest.date },
+        action: null,
+      });
     }
   }
 
