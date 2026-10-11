@@ -196,6 +196,25 @@ export function raceDayFor(plan, absWeek) {
 }
 
 /**
+ * One week's sessions, built afresh from the season the plan already stores.
+ *
+ * This is "Reset week": the same generator and the same race day a re-fit uses
+ * for that week, so the two can never disagree about whether a race day is
+ * clear. It reads the stored season rather than re-fitting it, which is what
+ * keeps one week's reset from moving any other week.
+ */
+export function freshWeek(plan, absWeek) {
+  const w = blockAt(plan, absWeek);
+  return generateWeek({
+    hours: w.hours,
+    block: w.block,
+    profile: plan.profile,
+    idPrefix: weekKey(w.absWeek),
+    raceDay: raceDayFor(plan, w.absWeek),
+  }).sessions;
+}
+
+/**
  * Re-fit the plan and hand back a draft. The stored plan is untouched.
  *
  * @param {object} plan
@@ -458,4 +477,40 @@ export function newPlan({
     view: { week: 0 },
     updatedAt: now,
   };
+}
+
+/* Structural equality for stored JSON. A key holding `undefined` is the same
+   as an absent one, because that is what a trip through storage makes of it. */
+function sameJSON(a, b) {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const keys = (o) => Object.keys(o).filter((k) => o[k] !== undefined);
+  const ka = keys(a);
+  const kb = keys(b);
+  return ka.length === kb.length && ka.every((k) => sameJSON(a[k], b[k]));
+}
+
+const isEmpty = (x) => x == null || (Array.isArray(x) ? !x.length : !Object.keys(x).length);
+
+/**
+ * Is this the stand-in plan nobody has used yet?
+ *
+ * The page never has zero plans: a first visit, or deleting the last one, makes
+ * a default "My plan". Creating a real season should replace that stand-in
+ * rather than leave it behind, and a new device signing in should not upload
+ * it. So "untouched" has to mean exactly that — every week is still what the
+ * generator made, and nothing the athlete entered is on it. Moving around the
+ * calendar (`view`) is not a touch; renaming it, editing a session, logging,
+ * a race, a result or an FTP all are.
+ */
+export function isUntouchedPlan(plan) {
+  if (!plan || !Array.isArray(plan.season) || !plan.season.length || !plan.weeks) return false;
+  if (plan.name !== 'My plan') return false;
+  for (const field of ['done', 'actuals', 'chat', 'events', 'benchmarks', 'activities', 'weekBudgets', 'loadRefs']) {
+    if (!isEmpty(plan[field])) return false;
+  }
+  if (!sameJSON(normalizeProfile(plan.profile), normalizeProfile({ raceDate: null }))) return false;
+  if (Object.keys(plan.weeks).length !== plan.season.length) return false;
+  return plan.season.every((w) => sameJSON(plan.weeks[weekKey(w.absWeek)], freshWeek(plan, w.absWeek)));
 }

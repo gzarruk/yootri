@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
   refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId, moveSession,
-  landingsOf, raceDayFor,
+  landingsOf, raceDayFor, freshWeek, isUntouchedPlan,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -702,4 +702,78 @@ test('applyDraft keeps load references set after the draft was taken', () => {
   const draft = structuredClone(p);
   const applied = applyDraft({ ...p, loadRefs: { ftpW: 250 } }, draft);
   assert.deepEqual(applied.loadRefs, { ftpW: 250 });
+});
+
+/* ---- one week from the stored season (Reset week) ---- */
+
+test('freshWeek keeps a race day clear, the way a re-fit does', () => {
+  // Reset week used to call generateWeek without the race day, so resetting the
+  // week of a tune-up scheduled training on the race and the day after it.
+  const p = twoRacePlan({ tuneUp: '2027-01-23' });
+  const week = freshWeek(p, 11);
+  for (const day of ['Sat', 'Sun']) {
+    assert.equal(
+      week.filter((x) => x.day === day).reduce((a, x) => a + durToMin(x.dur), 0), 0,
+      `${day} should be clear for the race`,
+    );
+  }
+  const last = weekCount(p) - 1;
+  assert.equal(
+    freshWeek(p, last).filter((x) => x.day === 'Sun').reduce((a, x) => a + durToMin(x.dur), 0), 0,
+    'and the primary race day too',
+  );
+});
+
+test('freshWeek builds the same week a one-week re-fit writes', () => {
+  // One rule for "rebuild this week", whichever button asked for it. The
+  // fixture adds its tune-up without re-fitting, so fit it first: freshWeek
+  // reads the stored season, it does not re-decide it.
+  const p = refit(twoRacePlan(), {});
+  for (const w of [0, 11, weekCount(p) - 1]) {
+    assert.deepEqual(freshWeek(p, w), refit(p, { from: w, to: w }).weeks[`w${w}`], `week ${w}`);
+  }
+});
+
+/* ---- the untouched stand-in ---- */
+
+const blank = () => newPlan({ name: 'My plan', startISO: '2026-10-05', now: 7 });
+
+test('a fresh stand-in plan is untouched, through storage and back', () => {
+  assert.equal(isUntouchedPlan(blank()), true);
+  assert.equal(isUntouchedPlan(loadPlan(JSON.parse(JSON.stringify(blank())))), true);
+});
+
+test('moving around the calendar does not count as a touch', () => {
+  assert.equal(isUntouchedPlan({ ...blank(), view: { week: 5, view: 'month' }, updatedAt: 99 }), true);
+});
+
+test('anything the athlete did makes a plan touched', () => {
+  const b = blank();
+  const first = b.weeks.w0.find((x) => durToMin(x.dur) > 0);
+  const touches = {
+    'a session marked done': { done: { [first.id]: true } },
+    'a logged actual': { actuals: { [first.id]: { status: 'done', min: 40 } } },
+    'a coach conversation': { chat: [{ role: 'user', text: 'hi' }] },
+    'an event': { events: [{ id: 'e', name: 'Race', date: '2026-12-06', kind: 'race', raceType: '70.3', priority: 'primary' }] },
+    'a running result': { benchmarks: [bm()] },
+    'a synced activity': { activities: [syncedRun()] },
+    'an FTP': { loadRefs: { ftpW: 250 } },
+    'a pinned week': { weekBudgets: { w3: 4 } },
+    'a new name': { name: 'Roth 2027' },
+    'a profile change': { profile: { ...b.profile, annualHours: 600 } },
+    'an edited session': { weeks: { ...b.weeks, w0: b.weeks.w0.map((x) => (x.id === first.id ? { ...x, dur: '0:10' } : x)) } },
+    'a removed session': { weeks: { ...b.weeks, w2: b.weeks.w2.slice(1) } },
+  };
+  for (const [what, over] of Object.entries(touches)) {
+    assert.equal(isUntouchedPlan({ ...b, ...over }), false, what);
+  }
+});
+
+test('an empty-calendar plan is not mistaken for the stand-in', () => {
+  assert.equal(isUntouchedPlan(newPlan({ name: 'My plan', startISO: '2026-10-05', mode: 'empty' })), false);
+});
+
+test('a missing or malformed plan is never untouched', () => {
+  assert.equal(isUntouchedPlan(null), false);
+  assert.equal(isUntouchedPlan({}), false);
 });
