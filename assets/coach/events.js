@@ -52,6 +52,7 @@ const RACE_TYPE_LABELS = Object.assign(Object.create(null), {
   '10k': '10 km',
   'half-marathon': 'Half marathon',
   marathon: 'Marathon',
+  swimrun: 'Swim-Run',
 });
 
 /**
@@ -82,7 +83,7 @@ export const KNOWN_RACE_TYPES = [...RACE_TYPES, ...RETIRED_RACE_TYPES];
     which is exactly why a standalone marathon can go in a build here and could
     not be the race the build is for. `normalizeEvent` enforces that boundary. */
 export const SECONDARY_RACE_TYPES = [
-  '10k', 'half-marathon', 'marathon', 'sprint', 'olympic', '70.3', 'ironman',
+  '10k', 'half-marathon', 'marathon', 'sprint', 'olympic', '70.3', 'ironman', 'swimrun',
 ];
 
 /** Every distance that may be written down at all. A name in none of these
