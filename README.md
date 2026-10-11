@@ -1,7 +1,7 @@
 # yootri
 
 <!-- SPDX-License-Identifier: MIT -->
-<!-- auto-merge test: safe to delete -->
+<!-- auto-merge label test: safe to delete -->
 
 [![CI](https://github.com/gzarruk/yootri/actions/workflows/ci.yml/badge.svg)](https://github.com/gzarruk/yootri/actions/workflows/ci.yml)
 
