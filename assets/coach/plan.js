@@ -51,8 +51,13 @@ export function loadPlan(raw) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (same(profile, p.profile) && same(benchmarks, p.benchmarks)
     && same(activities, p.activities) && same(activitySync, p.activitySync)
-    && same(loadRefs, p.loadRefs)) return p;
+    && same(loadRefs, p.loadRefs) && !('athlete' in p)) return p;
   const out = { ...p, profile, benchmarks, activities };
+  // The athlete record (athlete.js) is never plan content: it holds body
+  // measurements, which sync only under their own consent, while a plan syncs
+  // and exports under the ordinary one. Unknown top-level fields otherwise
+  // travel, so this one is named and dropped.
+  delete out.athlete;
   // No sync means no coverage — absent, not an empty span somebody could read
   // as "covered nothing". Load references likewise: absent until entered.
   if (activitySync) out.activitySync = activitySync;

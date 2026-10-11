@@ -32,9 +32,11 @@ export const ENVELOPE_VERSION = 1;
 const DEFAULT_ORIGIN = 'yootri.gzarruk.com';
 const HELP = 'An import wants the .json file that "Export this plan" writes.';
 
-/** The object written to a file. `plan` is the stored record minus the chat. */
+/** The object written to a file. `plan` is the stored record minus the chat,
+    and minus an athlete record should one ever have reached it — body
+    measurements are not something a shared plan file should carry. */
 export function exportEnvelope(plan, { from = DEFAULT_ORIGIN } = {}) {
-  const { chat, ...shareable } = plan;
+  const { chat, athlete, ...shareable } = plan;
   return {
     _type: ENVELOPE_TYPE,
     version: ENVELOPE_VERSION,

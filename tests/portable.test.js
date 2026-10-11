@@ -325,3 +325,20 @@ test('load references travel with the plan', () => {
   const back = readPlanFile(JSON.stringify(exportEnvelope({ ...fullPlan(), loadRefs: { ftpW: 250, cssSecPer100m: 98 } })));
   assert.deepEqual(back.plan.loadRefs, { ftpW: 250, cssSecPer100m: 98 });
 });
+
+/* ---- the athlete record never travels with a plan ---- */
+
+test('an export never carries an athlete record, even one smuggled onto the plan', () => {
+  // The page keeps the athlete record off plans entirely; this is the second
+  // lock on the door a file goes out of.
+  const env = exportEnvelope({ ...fullPlan(), athlete: { weightKg: 71.4, heightCm: 182 } });
+  assert.equal('athlete' in env.plan, false);
+  assert.equal(JSON.stringify(env).includes('71.4'), false);
+});
+
+test('a plan file carrying an athlete record comes back without it', () => {
+  const file = JSON.stringify({ ...exportEnvelope(fullPlan()), plan: { ...fullPlan(), athlete: { weightKg: 71.4 } } });
+  const back = readPlanFile(file);
+  assert.equal(back.ok, true);
+  assert.equal('athlete' in back.plan, false);
+});

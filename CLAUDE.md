@@ -44,6 +44,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `match.js` | Which synced activity was which planned session: same date, same discipline, closest duration. Proposes actuals; never writes one, never over the athlete's own log. |
 | `load.js` | Training load: one number per session where an hour at threshold is 100 (power, pace, swim pace, session RPE, heart rate as the fallback), and its chronic (42-day) and acute (7-day) averages. Ported from GARMIN-CLAUDE. Never stored — worked out when read. |
 | `workout.js` | A planned bike session as warm-up / main set / cool-down steps with %FTP targets (watts when `loadRefs.ftpW` is set), plus `planSyncSet`, which says what one "send to Garmin" run would do. Worked out when asked for, never stored on a session. |
+| `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; `estimateAnnualHours` sizes a season so it opens near recent weekly hours. Never on a plan — see below. |
 | `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
@@ -147,6 +148,20 @@ plan carries none of it, and `normalizeSyncedActivity` is an allowlist that
 later derived from it (training load) is computed at read time and never
 stored. Before widening what is read, read `../yootri-rnd/FINDINGS.md` (25 Aug
 and 28 Sep) and §9 item 4 of the private legal note.
+
+**About you is not plan content, and its cloud copy has a consent of its own.**
+Weight and height are health data, while a plan syncs and exports under the
+ordinary sync consent — so the athlete record lives in this browser
+(`yootri_athlete_v1`), never on a plan, never in a plan export, and never in a
+coach session. `loadPlan` and `exportEnvelope` both drop an `athlete` field if
+one is ever put on a plan. It reaches the account (`users/{uid}/athlete/profile`)
+only when the athlete ticks a second box, recorded as `yootri_health_consent_v1`
+and versioned by the privacy notice like sync consent. The cloud copy carries
+the consent it was written under, and withdrawing replaces it with a bare
+`withdrawnAt` marker rather than deleting it, so another device that still
+remembers agreeing learns otherwise on its next pull instead of re-uploading.
+`tests/index-html.test.js` pins the guards; the bridge still reads no daily or
+body data of any kind.
 
 **Garmin.** Garmin's developer program only takes businesses, so the page asks
 `tools/garmin-bridge` — run by the athlete on their own machine, for their own
