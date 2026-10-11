@@ -1,6 +1,7 @@
 from datetime import date
 
 import pytest
+import requests
 from garminconnect import (
     GarminConnectAuthenticationError,
     GarminConnectConnectionError,
@@ -177,3 +178,22 @@ def test_a_rate_limit_while_fetching_legs_stops_the_fetch():
     with pytest.raises(RateLimited):
         fetch_activities(client_for(api), date(2026, 9, 6), date(2026, 9, 6))
     assert sum(1 for name, _, _ in api.calls if name == "get_activity") == 1
+
+
+def test_workout_calls_are_never_retried():
+    # A create that timed out may have gone through; asking again would duplicate it.
+    from garmin_bridge.errors import Unavailable
+
+    class Flaky:
+        def __init__(self):
+            self.n = 0
+
+        def upload_workout(self, body):
+            self.n += 1
+            raise requests.ConnectionError("timed out")
+
+    api = Flaky()
+    client = GarminClient(api, sleep=lambda _s: None)
+    with pytest.raises(Unavailable):
+        client.upload_workout({})
+    assert api.n == 1

@@ -310,6 +310,9 @@ const BRIDGE_MESSAGES = {
   mfa_required: 'Garmin wants a verification code. Run `make garmin-login` in a terminal, then sync again.',
   rate_limited: 'Garmin is limiting requests from this network for now. Wait 15–60 minutes, then sync again.',
   unavailable: 'Garmin Connect could not be reached. Try again in a few minutes.',
+  bad_workout: 'The bridge could not make sense of that workout. This is a bug in yootri, not something you did.',
+  workouts_disabled: 'Sending workouts is switched off on the bridge. Stop it, then start it again with `YOOTRI_GARMIN_WORKOUTS=1 make garmin`.',
+  workout_rejected: 'Garmin Connect did not accept the workout. Its workout service is unofficial and may have changed; nothing in your plan was affected.',
   garmin_error: 'Garmin Connect refused the request. If it keeps happening, Garmin may have changed something the bridge relies on.',
   internal: 'Something went wrong inside the bridge. The terminal running `make garmin` may say more.',
 };

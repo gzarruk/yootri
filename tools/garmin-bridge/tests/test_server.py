@@ -147,8 +147,8 @@ def test_preflight(bridge):
                                         "Access-Control-Request-Private-Network": "true"})
     assert status == 204
     assert headers["access-control-allow-origin"] == ORIGIN
-    assert headers["access-control-allow-methods"] == "GET"
-    assert headers["access-control-allow-headers"].lower() == "authorization"
+    assert headers["access-control-allow-methods"] == "GET, POST"
+    assert headers["access-control-allow-headers"].lower() == "authorization, content-type"
     assert headers["access-control-allow-private-network"] == "true"
 
 
@@ -161,7 +161,7 @@ def test_preflight_from_an_unlisted_origin(bridge):
 
 
 @pytest.mark.parametrize("method", ["POST", "PUT", "PATCH", "DELETE"])
-def test_only_get(bridge, method):
+def test_only_get_on_the_read_routes(bridge, method):
     status, _, body = request(bridge, method, "/v1/activities", body=b'{"x": 1}')
     assert status == 405
     assert body["error"]["code"] == "method_not_allowed"
@@ -254,3 +254,176 @@ def test_parse_range_limit():
     today = date(2026, 9, 27)
     since, until = parse_range(f"since=2025-08-23&until=2026-09-27", today=today)
     assert (until - since).days == MAX_RANGE_DAYS
+
+
+# ---- workout export ---------------------------------------------------------
+
+WORKOUT = {
+    "name": "Yootri Long ride 2:00",
+    "ftpW": 250,
+    "steps": [
+        {"type": "warmup", "durationS": 900, "pct": [50, 65], "watts": [125, 163]},
+        {"type": "interval", "durationS": 5700, "pct": [56, 75], "watts": [140, 188]},
+        {"type": "cooldown", "durationS": 600, "pct": [45, 55], "watts": None},
+    ],
+}
+JSON_HEADERS = {"Content-Type": "application/json"}
+
+
+class WorkoutStub(StubClient):
+    def __init__(self, error=None):
+        super().__init__()
+        self.sent = []
+        self.removed = []
+        self.workout_error = error
+
+    def upload_workout(self, body):
+        if self.workout_error:
+            raise self.workout_error
+        self.sent.append(body)
+        return {"workoutId": 77}
+
+    def schedule_workout(self, workout_id, date_iso):
+        self.sent.append((workout_id, date_iso))
+        return {"workoutScheduleId": 88}
+
+    def unschedule_workout(self, schedule_id):
+        self.removed.append(("unschedule", schedule_id))
+
+    def delete_workout(self, workout_id):
+        self.removed.append(("delete", workout_id))
+
+
+def post(bridge, path, payload, **kw):
+    headers = dict(JSON_HEADERS)
+    headers.update(kw.pop("extra", {}) or {})
+    body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+    return request(bridge, "POST", path, body=body, extra=headers, **kw)
+
+
+@pytest.fixture
+def workouts(bridge):
+    bridge["server"].cfg.workouts = True
+    stub = WorkoutStub()
+    bridge["make"] = lambda: stub
+    bridge["stub"] = stub
+    return bridge
+
+
+def test_status_says_whether_workout_export_is_on(bridge):
+    assert request(bridge, "GET", "/v1/status")[2]["workouts"] is False
+    bridge["server"].cfg.workouts = True
+    assert request(bridge, "GET", "/v1/status")[2]["workouts"] is True
+
+
+@pytest.mark.parametrize("path", ["/v1/workouts", "/v1/workouts/remove", "/v1/workouts/fit"])
+def test_workout_routes_are_off_by_default(bridge, path):
+    status, _, body = post(bridge, path, {"workout": WORKOUT, "date": "2026-10-13"})
+    assert status == 403
+    assert body["error"]["code"] == "workouts_disabled"
+    assert bridge["clients"] == []
+
+
+def test_a_workout_is_sent_and_scheduled(workouts):
+    status, _, body = post(workouts, "/v1/workouts", {"workout": WORKOUT, "date": "2026-10-13"})
+    assert status == 200
+    assert (body["workoutId"], body["scheduleId"], body["date"]) == (77, 88, "2026-10-13")
+    uploaded, scheduled = workouts["stub"].sent
+    assert uploaded["workoutName"] == WORKOUT["name"]
+    assert scheduled == (77, "2026-10-13")
+
+
+def test_a_sent_workout_can_be_removed(workouts):
+    status, _, body = post(workouts, "/v1/workouts/remove", {"workoutId": 77, "scheduleId": 88})
+    assert status == 200 and body["ok"] is True
+    assert workouts["stub"].removed == [("unschedule", 88), ("delete", 77)]
+
+
+def test_the_fit_file_comes_back_without_calling_garmin(workouts):
+    conn = http.client.HTTPConnection("127.0.0.1", workouts["port"], timeout=5)
+    conn.request("POST", "/v1/workouts/fit", body=json.dumps({"workout": WORKOUT}),
+                 headers={"Authorization": f"Bearer {TOKEN}", **JSON_HEADERS})
+    resp = conn.getresponse()
+    data = resp.read()
+    conn.close()
+    assert resp.status == 200
+    assert resp.getheader("Content-Type") == "application/octet-stream"
+    assert data[8:12] == b".FIT"
+    assert workouts["clients"] == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"workout": WORKOUT},
+        {"workout": WORKOUT, "date": "next tuesday"},
+        {"workout": WORKOUT, "date": "2031-01-01"},
+        {"workout": {"name": "x", "steps": []}, "date": "2026-10-13"},
+        {"workout": "nope", "date": "2026-10-13"},
+    ],
+)
+def test_a_bad_workout_is_a_400_and_garmin_is_not_called(workouts, payload):
+    status, _, body = post(workouts, "/v1/workouts", payload)
+    assert status == 400
+    assert body["error"]["code"] == "bad_workout"
+    assert workouts["stub"].sent == []
+
+
+def test_remove_wants_whole_numbers(workouts):
+    assert post(workouts, "/v1/workouts/remove", {"workoutId": "77"})[0] == 400
+    assert post(workouts, "/v1/workouts/remove", {})[0] == 400
+    assert workouts["stub"].removed == []
+
+
+def test_the_body_must_be_json_and_small(workouts):
+    plain = request(workouts, "POST", "/v1/workouts", body=b"{}", extra={"Content-Type": "text/plain"})
+    assert plain[0] == 400
+    assert post(workouts, "/v1/workouts", b"not json")[0] == 400
+    assert post(workouts, "/v1/workouts", b"[]")[0] == 400
+    big = post(workouts, "/v1/workouts", b'{"x": "' + b"a" * 40000 + b'"}')
+    assert big[0] == 400
+
+
+def test_workout_posts_need_the_token_host_and_origin(workouts):
+    payload = {"workout": WORKOUT, "date": "2026-10-13"}
+    assert post(workouts, "/v1/workouts", payload, token=None)[0] == 401
+    assert post(workouts, "/v1/workouts", payload, token="wrong")[0] == 401
+    assert post(workouts, "/v1/workouts", payload, origin="https://evil.test")[0] == 403
+    assert post(workouts, "/v1/workouts", payload, host="evil.test")[0] == 421
+    assert workouts["stub"].sent == []
+
+
+def test_a_listed_origin_can_read_the_answer(workouts):
+    status, headers, _ = post(workouts, "/v1/workouts", {"workout": WORKOUT, "date": "2026-10-13"}, origin=ORIGIN)
+    assert status == 200
+    assert headers["access-control-allow-origin"] == ORIGIN
+
+
+def test_garmins_refusal_is_its_own_error(workouts):
+    from garmin_bridge.errors import GarminError
+
+    workouts["make"] = lambda: WorkoutStub(error=GarminError("400"))
+    workouts["server"].forget_client()
+    status, _, body = post(workouts, "/v1/workouts", {"workout": WORKOUT, "date": "2026-10-13"})
+    assert status == 502
+    assert body["error"]["code"] == "workout_rejected"
+
+
+def test_a_lost_session_is_reopened_once_for_a_workout(workouts):
+    calls = {"n": 0}
+
+    def make():
+        calls["n"] += 1
+        return WorkoutStub(error=AuthRequired()) if calls["n"] == 1 else WorkoutStub()
+
+    workouts["make"] = make
+    workouts["server"].forget_client()
+    status, _, body = post(workouts, "/v1/workouts", {"workout": WORKOUT, "date": "2026-10-13"})
+    assert status == 200 and body["workoutId"] == 77
+    assert calls["n"] == 2
+
+
+def test_other_methods_and_paths_are_still_refused(workouts):
+    assert request(workouts, "PUT", "/v1/workouts", body=b"{}")[0] == 405
+    assert request(workouts, "DELETE", "/v1/workouts/remove")[0] == 405
+    assert post(workouts, "/v1/sleep", {})[0] == 405
