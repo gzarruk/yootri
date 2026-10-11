@@ -1319,11 +1319,10 @@
      a browser (`npm test`). This file keeps the markup, styles and DOM. */
   import {
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
-    landingsOf,
+    landingsOf, freshWeek, isUntouchedPlan,
   } from './assets/coach/plan.js';
   import { normalizeProfile, resolveWeekShape, SPREAD_MODES } from './assets/coach/profile.js';
   import { dayBudgets } from './assets/coach/shape.js';
-  import { generateWeek } from './assets/coach/generate.js';
   import {
     STATUSES, getActual, setActual, actualMinutes, weekCompliance, seasonActuals,
   } from './assets/coach/actuals.js';
@@ -1405,13 +1404,9 @@
   const clampWeek = (w) => Math.max(0, Math.min(Number(w) || 0, totalWeeks() - 1));
   const weekInfo = (w) => blockAt(plan, w);
   const sessionsFor = (w) => sessionsAt(plan, w);
-  const freshSessions = (w) => {
-    const info = weekInfo(w);
-    return generateWeek({
-      hours: info.hours, block: info.block, profile: plan.profile,
-      idPrefix: 'w' + info.absWeek,
-    }).sessions;
-  };
+  // Built from the working state's start and events, which can be newer than
+  // the stored plan's, so a race just added is already a race day here.
+  const freshSessions = (w) => freshWeek({ ...plan, start: state.start, events: state.events }, w);
   /* Consecutive weeks sharing a block name, for the overview timeline. */
   const blockRuns = () => {
     const runs = [];
@@ -2324,13 +2319,13 @@
   const ORIENT_KEY = 'yootri_oriented_v1';
   const orientDone = () => { try { return localStorage.getItem(ORIENT_KEY) === '1'; } catch (e) { return true; } };
 
+  // Read through the working state, which can be a step ahead of the stored plan.
+  const currentPlanUntouched = () => isUntouchedPlan({
+    ...plan, events: state.events, benchmarks: state.benchmarks, done: state.done,
+  });
+
   function planIsUntouched() {
-    if (plans.length > 1) return false;
-    if (Object.keys(plan.done ?? {}).length) return false;
-    if ((plan.chat ?? []).length) return false;
-    const weeks = plan.weeks ?? {};
-    return !Object.values(weeks).some((w) =>
-      (w?.sessions ?? []).some((x) => x && x.actual));
+    return plans.length === 1 && currentPlanUntouched();
   }
 
   function renderOrientation() {
@@ -2386,9 +2381,11 @@
 
   let npMode = 'fitted';
 
+  // A new season starts this week, not on whatever Monday the current plan
+  // happened to start — that may be months in the past.
   function npWeeks() {
     const race = $('np-race')?.value || null;
-    return weeksUntil(state.start, race) ?? FALLBACK_WEEKS;
+    return weeksUntil(defaultStart(), race) ?? FALLBACK_WEEKS;
   }
 
   function npRenderLength() {
@@ -2406,14 +2403,23 @@
     // A new plan is a new race, so a retired distance is not carried across
     // even when the plan being copied from is built for one.
     const opts = raceTypeOptions(plan.profile.raceType, { keepRetired: false });
+    const replacing = currentPlanUntouched();
+    const carried = [
+      state.benchmarks.length && 'your running result',
+      plan.loadRefs && 'FTP and CSS',
+      (plan.activities || []).length && 'synced Garmin activities',
+    ].filter(Boolean);
 
     panelShell(
       '<h2>New plan</h2>' +
-      '<p class="pnl-sub">A separate season. "' + esc(plan.name || 'your current plan') +
-        '" keeps its weeks, its completed sessions and its logs — switch back any time from the plan menu.</p>' +
+      (replacing
+        ? '<p class="pnl-sub">This takes the place of the starter plan yootri made on your first visit — ' +
+          'nothing has been done with that one yet.</p>'
+        : '<p class="pnl-sub">A separate season. "' + esc(plan.name || 'your current plan') +
+          '" keeps its weeks, its completed sessions and its logs — switch back any time from the plan menu.</p>') +
       '<div class="pnl-grid">' +
         field('Name', '<input type="text" class="input" id="np-name" value="' +
-          esc('My plan ' + (plans.length + 1)) + '" />') +
+          esc(replacing ? 'My season' : 'My plan ' + (plans.length + 1)) + '" />') +
         field('Race date', '<input type="date" class="input" id="np-race" />') +
         field('Race distance', '<select class="input" id="np-type">' + opts + '</select>') +
       '</div>' +
@@ -2428,6 +2434,9 @@
         '</div>' +
         '<label class="np-check"><input type="checkbox" id="np-inherit" checked />' +
           '<span>Use my current availability, constraints and discipline splits. Uncheck to start from defaults.</span></label>' +
+        (carried.length
+          ? '<p class="pnl-hint">Comes with you either way: ' + esc(carried.join(', ')) + '.</p>'
+          : '') +
       '</div>' +
       '<div class="pnl-act">' +
         '<button type="button" class="btn btn-ghost" id="np-cancel">Cancel</button>' +
@@ -2453,16 +2462,39 @@
     const race = $('np-race').value || null;
     const created = newPlan({
       name: $('np-name').value.trim() || 'My plan ' + (plans.length + 1),
-      startISO: state.start,
+      startISO: defaultStart(),
       raceDate: race,
       raceType: $('np-type').value,
       profile: $('np-inherit').checked ? plan.profile : undefined,
+      // What the athlete has done and measured comes along whatever the
+      // checkbox says: it is a fact about them, not a preference about the
+      // week, and a new race does not make last month's 10 km any slower.
+      benchmarks: state.benchmarks,
+      activities: plan.activities,
+      activitySync: plan.activitySync,
+      loadRefs: plan.loadRefs,
       mode: npMode,
       now: now(),
     });
     closePanel();
+    const replaced = dropIfUntouched();
     addPlan(created);
-    setStatus('Created "' + (created.name || 'plan') + '" · ' + created.season.length + ' weeks');
+    setStatus('Created "' + (created.name || 'plan') + '" · ' + created.season.length + ' weeks' +
+      (replaced ? ' · in place of the starter plan' : ''));
+  }
+
+  /* The page is never without a plan, so a first visit makes a stand-in "My
+     plan". Creating or importing a real season replaces it instead of leaving
+     an unused copy in the plan menu (and in the cloud). Only a plan nobody has
+     touched qualifies — see isUntouchedPlan. Returns whether one was dropped. */
+  function dropIfUntouched() {
+    if (!currentPlanUntouched()) return false;
+    const id = plan.id;
+    plans = plans.filter((x) => x.id !== id);
+    saveIndex(plans);
+    remove(planKey(id));
+    cloudDelete(id);
+    return true;
   }
 
   /* =========================================================================
@@ -3673,6 +3705,16 @@
         else idx[cp.id].name = cp.name;
       }
     });
+    // This device made its own stand-in "My plan" on first load, before anyone
+    // signed in. Once the account has plans of its own, that stand-in is noise:
+    // drop it here rather than upload it, so a second device does not add a
+    // junk plan to the account every time. Only a local-only plan nobody has
+    // touched goes — never one the cloud already holds.
+    if (Object.keys(cloudById).length) {
+      const strays = plans.filter((e) => !cloudById[e.id] && isUntouchedPlan(loadPlanLocal(e.id)));
+      strays.forEach((e) => remove(planKey(e.id)));
+      plans = plans.filter((e) => !strays.includes(e));
+    }
     plans.forEach((e) => {
       const lp = loadPlanLocal(e.id);
       const cp = cloudById[e.id];
@@ -3680,8 +3722,15 @@
     });
     saveIndex(plans);
 
+    // If the current plan was the stand-in just dropped, land on the season
+    // most recently worked on rather than whichever happens to be listed first.
     let cur = loadPlanLocal(currentId());
-    if (!cur) { cur = loadPlanLocal(plans[0].id); setCurrentId(plans[0].id); }
+    if (!cur) {
+      cur = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean)
+        .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))[0];
+      if (cur) setCurrentId(cur.id);
+      else cur = plan;   // storage unreadable: stay on what is in memory
+    }
     adoptPlan(cur);
   }
 
@@ -3820,7 +3869,7 @@
     // Deleting the last plan spawns a blank stand-in; drop it again on undo.
     if (autoCreatedId) {
       const stand = loadPlanLocal(autoCreatedId);
-      if (stand && !Object.keys(stand.weeks || {}).length && !Object.keys(stand.done || {}).length) {
+      if (isUntouchedPlan(stand)) {
         plans = plans.filter((x) => x.id !== autoCreatedId);
         remove(planKey(autoCreatedId));
         cloudDelete(autoCreatedId);
@@ -3993,8 +4042,10 @@
       name: String(typed || '').trim() || fallback,
     });
     closePanel();
+    const replaced = dropIfUntouched();
     addPlan(p);
-    setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks');
+    setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' +
+      (replaced ? ' · in place of the starter plan' : ''));
   }
 
   /* ---- Training paces ----------------------------------------------------
@@ -4096,6 +4147,18 @@
 
       keptListHTML() +
 
+      '<h3 class="pnl-h3">Bike and swim</h3>' +
+      '<p class="pnl-hint">Your FTP puts watts on a bike workout sent to Garmin, and with your CSS it scores ' +
+        'the load of synced rides and swims. Leave either empty if you do not know it yet. Both are saved with ' +
+        'the plan.</p>' +
+      '<div class="pnl-grid">' +
+        field('FTP (watts)', '<input type="number" class="input" id="bm-ftp" min="50" max="600" value="' +
+          esc(plan.loadRefs?.ftpW || '') + '" />') +
+        field('CSS (per 100 m)', '<input type="text" class="input" id="bm-css" placeholder="1:40" value="' +
+          esc(cssText(plan.loadRefs?.cssSecPer100m)) + '" />') +
+      '</div>' +
+      '<div class="pnl-act"><button type="button" class="btn btn-secondary" id="bm-refs-save">Save FTP and CSS</button></div>' +
+
       '<div class="pnl-act">' +
         '<button type="button" class="btn btn-ghost spacer" id="bm-file">Import from a file…</button>' +
         (stravaConfig()
@@ -4125,6 +4188,7 @@
     $('bm-close').addEventListener('click', closePanel);
     $('bm-file').addEventListener('click', () => els.activityFile.click());
     $('bm-add').addEventListener('click', addTypedBenchmark);
+    $('bm-refs-save').addEventListener('click', saveRefsFromPaces);
     const strava = $('bm-strava');
     if (strava) strava.addEventListener('click', () => (stravaConnected() ? loadFromStrava() : startStravaConnect()));
 
@@ -4183,6 +4247,23 @@
       }),
       'Paces now from your ' + fmtDistance(distanceMeters) + ' in ' + fmtClock(timeSeconds),
     );
+  }
+
+  /* FTP and CSS used to be reachable only from the Garmin panel, and only once
+     something had synced — so without Garmin a bike workout could never show
+     watts. They live here too now, beside the running result they belong with. */
+  function saveRefsFromPaces() {
+    const ftp = $('bm-ftp').value.trim();
+    const css = $('bm-css').value.trim();
+    const refs = readLoadRefs(ftp, css);
+    if (ftp && !refs?.ftpW) return failPaces('An FTP is a number of watts between 50 and 600.');
+    if (css && !refs?.cssSecPer100m) {
+      return failPaces('That CSS could not be read. Write it as a time per 100 m, like 1:40.');
+    }
+    saveLoadRefs(refs);
+    pacesView = null;
+    setStatus(refs ? 'FTP and CSS saved' : 'FTP and CSS cleared');
+    openPacesPanel();
   }
 
   function failPaces(reason) {
@@ -4763,20 +4844,28 @@
       '<div class="pnl-act"><button type="button" class="btn btn-secondary" id="gm-load-save">Save training load settings</button></div>';
   }
 
-  function saveTrainingLoadSettings() {
-    const val = (id) => $(id).value.trim();
-    const css = parseClock(val('gm-css'));
-    const refs = normalizeLoadRefs({ ftpW: val('gm-ftp'), cssSecPer100m: css });
+  /* FTP and CSS go on the plan straight away, like a benchmark: they change no
+     session, only which numbers a card or a load figure resolves to. The two
+     panels that edit them both come through here. */
+  const readLoadRefs = (ftpRaw, cssRaw) =>
+    normalizeLoadRefs({ ftpW: ftpRaw, cssSecPer100m: parseClock(cssRaw) });
+
+  function saveLoadRefs(refs) {
     if (refs) plan.loadRefs = refs;
     else delete plan.loadRefs;
+    persistPlan();
+    if (coach && coach.session) coach.session.plan = plan;
+  }
+
+  function saveTrainingLoadSettings() {
+    const val = (id) => $(id).value.trim();
     const hr = normalizeHrThresholds({
       lthr: val('gm-lthr'), max: val('gm-hrmax'), rest: val('gm-hrrest'), trimp: val('gm-trimp'),
     });
     if (hr) save(HR_THRESHOLDS_KEY, hr);
     else remove(HR_THRESHOLDS_KEY);
-    persistPlan();
+    saveLoadRefs(readLoadRefs(val('gm-ftp'), val('gm-css')));
     if (coach && coach.session) {
-      coach.session.plan = plan;
       coach.session.device = { ...coach.session.device, hrThresholds: hr ?? null };
     }
     openGarminSetupPanel('Training load settings saved.', 'ok');

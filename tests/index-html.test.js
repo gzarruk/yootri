@@ -293,3 +293,62 @@ test('heart-rate thresholds are kept in this browser, never on a plan', () => {
   if (!HTML.includes('yootri_hr_thresholds')) return;
   assert.equal(/plan\.hrThresholds|plan\.loadRefs\s*=\s*\{[^}]*(lthr|rest|max)/.test(HTML), false);
 });
+
+/* ---- the plan lifecycle ----
+
+   These paths are page code, so like the consent guard above they are checked
+   at their call sites. The rules themselves (which week a reset builds, what
+   counts as an untouched stand-in) are engine functions with tests of their
+   own in plan.test.js; what is pinned here is that the page asks them. */
+
+/** The body of `function name(…) { … }` in the page, by brace matching. */
+function fnBody(name) {
+  const src = withoutComments(HTML);
+  const at = src.search(new RegExp(`function ${name}\\s*\\(`));
+  assert.ok(at !== -1, `${name} is gone from index.html`);
+  const open = src.indexOf('{', src.indexOf(')', at));
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}' && --depth === 0) return src.slice(open + 1, i);
+  }
+  return src.slice(open + 1);
+}
+
+test('a new plan starts this week and keeps what the athlete measured', () => {
+  const body = fnBody('createNewPlan');
+  assert.match(body, /startISO:\s*defaultStart\(\)/, 'not the current plan’s start, which may be months ago');
+  for (const field of ['benchmarks', 'activities', 'activitySync', 'loadRefs']) {
+    assert.match(body, new RegExp(`\\b${field}:`), `${field} is no longer carried into a new plan`);
+  }
+  assert.doesNotMatch(fnBody('npWeeks'), /state\.start/);
+});
+
+test('Reset week builds the week the way a re-fit does', () => {
+  // freshWeek carries the race day; generateWeek called directly would not.
+  assert.match(HTML, /const freshSessions = \(w\) => freshWeek\(/);
+});
+
+test('creating or importing a season replaces the untouched stand-in', () => {
+  for (const fn of ['createNewPlan', 'doImport']) {
+    const body = fnBody(fn);
+    const drop = body.indexOf('dropIfUntouched()');
+    assert.ok(drop !== -1, `${fn} no longer replaces the stand-in`);
+    assert.ok(drop < body.indexOf('addPlan('), `${fn} must drop the stand-in before adopting the new plan`);
+  }
+  assert.match(fnBody('dropIfUntouched'), /cloudDelete\(/, 'a stand-in already uploaded goes from the cloud too');
+});
+
+test('the untouched check is the engine’s, wherever the page asks it', () => {
+  for (const fn of ['mergeCloudPlans', 'undoDelete']) {
+    assert.match(fnBody(fn), /isUntouchedPlan\(/, `${fn} has its own idea of an untouched plan again`);
+  }
+  assert.match(HTML, /const currentPlanUntouched = \(\) => isUntouchedPlan\(/);
+});
+
+test('FTP and CSS can be entered without Garmin', () => {
+  const body = fnBody('openPacesPanel');
+  assert.match(body, /id="bm-ftp"/);
+  assert.match(body, /id="bm-css"/);
+  assert.doesNotMatch(body, /synced\s*\?/, 'the fields must not wait for a sync');
+});
