@@ -21,6 +21,13 @@ export const SPREAD_MODES = ['proportional', 'weekend', 'even'];
 
 export const DEFAULT_WEEK_SHAPE = { enabled: true, spread: 'proportional', pins: {} };
 
+/* The disciplines an athlete can name a long-session day for. Swim and
+   strength have no session that has to land on a particular day. Bike first:
+   it is the one that takes the week's biggest day (see shape.js). */
+export const LONG_DAY_DISCIPLINES = ['Bike', 'Run'];
+/** The most sessions in a day an athlete can ask for; absent means no cap. */
+export const MAX_SESSIONS_PER_DAY = 3;
+
 export const DEFAULT_PROFILE = {
   annualHours: 500,
   raceDate: null,
@@ -105,6 +112,25 @@ function normalizeWeekShape(raw) {
   return Object.keys(out).length ? out : undefined;
 }
 
+/* Optional: the day the long ride and the long run should land on. A
+   preference, not a constraint — when the day cannot hold the session the
+   generator falls back and the validator says so (long-day-unavailable). */
+function normalizeLongDays(raw) {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const out = {};
+  for (const disc of LONG_DAY_DISCIPLINES) if (DAYS.includes(raw[disc])) out[disc] = raw[disc];
+  return Object.keys(out).length ? out : undefined;
+}
+
+/* Optional: how many sessions one day may hold. Absent is "as many as fit",
+   which is what generation has always done — doubling up only when no other
+   day has room. One is "no two-a-days". */
+function normalizeSessionsPerDay(raw) {
+  if (raw === null || raw === undefined || raw === '' || typeof raw === 'boolean') return undefined;
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_SESSIONS_PER_DAY ? n : undefined;
+}
+
 /** The week shape a profile is asking for, with every default filled in. */
 export const resolveWeekShape = (profile) => ({
   ...DEFAULT_WEEK_SHAPE,
@@ -124,6 +150,8 @@ export function normalizeProfile(raw = {}) {
   const annual = Number(raw.annualHours);
   const splits = normalizeSplits(raw.splits);
   const weekShape = normalizeWeekShape(raw.weekShape);
+  const longDays = normalizeLongDays(raw.longDays);
+  const maxSessionsPerDay = normalizeSessionsPerDay(raw.maxSessionsPerDay);
 
   return {
     annualHours: Number.isFinite(annual) && annual > 0 ? annual : DEFAULT_PROFILE.annualHours,
@@ -133,6 +161,8 @@ export function normalizeProfile(raw = {}) {
     constraints: (raw.constraints ?? []).map(normalizeConstraint).filter(Boolean),
     ...(splits ? { splits } : {}),
     ...(weekShape ? { weekShape } : {}),
+    ...(longDays ? { longDays } : {}),
+    ...(maxSessionsPerDay ? { maxSessionsPerDay } : {}),
     experience: raw.experience ?? DEFAULT_PROFILE.experience,
     notes: raw.notes ?? DEFAULT_PROFILE.notes,
   };

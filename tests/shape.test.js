@@ -284,3 +284,29 @@ test('closing nothing is the same as not asking', () => {
   assert.deepEqual(dayBudgets({ budgetMinutes: 540, profile: p, closedDays: [] }), plain);
   assert.deepEqual(dayBudgets({ budgetMinutes: 540, profile: p, closedDays: ['Blursday'] }), plain);
 });
+
+/* ---- a named long-ride day takes the big day ---- */
+
+test('naming a long-ride day hands it the biggest share of the week', () => {
+  const p = normalizeProfile({ ...roomy, longDays: { Bike: 'Sun' } });
+  for (const mins of [360, 600, 900]) {
+    const plain = dayBudgets({ budgetMinutes: mins, profile: roomy });
+    const named = dayBudgets({ budgetMinutes: mins, profile: p });
+    assert.equal(named.perDay.Sun, plain.perDay.Sat, `${mins} min: Sunday takes Saturday's share`);
+    assert.equal(named.perDay.Sat, plain.perDay.Sun, `${mins} min: and Saturday takes Sunday's`);
+    assert.equal(sum(perDayList(named)), sum(perDayList(plain)));
+  }
+});
+
+test('a named long-run day takes the biggest share the long ride left', () => {
+  // Not necessarily Sunday's: in the 10-hour row Tuesday outweighs Sunday, and
+  // the run day should get the most room there is, not a fixed day's share.
+  const p = normalizeProfile({ ...roomy, longDays: { Bike: 'Sat', Run: 'Wed' } });
+  const plain = dayBudgets({ budgetMinutes: 600, profile: roomy });
+  const named = dayBudgets({ budgetMinutes: 600, profile: p });
+  const second = DAYS.filter((d) => d !== 'Sat')
+    .sort((a, b) => plain.perDay[b] - plain.perDay[a] || DAYS.indexOf(a) - DAYS.indexOf(b))[0];
+  assert.equal(named.perDay.Sat, plain.perDay.Sat, 'the ride stays where the table already put it');
+  assert.equal(named.perDay.Wed, plain.perDay[second], `the run day takes ${second}'s share`);
+  assert.equal(named.perDay[second], plain.perDay.Wed, 'and that day takes Wednesday\'s');
+});

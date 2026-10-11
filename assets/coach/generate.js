@@ -199,6 +199,13 @@ function place(targets, profile, family, raceType, budgets) {
   const remaining = { ...budgets.perDay };
   const placed = [];
 
+  // Both optional, and both no-ops when absent: no named long days means no
+  // day is reserved, and no cap means every day stays open as before.
+  const longDays = profile.longDays ?? {};
+  const cap = profile.maxSessionsPerDay ?? Infinity;
+  const onDay = (d) => placed.filter((s) => s.day === d).length;
+  const longPlaced = new Set();
+
   const order = Object.keys(targets).sort(
     (a, b) => DISC[b].long * targets[b] - DISC[a].long * targets[a],
   );
@@ -209,14 +216,28 @@ function place(targets, profile, family, raceType, budgets) {
     const used = new Set();
 
     for (const [rank, size] of sizes.entries()) {
-      // Prefer a day this discipline isn't already on, so sessions spread out;
-      // fall back to doubling up only if there's nowhere else with room.
+      const open = (d) => remaining[d] >= Math.max(MIN_SESSION, DISC[disc].min) && onDay(d) < cap;
       const pick = (pool) =>
         pool
-          .filter((d) => remaining[d] >= Math.max(MIN_SESSION, DISC[disc].min))
+          .filter(open)
           .sort((a, b) => remaining[b] - remaining[a] || DAYS.indexOf(a) - DAYS.indexOf(b))[0];
 
-      const day = pick(days.filter((d) => !used.has(d))) ?? pick(days);
+      // A day another discipline named for its long session is kept for it
+      // until that session is down, so a second ride cannot take the long run's
+      // Sunday first. Once it is placed the rest of that day is anyone's.
+      const reserved = new Set(Object.entries(longDays)
+        .filter(([d]) => d !== disc && targets[d] && !longPlaced.has(d))
+        .map(([, day]) => day));
+      const named = rank === 0 && days.includes(longDays[disc]) && open(longDays[disc])
+        ? longDays[disc] : undefined;
+
+      // Otherwise prefer a day this discipline isn't already on, so sessions
+      // spread out; fall back to doubling up only if there's nowhere else.
+      const day = named
+        ?? pick(days.filter((d) => !used.has(d) && !reserved.has(d)))
+        ?? pick(days.filter((d) => !used.has(d)))
+        ?? pick(days);
+      if (rank === 0) longPlaced.add(disc);
       if (!day) continue;
 
       const mins = Math.min(size, remaining[day], DISC[disc].max);

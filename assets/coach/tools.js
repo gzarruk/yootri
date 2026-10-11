@@ -14,7 +14,9 @@
    consequences of its own pending changes before proposing them. */
 
 import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsOf, raceDayFor } from './plan.js';
-import { normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES } from './profile.js';
+import {
+  normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES, MAX_SESSIONS_PER_DAY,
+} from './profile.js';
 import { generateWeek } from './generate.js';
 import { trailingCompliance, weekCompliance } from './actuals.js';
 import { suggest } from './adapt.js';
@@ -453,6 +455,22 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'set_session_preferences',
+    description:
+      'Name the day the long ride and the long run should land on, and cap how many sessions one day may hold (1 means no two-a-days). Preferences, not constraints: a long day with no time on it falls back to another day, and the review says so. A STANDING rule: it reshapes every week in the season. Leave a field out to keep it as it is.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        long_ride_day: { type: 'string', description: `A weekday (${DAYS.join(', ')}), or "none" to let the plan choose.` },
+        long_run_day: { type: 'string', description: 'A weekday, or "none" to let the plan choose.' },
+        max_sessions_per_day: {
+          type: 'integer',
+          description: `1 to ${MAX_SESSIONS_PER_DAY}, or 0 for as many as fit.`,
+        },
+      },
+    },
+  },
+  {
     name: 'move_session',
     description:
       'Move one session to a different day of its week, keeping its duration and type. Use this for scheduling clashes rather than regenerating the week.',
@@ -598,6 +616,10 @@ const HANDLERS = {
       constraints: p.profile.constraints,
       splits: p.profile.splits ?? null,
       weekShape: resolveWeekShape(p.profile),
+      // Null rather than absent, so the model sees the setting exists and is
+      // unset — the same reason weekShape is resolved rather than omitted.
+      longDays: { Bike: p.profile.longDays?.Bike ?? null, Run: p.profile.longDays?.Run ?? null },
+      maxSessionsPerDay: p.profile.maxSessionsPerDay ?? null,
     });
   },
 
@@ -851,6 +873,42 @@ const HANDLERS = {
       input.enabled !== undefined ? (shape.enabled ? 'shaping on' : 'shaping off') : null,
     ].filter(Boolean);
     return ok(`Week shape updated (${said.join('; ') || 'no change'}) and the season refitted.`);
+  },
+
+  set_session_preferences(s, input) {
+    const given = ['long_ride_day', 'long_run_day', 'max_sessions_per_day'].filter((k) => input[k] !== undefined);
+    if (!given.length) return fail('Say at least one of long_ride_day, long_run_day or max_sessions_per_day.');
+    // "none" (or null) clears a day, 0 (or null) clears the cap.
+    const clearDay = (v) => v === null || v === 'none';
+    for (const k of ['long_ride_day', 'long_run_day']) {
+      if (input[k] !== undefined && !clearDay(input[k]) && !DAYS.includes(input[k])) {
+        return fail(`"${input[k]}" is not a weekday. Use one of: ${DAYS.join(', ')}, or "none".`);
+      }
+    }
+    const raw = input.max_sessions_per_day;
+    const cap = raw === 0 ? null : raw;
+    if (cap !== undefined && cap !== null && !(Number.isInteger(cap) && cap >= 1 && cap <= MAX_SESSIONS_PER_DAY)) {
+      return fail(`max_sessions_per_day must be a whole number from 1 to ${MAX_SESSIONS_PER_DAY}, or 0 for no cap.`);
+    }
+
+    const base = draftOf(s);
+    const longDays = { ...(base.profile.longDays ?? {}) };
+    const dayOf = (v) => (clearDay(v) ? undefined : v);
+    if (input.long_ride_day !== undefined) longDays.Bike = dayOf(input.long_ride_day);
+    if (input.long_run_day !== undefined) longDays.Run = dayOf(input.long_run_day);
+    const profile = normalizeProfile({
+      ...base.profile,
+      longDays,
+      maxSessionsPerDay: cap !== undefined ? cap : base.profile.maxSessionsPerDay,
+    });
+    s.draft = refit(base, { profile });
+
+    const said = [
+      input.long_ride_day !== undefined ? `long ride ${profile.longDays?.Bike ?? 'wherever it fits'}` : null,
+      input.long_run_day !== undefined ? `long run ${profile.longDays?.Run ?? 'wherever it fits'}` : null,
+      cap !== undefined ? (profile.maxSessionsPerDay ? `at most ${profile.maxSessionsPerDay} a day` : 'no cap on sessions a day') : null,
+    ].filter(Boolean);
+    return ok(`Session preferences set (${said.join('; ')}) and the season refitted.`);
   },
 
   move_session(s, input) {

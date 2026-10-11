@@ -3343,6 +3343,14 @@
     const swimCap = (p.constraints.find((c) => c.disc === 'Swim' && c.rule === 'maxPerWeek') || {}).value;
     const planned = plan.season.reduce((a, w) => a + Math.round(w.hours * 60), 0);
     const opts = raceTypeOptions(p.raceType);
+    const dayOpts = (v) => opt('', 'Let yootri choose', !v) + DAYS.map((d) => opt(d, d, v === d)).join('');
+    const cap = p.maxSessionsPerDay;
+    const perDayOpts = opt('', 'As many as fit', !cap) + opt('1', 'One — no two-a-days', cap === 1) +
+      opt('2', 'Up to two', cap === 2) + opt('3', 'Up to three', cap === 3);
+    // About you knows about the pool; the plan only knows the swim cap. Point
+    // from one to the other rather than changing the plan behind the form.
+    const eq = loadAthlete().equipment || {};
+    const noWater = eq.pool === false && eq.openWater !== true && swimCap !== 0;
 
     panelShell(
       '<h2>Plan setup</h2>' +
@@ -3353,6 +3361,10 @@
         field('Race distance', '<select class="input" id="f-race-type">' + opts + '</select>') +
         field('Max swims / week', '<input type="number" class="input" id="f-swimcap" min="0" max="7" step="1" value="' + (swimCap ?? '') + '" placeholder="no limit" />') +
       '</div>' +
+      (noWater
+        ? '<p class="pnl-hint">About you says you have no pool and no open water. Set <b>Max swims / week</b> to 0 ' +
+          'if you cannot swim at all, and the swim time goes to the other sports.</p>'
+        : '') +
       '<p class="pnl-hint">Annual hours is a <b>scale</b>, not a total this plan adds up to. A typical week is annual ÷ 52, and a season covers only part of the year — this one prescribes <b>' +
         (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
       '<p class="pnl-hint fit-warn" id="f-fit"></p>' +
@@ -3378,6 +3390,15 @@
           field('Daily distribution', '<select class="input" id="f-shape-on">' + shapeOpts + '</select>') +
           field('Hours a rest day frees up', '<select class="input" id="f-spread">' + spreadOpts + '</select>') +
         '</div>' +
+
+        '<div class="pnl-grid" style="margin-top:.9rem">' +
+          field('Long ride day', '<select class="input" id="f-long-ride">' + dayOpts(p.longDays?.Bike) + '</select>') +
+          field('Long run day', '<select class="input" id="f-long-run">' + dayOpts(p.longDays?.Run) + '</select>') +
+          field('Sessions a day', '<select class="input" id="f-per-day">' + perDayOpts + '</select>') +
+        '</div>' +
+        '<p class="pnl-hint">The long ride and long run go on these days whenever the day has room for them, ' +
+          'and the day is given the week’s biggest share to make that room. If it has no time at all they go ' +
+          'on the best other day, and the review says so. One session a day means no two-a-days.</p>' +
       '</div>' +
       '<div class="pnl-act">' +
         '<button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>' +
@@ -3396,6 +3417,8 @@
     $('f-race-type').addEventListener('change', refresh);
     $('f-shape-on').addEventListener('change', refresh);
     $('f-spread').addEventListener('change', refresh);
+    $('f-long-ride').addEventListener('change', refresh);
+    $('f-long-run').addEventListener('change', refresh);
     els.panelRoot.querySelectorAll('[data-day],[data-pin]').forEach((i) =>
       i.addEventListener('input', refresh));
   }
@@ -3417,6 +3440,9 @@
       raceType: $('f-race-type').value,
       availability,
       weekShape: { enabled: $('f-shape-on').value !== 'off', spread: $('f-spread').value, pins },
+      // An empty choice clears the setting: normalizeProfile drops it.
+      longDays: { Bike: $('f-long-ride').value, Run: $('f-long-run').value },
+      maxSessionsPerDay: $('f-per-day').value,
     });
   }
 

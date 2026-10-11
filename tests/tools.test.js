@@ -793,3 +793,46 @@ test('the load tool says it describes training, not the athlete', () => {
   const d = TOOL_DEFS.find((t) => t.name === 'get_training_load').description;
   assert.match(d, /training, not the athlete/i);
 });
+
+/* ---- long days and sessions a day ---- */
+
+test('the coach can read the long days and the sessions-a-day cap', () => {
+  const prof = parse(call(createSession(basePlan()), 'get_profile'));
+  assert.deepEqual(prof.longDays, { Bike: null, Run: null });
+  assert.equal(prof.maxSessionsPerDay, null);
+});
+
+test('set_session_preferences names the long days and caps sessions a day', () => {
+  const s = createSession(basePlan());
+  const r = call(s, 'set_session_preferences', { long_ride_day: 'Sun', long_run_day: 'Sat', max_sessions_per_day: 1 });
+  assert.notEqual(r.isError, true);
+  const prof = parse(call(s, 'get_profile'));
+  assert.deepEqual(prof.longDays, { Bike: 'Sun', Run: 'Sat' });
+  assert.equal(prof.maxSessionsPerDay, 1);
+  const wk = parse(call(s, 'get_week', { week: 3 }));
+  const perDay = {};
+  for (const x of wk.sessions) if (x.minutes > 0) perDay[x.day] = (perDay[x.day] ?? 0) + 1;
+  assert.ok(Object.values(perDay).every((n) => n <= 1), 'one session a day');
+});
+
+test('set_session_preferences clears a setting and leaves the rest alone', () => {
+  const s = createSession(basePlan());
+  call(s, 'set_session_preferences', { long_ride_day: 'Sun', long_run_day: 'Sat', max_sessions_per_day: 2 });
+  call(s, 'set_session_preferences', { long_ride_day: 'none' });
+  let prof = parse(call(s, 'get_profile'));
+  assert.deepEqual(prof.longDays, { Bike: null, Run: 'Sat' });
+  assert.equal(prof.maxSessionsPerDay, 2);
+  call(s, 'set_session_preferences', { max_sessions_per_day: 0, long_run_day: null });
+  prof = parse(call(s, 'get_profile'));
+  assert.equal(prof.maxSessionsPerDay, null);
+  assert.equal(prof.longDays.Run, null);
+});
+
+test('set_session_preferences refuses what it cannot use, and leaves no draft', () => {
+  for (const input of [{ long_ride_day: 'Funday' }, { max_sessions_per_day: 5 }, {}]) {
+    const s = createSession(basePlan());
+    const r = call(s, 'set_session_preferences', input);
+    assert.equal(r.isError, true, JSON.stringify(input));
+    assert.equal(s.draft, null);
+  }
+});

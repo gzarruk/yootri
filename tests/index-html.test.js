@@ -411,3 +411,15 @@ test('a confirmation opens above the panel that asked for it', () => {
   assert.ok(rule && panel);
   assert.ok(Number(rule[1]) > Number(panel[1]));
 });
+
+/* ---- long days and sessions a day ---- */
+
+test('Plan setup reads the long days and the sessions-a-day cap', () => {
+  // The form and the preview read one function; a field it forgets would be
+  // shown and then silently dropped on Preview.
+  const body = fnBody('setupProfile');
+  assert.match(body, /longDays:\s*\{\s*Bike:\s*\$\('f-long-ride'\)\.value,\s*Run:\s*\$\('f-long-run'\)\.value\s*\}/);
+  assert.match(body, /maxSessionsPerDay:\s*\$\('f-per-day'\)\.value/);
+  const panel = fnBody('openSetupPanel');
+  for (const id of ['f-long-ride', 'f-long-run', 'f-per-day']) assert.match(panel, new RegExp(`id="${id}"`));
+});
