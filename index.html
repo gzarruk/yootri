@@ -902,6 +902,11 @@
     padding: 20px;
     background: color-mix(in srgb, var(--color-neutral-900) 58%, transparent);
   }
+  /* A confirmation is asked from inside a panel ("Delete my cloud data", "Clear
+     About you"), and #panel-root comes later in the document at the same
+     z-index — so without this the question opened underneath the panel that
+     asked it, where it could not be clicked. */
+  #dialog-root .modal-backdrop { z-index: 70; }
   .dialog {
     width: min(460px, 100%);
     display: flex;
@@ -951,6 +956,8 @@
   .pnl-f > span { color: color-mix(in srgb, var(--color-text) 70%, transparent); }
   .pnl-hint { font-size: .74rem; line-height: 1.45;
     color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 .6rem; }
+  .ab-gaps { margin: .35rem 0 0; padding-left: 1.1rem; font-size: .78rem; line-height: 1.5;
+    color: color-mix(in srgb, var(--color-text) 75%, transparent); }
   /* The fit hint only exists when there is something wrong to say, so it must
      take up no room at all the rest of the time. */
   .fit-warn:empty { display: none; }
@@ -1321,6 +1328,10 @@
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
     landingsOf, freshWeek, isUntouchedPlan,
   } from './assets/coach/plan.js';
+  import {
+    normalizeAthlete, mergeAthletes, athleteGaps, estimateAnnualHours, wattsPerKg, isEmptyAthlete,
+    SEXES, LEVELS, SPORTS as ATHLETE_SPORTS,
+  } from './assets/coach/athlete.js';
   import { normalizeProfile, resolveWeekShape, SPREAD_MODES } from './assets/coach/profile.js';
   import { dayBudgets } from './assets/coach/shape.js';
   import {
@@ -3077,7 +3088,7 @@
 
   const PRIVACY_CONTACT = 'gzarruk@gmail.com';
   const PRIVACY_REGION = 'eur3 (Europe)';
-  const PRIVACY_VERSION = '2026-09-28';
+  const PRIVACY_VERSION = '2026-10-11';
 
   const mustSet = (v, name) => v || '\u26a0 SET ' + name + ' BEFORE PUBLISHING';
 
@@ -3087,7 +3098,9 @@
     ['Signed out, nothing is collected.',
       'yootri stores your plans in this browser and works fully without an account. Everything below applies only if you choose to sign in.'],
     ['What is stored if you sign in.',
-      'From Google: an account identifier, your email address and your display name. From yootri: your plans — the schedule, your profile settings, which sessions you marked done, what you logged against them, including any note you typed, and any activities you synced from Garmin. It is held in Google Cloud Firestore, in ' + mustSet(PRIVACY_REGION, 'PRIVACY_REGION') + '. Google acts as the processor.'],
+      'From Google: an account identifier, your email address and your display name. From yootri: your plans — the schedule, your profile settings, which sessions you marked done, what you logged against them, including any note you typed, and any activities you synced from Garmin. About you only if you separately choose to keep it in your account (below). It is held in Google Cloud Firestore, in ' + mustSet(PRIVACY_REGION, 'PRIVACY_REGION') + '. Google acts as the processor.'],
+    ['About you.',
+      'Whatever you choose to fill in: birth year, sex, height, weight, your training background and recent training, equipment and goal. It is kept in this browser, and is never written into a plan, never in a plan export, and never read by the coach or sent to its AI provider. Weight and height are health data, so keeping About you in your account is a consent of its own, separate from plan sync: only if you tick that box is it copied to Google Cloud Firestore, in ' + mustSet(PRIVACY_REGION, 'PRIVACY_REGION') + '. Untick it, or clear About you, and that copy is deleted. A marker with no data in it stays, recording only that you withdrew, so another device of yours does not upload it again.'],
     ['Activities from Garmin.',
       'Only if you run the Garmin bridge on your own computer and pair this browser with it. The activities it reads — date and start time, sport, duration, distance, power, the effort rating you gave, and the activity’s name — are kept with the plan you synced them into, so they sync with it when you are signed in and are included when you export it. The average and maximum heart rate of each activity stay in this browser: they are never written into a plan, never synced and never exported, and so do any heart-rate thresholds you enter for working out training load. If you use the coach, the training load figures it reads — some of them worked out from that heart rate — go to the AI provider you configured, along with the rest of what it reads.'],
     ['Workouts sent to Garmin.',
@@ -3095,11 +3108,11 @@
     ['What never leaves this browser, signed in or not.',
       'Your AI provider API key and every coach conversation, which are stripped before anything is sent, and heart rate read from Garmin, which is never put on a plan at all. None of these is in an export either.'],
     ['What it is used for.',
-      'Making your plans available on your other devices. That is the only purpose. There is no analytics, no tracking, no advertising, and your data is never shared or sold.'],
+      'Making your plans, and About you if you chose to keep it there, available on your other devices. That is the only purpose. There is no analytics, no tracking, no advertising, and your data is never shared or sold.'],
     ['The basis for it.',
-      'Your consent, asked for separately the first time you sign in, and withdrawable at any time without losing anything stored in this browser.'],
+      'Your consent, asked for separately the first time you sign in, and for About you a second consent of its own. Each is withdrawable at any time without losing anything stored in this browser.'],
     ['How long it is kept.',
-      'Until you delete it. Deleting your cloud data removes both the plans and the account record, and takes effect immediately.'],
+      'Until you delete it. Deleting your cloud data removes the plans, About you and the account record, and takes effect immediately.'],
     ['Not intended for children.',
       'yootri is not directed at children under 16 and should not be used by them without a parent or guardian.'],
   ];
@@ -3207,13 +3220,29 @@
     try { localStorage.removeItem(SYNC_CONSENT_KEY); } catch (e) {}
   }
 
+  /* ---- Health consent: About you in the account ----
+
+     About you holds body measurements, which are health data. Agreeing to plan
+     sync did not cover them, so keeping them in the account is a second,
+     separate consent, given by ticking a box in About you and taken back by
+     unticking it. It sits on top of sync consent and is versioned by the same
+     notice, so a changed notice asks both questions again. */
+
+  const HEALTH_CONSENT_KEY = 'yootri_health_consent_v1';
+  const hasHealthConsent = () =>
+    hasSyncConsent() && load(HEALTH_CONSENT_KEY)?.version === PRIVACY_VERSION;
+  const recordHealthConsent = (at) =>
+    save(HEALTH_CONSENT_KEY, { version: PRIVACY_VERSION, at: at || new Date().toISOString() });
+  const forgetHealthConsent = () => remove(HEALTH_CONSENT_KEY);
+
   function openSyncConsentPanel() {
     panelShell(
       '<h2>Turn on sync?</h2>' +
       '<p class="pnl-sub">You are signed in. Nothing has been sent yet.</p>' +
       '<div class="legal">' +
         '<p>Turning sync on copies your plans — the schedule, your profile, what you marked done and what you logged, and any activities you synced from Garmin — to Google Cloud Firestore, so they follow you to your other devices. Your Google email address and display name are stored alongside them.</p>' +
-        '<p><b>Your API key, your coach conversations and heart rate from Garmin are never sent</b>, signed in or not.</p>' +
+        '<p><b>Your API key, your coach conversations and heart rate from Garmin are never sent</b>, signed in or not. ' +
+          'About you — your weight, height and the rest — is not sent either, unless you later choose to keep it in your account; that is asked for on its own.</p>' +
         '<p>You can turn this off and delete everything at any time, from the privacy notice in the footer. Either way your plans stay in this browser.</p>' +
       '</div>' +
       '<div class="pnl-act">' +
@@ -3253,7 +3282,8 @@
       '</div>' +
       '<div class="pnl-sec">' +
         '<p class="legal-about"><b>Your rights.</b> You can ask for a copy of your data, correct it, have it deleted, or withdraw your consent. ' +
-          'A copy needs no asking — <b>Plan menu → Export this plan</b> writes out everything yootri holds about a plan. ' +
+          'A copy needs no asking — <b>Plan menu → Download my data</b> writes out every plan and About you, and ' +
+          '<b>Export this plan</b> writes out one plan. ' +
           'Corrections you make by editing the plan. Deletion is the button below. ' +
           'If you believe your data has been mishandled you can complain to ' +
           '<a href="https://www.datatilsynet.no/" target="_blank" rel="noopener">Datatilsynet</a>.</p>' +
@@ -3274,7 +3304,7 @@
   async function eraseCloudData() {
     const ok = await confirmDialog(
       'Delete your cloud data?',
-      'This removes every plan yootri has stored for your account, and the account record itself — your email address and name. It cannot be undone. Your plans stay in this browser, and yootri keeps working signed out.',
+      'This removes every plan yootri has stored for your account, About you if you kept it there, and the account record itself — your email address and name. It cannot be undone. Your plans stay in this browser, and yootri keeps working signed out.',
       'Delete everything',
     );
     if (!ok) return;
@@ -3282,6 +3312,7 @@
     try {
       await window.imCloud.eraseEverything();
       forgetSyncConsent();
+      forgetHealthConsent();
       closePanel();
       setStatus('Cloud data deleted — saved on this device');
     } catch (e) {
@@ -3685,6 +3716,39 @@
     try { await window.imCloud.deletePlan(id); } catch (e) { console.error(e); }
   }
 
+  /* About you in the account. Writing it needs both consents. Reading it back
+     needs only sync consent, because the copy says itself whether the health
+     consent was given: one uploaded under the current notice carries that
+     notice's version, and one withdrawn from another device is left as a bare
+     marker with no data in it. Without the marker, a second device that still
+     remembered agreeing would quietly upload it all again. */
+  async function pushAthlete() {
+    if (!cloudReady() || !authUser || !hasSyncConsent() || !hasHealthConsent()) return false;
+    try {
+      await window.imCloud.saveAthlete(loadAthlete(), {
+        version: PRIVACY_VERSION, at: load(HEALTH_CONSENT_KEY)?.at,
+      });
+      return true;
+    } catch (e) { console.error(e); setStatus('About you did not sync — saved on this device', true); return false; }
+  }
+  async function withdrawCloudAthlete() {
+    if (!cloudReady() || !authUser || !hasSyncConsent()) return false;
+    try { await window.imCloud.withdrawAthlete(); return true; }
+    catch (e) { console.error(e); setStatus('About you is still in your account — try again', true); return false; }
+  }
+  async function pullAthlete() {
+    if (!cloudReady() || !authUser || !hasSyncConsent()) return;
+    const cloud = await window.imCloud.loadAthlete();
+    if (cloud && cloud.withdrawn) { forgetHealthConsent(); return; }
+    if (cloud && cloud.consent && cloud.consent.version === PRIVACY_VERSION && !hasHealthConsent()) {
+      recordHealthConsent(cloud.consent.at);
+    }
+    if (!hasHealthConsent()) return;
+    const merged = mergeAthletes(loadAthlete(), cloud && cloud.athlete);
+    saveAthleteLocal(merged);
+    if (JSON.stringify(merged) !== JSON.stringify(normalizeAthlete(cloud && cloud.athlete))) await pushAthlete();
+  }
+
   // Union local + cloud plans by id; newer updatedAt wins. Pull cloud→local,
   // then push anything the cloud is missing or that changed locally.
   function mergeCloudPlans(cloudPlans) {
@@ -3739,6 +3803,9 @@
     try {
       const cloudPlans = await window.imCloud.loadPlans();
       mergeCloudPlans(cloudPlans);
+      // Separate from the plans, so a project whose rules predate About you
+      // (FIREBASE_SETUP.md, step 5) still syncs plans while it refuses this.
+      try { await pullAthlete(); } catch (e) { console.error(e); }
       setStatus('Synced ' + timeStr());
       renderAll();
       renderAccount();
@@ -3888,15 +3955,35 @@
     // The envelope — and the decision to leave the transcript out of it — lives in
     // portable.js, next to the code that reads it back. A file the app cannot
     // re-import is not an export, so the two are defined and tested together.
-    const blob = new Blob([JSON.stringify(exportEnvelope(plan), null, 2)], { type: 'application/json' });
+    downloadJson(exportEnvelope(plan), (plan.name || 'plan').replace(/[^\w-]+/g, '_').toLowerCase() + '.json');
+  }
+
+  function downloadJson(value, filename) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = (plan.name || 'plan').replace(/[^\w-]+/g, '_').toLowerCase() + '.json';
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
+  /* Everything yootri holds about the athlete, in one file: every plan as an
+     export writes it, and About you. It is the copy the privacy notice promises
+     needs no asking. Heart rate and coach conversations are not in it for the
+     reason they are in no export: they never leave this browser. */
+  function downloadMyData() {
+    const all = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean).map((p) => exportEnvelope(p).plan);
+    downloadJson({
+      _type: 'yootri-my-data',
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      plans: all,
+      athlete: loadAthlete(),
+    }, 'yootri-my-data.json');
+    setStatus('Downloaded ' + all.length + ' plan' + (all.length === 1 ? '' : 's') + ' and About you');
   }
 
   /* An import used to be a file picker and a one-line toast, which asked the
@@ -4048,6 +4135,189 @@
       (replaced ? ' · in place of the starter plan' : ''));
   }
 
+  /* ---- About you --------------------------------------------------------
+
+     The athlete record (athlete.js): who the seasons are for, kept once rather
+     than on every plan. It lives in this browser, is never written into a plan
+     or a plan export, and is never read by the coach. It reaches the account
+     only under the health consent above. Every field is optional, and the
+     panel says which ones anything reads yet — the rest wait for the guided
+     setup that comes next. */
+
+  const ATHLETE_KEY = 'yootri_athlete_v1';
+  const loadAthlete = () => normalizeAthlete(load(ATHLETE_KEY));
+  function saveAthleteLocal(a) {
+    const clean = normalizeAthlete(a);
+    if (isEmptyAthlete(clean)) remove(ATHLETE_KEY);
+    else save(ATHLETE_KEY, clean);
+  }
+
+  const SEX_LABELS = { female: 'Female', male: 'Male', unspecified: 'Prefer not to say' };
+  const LEVEL_LABELS = { new: 'New to it', some: 'Some experience', strong: 'Strong' };
+
+  /* Inputs whose value can be refused, with the label to name when it is. */
+  const ATHLETE_CHECKED = [
+    ['ab-born', 'birth year', 'birthYear'], ['ab-kg', 'weight', 'weightKg'], ['ab-cm', 'height', 'heightCm'],
+    ['ab-hours', 'hours a week', 'recentWeeklyHours'], ['ab-years', 'years in triathlon', 'yearsInSport'],
+    ['ab-ride', 'longest ride', 'longestRideMin'], ['ab-run', 'longest run', 'longestRunMin'],
+  ];
+
+  function openAthletePanel() {
+    const a = loadAthlete();
+    const gaps = athleteGaps(a, plan).filter((g) => g.used);
+    const canKeep = cloudReady() && authUser && hasSyncConsent();
+    const wkg = wattsPerKg(plan.loadRefs?.ftpW, a.weightKg);
+    const est = estimateAnnualHours({
+      recentWeeklyHours: a.recentWeeklyHours, weeks: weekCount(plan), landings: landingsOf(plan),
+    });
+
+    const sel = (id, value, options) => '<select class="input" id="' + id + '"><option value="">—</option>' +
+      options.map(([v, label]) => '<option value="' + esc(v) + '"' + (value === v ? ' selected' : '') + '>' +
+        esc(label) + '</option>').join('') + '</select>';
+    const yesNo = (id, v) => sel(id, v === undefined ? '' : String(v), [['true', 'Yes'], ['false', 'No']]);
+    const num = (id, v, attrs) => '<input type="number" class="input" id="' + id + '" ' + attrs +
+      ' value="' + esc(v ?? '') + '" />';
+    const clock = (id, v, ph) => '<input type="text" class="input" id="' + id + '" placeholder="' + ph +
+      '" value="' + esc(v ? minToDur(v) : '') + '" />';
+
+    panelShell(
+      '<h2>About you</h2>' +
+      '<p class="pnl-sub">Who your seasons are for. Every field is optional. It is kept in this browser — never ' +
+        'on a plan, never in a plan export, and never read by the coach.</p>' +
+      (gaps.length
+        ? '<div class="pnl-sec"><span class="pnl-sub" style="display:block">Worth adding — these change what yootri shows you:</span>' +
+          '<ul class="ab-gaps">' + gaps.map((g) => '<li><b>' + esc(g.label) + '</b> — ' + esc(g.why) + '</li>').join('') +
+          '</ul></div>'
+        : '') +
+
+      '<h3 class="pnl-h3">You</h3>' +
+      '<div class="pnl-grid">' +
+        field('Birth year', num('ab-born', a.birthYear, 'min="1900" max="2100"')) +
+        field('Sex', sel('ab-sex', a.sex, SEXES.map((x) => [x, SEX_LABELS[x]]))) +
+        field('Weight (kg)', num('ab-kg', a.weightKg, 'min="30" max="250" step="0.1"')) +
+        field('Height (cm)', num('ab-cm', a.heightCm, 'min="100" max="250"')) +
+      '</div>' +
+      '<p class="pnl-hint">Weight shows your FTP as watts per kilogram' +
+        (wkg ? ' — <b>' + wkg.toFixed(2) + ' W/kg</b> now' : '') + '. Sex preselects the heart-rate formula for ' +
+        'training load. Birth year and height are not used for planning yet.</p>' +
+
+      '<h3 class="pnl-h3">Your training</h3>' +
+      '<div class="pnl-grid">' +
+        field('Hours a week, lately', num('ab-hours', a.recentWeeklyHours, 'min="0" max="40" step="0.5"')) +
+        field('Years in triathlon', num('ab-years', a.yearsInSport, 'min="0" max="80"')) +
+        field('Longest recent ride', clock('ab-ride', a.longestRideMin, '3:00')) +
+        field('Longest recent run', clock('ab-run', a.longestRunMin, '1:30')) +
+        ATHLETE_SPORTS.map((sp) => field(sp + ' background',
+          sel('ab-lv-' + sp, a.levels?.[sp], LEVELS.map((l) => [l, LEVEL_LABELS[l]])))).join('') +
+      '</div>' +
+      '<p class="pnl-hint">' +
+        (est
+          ? 'Opening this plan’s ' + weekCount(plan) + ' weeks near ' + esc(a.recentWeeklyHours) +
+            ' h a week is about <b>' + est + ' hours a year</b> in Plan setup; this plan uses ' +
+            esc(plan.profile.annualHours) + '. '
+          : 'Hours a week lately sizes a season so it starts close to what you already do. ') +
+        'The rest of this section is not used for planning yet.</p>' +
+
+      '<h3 class="pnl-h3">Equipment and goal</h3>' +
+      '<div class="pnl-grid">' +
+        field('Pool access', yesNo('ab-pool', a.equipment?.pool)) +
+        field('Open water', yesNo('ab-ow', a.equipment?.openWater)) +
+        field('Indoor trainer', yesNo('ab-trainer', a.equipment?.indoorTrainer)) +
+        field('Power meter', yesNo('ab-pm', a.equipment?.powerMeter)) +
+        field('Goal', sel('ab-goal', a.goal, [['finish', 'Finish'], ['time', 'A time']])) +
+        field('Target time', clock('ab-goaltime', a.goalTime, '5:30')) +
+      '</div>' +
+      '<p class="pnl-hint">Not used for planning yet.</p>' +
+
+      (canKeep
+        ? '<div class="pnl-sec"><label class="np-check"><input type="checkbox" id="ab-cloud"' +
+            (hasHealthConsent() ? ' checked' : '') + ' />' +
+            '<span>Keep About you in my account too, so it follows me to my other devices.</span></label>' +
+          '<p class="pnl-hint">Weight and height are health data, so this is a consent of its own, separate ' +
+            'from plan sync. Ticked, About you is copied to Google Cloud Firestore in ' + esc(PRIVACY_REGION) +
+            '. Untick it to delete that copy; this browser keeps its own.</p></div>'
+        : '<p class="pnl-hint">Only in this browser. Signed in with sync on, you can choose to keep it in ' +
+            'your account too.</p>') +
+
+      '<div class="diff-issues hidden" id="ab-msg"></div>' +
+      '<div class="pnl-act">' +
+        (isEmptyAthlete(a) ? '' : '<button type="button" class="btn btn-ghost spacer danger" id="ab-clear">Clear About you</button>') +
+        '<button type="button" class="btn btn-ghost' + (isEmptyAthlete(a) ? ' spacer' : '') + '" id="ab-close">Close</button>' +
+        '<button type="button" class="btn btn-primary" id="ab-save">Save</button>' +
+      '</div>',
+      'About you',
+    );
+
+    $('ab-close').addEventListener('click', closePanel);
+    $('ab-save').addEventListener('click', saveAthleteFromPanel);
+    const clear = $('ab-clear');
+    if (clear) clear.addEventListener('click', clearAthlete);
+  }
+
+  function readAthleteForm() {
+    const v = (id) => $(id).value.trim();
+    const bool = (id) => (v(id) === '' ? undefined : v(id) === 'true');
+    // A duration typed as H:MM, or as plain minutes; empty stays unsaid.
+    const mins = (id) => (v(id) === '' ? undefined : durToMin(v(id)) || NaN);
+    return {
+      birthYear: v('ab-born'), sex: v('ab-sex'), weightKg: v('ab-kg'), heightCm: v('ab-cm'),
+      recentWeeklyHours: v('ab-hours'), yearsInSport: v('ab-years'),
+      longestRideMin: mins('ab-ride'), longestRunMin: mins('ab-run'),
+      levels: Object.fromEntries(ATHLETE_SPORTS.map((sp) => [sp, v('ab-lv-' + sp)])),
+      equipment: {
+        pool: bool('ab-pool'), openWater: bool('ab-ow'),
+        indoorTrainer: bool('ab-trainer'), powerMeter: bool('ab-pm'),
+      },
+      goal: v('ab-goal'), goalTime: mins('ab-goaltime'),
+    };
+  }
+
+  async function saveAthleteFromPanel() {
+    const next = normalizeAthlete({ ...readAthleteForm(), updatedAt: now() });
+    // Name what was refused rather than storing a different number, or
+    // silently none: the boxes stay as typed so it can be corrected in place.
+    const refused = ATHLETE_CHECKED
+      .filter(([id, , key]) => $(id).value.trim() !== '' && next[key] === undefined)
+      .map(([, label]) => label);
+    if ($('ab-goaltime').value.trim() !== '' && next.goal === 'time' && next.goalTime === undefined) refused.push('target time');
+    if (refused.length) {
+      const msg = $('ab-msg');
+      msg.innerHTML = '<b class="err">' + esc('Check the ' + refused.join(', ') + ' — ' +
+        (refused.length === 1 ? 'that value is' : 'those values are') + ' outside what yootri can use.') + '</b>';
+      msg.classList.remove('hidden');
+      return;
+    }
+
+    saveAthleteLocal(next);
+    let status = 'About you saved on this device';
+    const box = $('ab-cloud');
+    if (box) {
+      if (box.checked && !hasHealthConsent()) recordHealthConsent();
+      else if (!box.checked && hasHealthConsent()) {
+        forgetHealthConsent();
+        if (await withdrawCloudAthlete()) status = 'About you saved on this device and removed from your account';
+      }
+      if (hasHealthConsent() && await pushAthlete()) status = 'About you saved, in your account too';
+    }
+    closePanel();
+    setStatus(status);
+  }
+
+  async function clearAthlete() {
+    const inAccount = hasHealthConsent();
+    const ok = await confirmDialog(
+      'Clear About you?',
+      'This removes everything in About you from this browser' + (inAccount ? ' and from your account' : '') +
+        '. Your plans are not affected.',
+      'Clear',
+    );
+    if (!ok) return;
+    remove(ATHLETE_KEY);
+    if (inAccount) { forgetHealthConsent(); await withdrawCloudAthlete(); }
+    closePanel();
+    setStatus('About you cleared');
+  }
+
   /* ---- Training paces ----------------------------------------------------
 
      Every pace in this app comes from one running result the athlete entered,
@@ -4150,7 +4420,10 @@
       '<h3 class="pnl-h3">Bike and swim</h3>' +
       '<p class="pnl-hint">Your FTP puts watts on a bike workout sent to Garmin, and with your CSS it scores ' +
         'the load of synced rides and swims. Leave either empty if you do not know it yet. Both are saved with ' +
-        'the plan.</p>' +
+        'the plan.' +
+        (wattsPerKg(plan.loadRefs?.ftpW, loadAthlete().weightKg)
+          ? ' At the weight in About you that FTP is <b>' + wattsPerKg(plan.loadRefs.ftpW, loadAthlete().weightKg).toFixed(2) + ' W/kg</b>.'
+          : '') + '</p>' +
       '<div class="pnl-grid">' +
         field('FTP (watts)', '<input type="number" class="input" id="bm-ftp" min="50" max="600" value="' +
           esc(plan.loadRefs?.ftpW || '') + '" />') +
@@ -4816,7 +5089,11 @@
     });
     const scored = Object.values(r.byMethod).reduce((a, b) => a + b, 0);
     const unscored = r.weeks.reduce((a, w) => a + w.unscored, 0);
-    const trimpOpt = (v, label) => '<option value="' + v + '"' + (hr.trimp === v ? ' selected' : '') + '>' + label + '</option>';
+    // Until a formula has been chosen here, About you's answer preselects one;
+    // nothing is stored until this section is saved.
+    const sex = loadAthlete().sex;
+    const trimp = hr.trimp || (sex === 'male' || sex === 'female' ? sex : '');
+    const trimpOpt = (v, label) => '<option value="' + v + '"' + (trimp === v ? ' selected' : '') + '>' + label + '</option>';
     return '<h3 class="pnl-h3">Training load</h3>' +
       '<p class="pnl-hint">A number per session where an hour at threshold is 100: from power for rides, pace for ' +
         'runs and swims, your effort rating for strength, and heart rate for the rest. ' +
@@ -4837,7 +5114,7 @@
         field('Maximum heart rate', '<input type="number" class="input" id="gm-hrmax" min="100" max="230" value="' + esc(hr.max || '') + '" />') +
         field('Resting heart rate', '<input type="number" class="input" id="gm-hrrest" min="25" max="100" value="' + esc(hr.rest || '') + '" />') +
         field('Heart-rate formula', '<select class="input" id="gm-trimp">' +
-          '<option value=""' + (hr.trimp ? '' : ' selected') + '>Choose…</option>' +
+          '<option value=""' + (trimp ? '' : ' selected') + '>Choose…</option>' +
           trimpOpt('male', 'Banister, men') + trimpOpt('female', 'Banister, women') + '</select>') +
       '</div>' +
       '<p class="pnl-hint">FTP and CSS are saved with the plan. The heart-rate figures stay in this browser.</p>' +
@@ -5361,12 +5638,14 @@
         menuRow('dup', 'copy', 'Duplicate') +
         menuRow('export', 'download-simple', 'Export this plan') +
         menuRow('paces', 'gauge', 'Training paces…') +
+        menuRow('athlete', 'user-circle', 'About you…') +
         '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="delete"' +
           (soleplan ? ' aria-disabled="true"' : '') + '>' +
           '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
         '<div class="pmenu-sep" role="separator"></div>' +
         menuRow('new', 'plus', 'New plan') +
         menuRow('import', 'upload-simple', 'Import plan…') +
+        menuRow('mydata', 'archive', 'Download my data') +
       '</div>';
     els.planTitle.setAttribute('aria-expanded', 'true');
     document.addEventListener('keydown', onMenuKey, true);
@@ -5411,6 +5690,8 @@
     if (act === 'export') return exportPlan();
     if (act === 'import') return openImportPanel(null);
     if (act === 'paces') { pacesView = null; return openPacesPanel(); }
+    if (act === 'athlete') return openAthletePanel();
+    if (act === 'mydata') return downloadMyData();
     if (act === 'new') {
       return openNewPlanPanel();
     } else if (act === 'dup') {
@@ -5792,7 +6073,7 @@
   <script type="module">
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
-    import { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+    import { getFirestore, collection, getDocs, getDoc, doc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
 
     const firebaseConfig = {
       apiKey: 'AIzaSyDeJrxAeHHIBRTdfYBFBToDV8djv-p1nfo',
@@ -5851,8 +6132,34 @@
           if (!uid) return;
           await deleteDoc(doc(db, 'users', uid, 'plans', id));
         },
+        // About you, at users/{uid}/athlete/profile, written only under its
+        // own consent (the page checks). The consent it was written under goes
+        // with it, so another device can tell whether it was given. Withdrawing
+        // overwrites the whole document with a marker that holds no data.
+        async loadAthlete() {
+          if (!uid) throw new Error('Not signed in');
+          const snap = await getDoc(doc(db, 'users', uid, 'athlete', 'profile'));
+          if (!snap.exists()) return null;
+          const d = snap.data();
+          if (d.withdrawnAt) return { withdrawn: true };
+          let athlete = null;
+          try { athlete = JSON.parse(d.data); } catch (e) {}
+          return { athlete, consent: d.consent || null };
+        },
+        async saveAthlete(athlete, consent) {
+          if (!uid) throw new Error('Not signed in');
+          await setDoc(doc(db, 'users', uid, 'athlete', 'profile'), {
+            updatedAt: (athlete && athlete.updatedAt) || Date.now(),
+            consent: { version: consent.version, at: consent.at || null },
+            data: JSON.stringify(athlete || {}),
+          });
+        },
+        async withdrawAthlete() {
+          if (!uid) throw new Error('Not signed in');
+          await setDoc(doc(db, 'users', uid, 'athlete', 'profile'), { withdrawnAt: Date.now() });
+        },
         // Erasure, in the GDPR sense rather than the tidying-up sense. The plans
-        // are the training data; the account record is the athlete's name, email
+        // and About you are the training data; the account record is the athlete's name, email
         // and photo, and deleting one without the other leaves the half that
         // identifies them. So both go, plans first — if the account went first
         // there would be no uid left to reach the documents with.
@@ -5860,6 +6167,11 @@
           if (!uid) throw new Error('Not signed in');
           const snap = await getDocs(collection(db, 'users', uid, 'plans'));
           for (const d of snap.docs) await deleteDoc(d.ref);
+          // A project whose rules predate About you refuses this path — and
+          // under those rules the document can never have been written. Erasure
+          // must not stop there and leave the account behind.
+          try { await deleteDoc(doc(db, 'users', uid, 'athlete', 'profile')); }
+          catch (e) { if (!e || e.code !== 'permission-denied') throw e; }
           const user = auth.currentUser;
           try {
             await deleteUser(user);

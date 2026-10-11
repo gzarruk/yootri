@@ -60,7 +60,7 @@ Plan-lifecycle bugs the wizard would otherwise inherit:
 - FTP and CSS could only be entered after a Garmin sync. They are in the
   Training paces panel now.
 
-## Phase 1 — athlete record and health consent
+## Phase 1 — athlete record and health consent (done)
 
 - `assets/coach/athlete.js`: an allowlisted athlete record — birth year, sex,
   weight, optional height, years in the sport, per-sport level, recent weekly
@@ -76,6 +76,12 @@ Plan-lifecycle bugs the wizard would otherwise inherit:
 - Storage: this browser always; `users/{uid}/athlete/profile` in Firestore only
   with the separate health consent. Rules, privacy notice version, notice text,
   account erasure and a "Download my data" action all change with it.
+- As built: an **About you** panel in the plan menu edits the record and holds
+  the consent box. Withdrawing leaves a data-free marker in the account so a
+  second device does not re-upload. Weight shows FTP as W/kg; sex preselects
+  the heart-rate formula; recent weekly hours show the annual-hours figure that
+  would open the current plan near them. The other fields say plainly that
+  nothing reads them yet.
 
 ## Phase 2 — training habits the engine uses
 

@@ -777,3 +777,14 @@ test('a missing or malformed plan is never untouched', () => {
   assert.equal(isUntouchedPlan(null), false);
   assert.equal(isUntouchedPlan({}), false);
 });
+
+/* ---- the athlete record is not plan content ---- */
+
+test('loadPlan drops an athlete record put on a plan', () => {
+  // Body measurements are health data and sync only under their own consent;
+  // a plan syncs and exports under the ordinary one. So the field never
+  // survives the door every stored, synced and imported plan comes through.
+  const p = loadPlan({ ...blank(), athlete: { weightKg: 71.4, sex: 'male' } });
+  assert.equal('athlete' in p, false);
+  assert.deepEqual(loadPlan(p), p, 'still idempotent');
+});

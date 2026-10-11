@@ -352,3 +352,62 @@ test('FTP and CSS can be entered without Garmin', () => {
   assert.match(body, /id="bm-css"/);
   assert.doesNotMatch(body, /synced\s*\?/, 'the fields must not wait for a sync');
 });
+
+/* ---- About you: the athlete record and its own consent ---- */
+
+test('About you reaches the account only with both consents', () => {
+  /* Weight and height are health data. Plan sync's consent did not cover them,
+     so a write needs the second one too. Reading back and withdrawing need only
+     sync consent: the stored copy itself says whether the second was given. */
+  assert.match(fnBody('pushAthlete'), /hasSyncConsent\(\)[\s\S]*hasHealthConsent\(\)/);
+  for (const fn of ['pullAthlete', 'withdrawCloudAthlete']) {
+    assert.match(fnBody(fn), /hasSyncConsent\(\)/, `${fn} no longer checks hasSyncConsent()`);
+  }
+  assert.match(HTML, /const hasHealthConsent = \(\) =>\s*hasSyncConsent\(\) &&/,
+    'health consent must never stand without sync consent');
+});
+
+test('About you is never put on a plan or handed to the coach', () => {
+  const src = withoutComments(HTML);
+  assert.doesNotMatch(src, /\bplan\.athlete\b/);
+  assert.doesNotMatch(src, /athlete:\s*loadAthlete\(\)[\s\S]{0,40}persistPlan/);
+  for (const m of src.matchAll(/createSession\(([^)]*)\)/g)) {
+    assert.doesNotMatch(m[1], /athlete/i, 'the coach session must not be given About you');
+  }
+});
+
+test('erasing cloud data takes About you with it', () => {
+  const erase = HTML.match(/async eraseEverything\(\)\s*\{([\s\S]*?)const user = auth\.currentUser/);
+  assert.ok(erase, 'eraseEverything is gone or reshaped');
+  assert.match(erase[1], /deleteDoc\(doc\(db, 'users', uid, 'athlete', 'profile'\)\)/);
+  assert.match(fnBody('eraseCloudData'), /forgetHealthConsent\(\)/);
+});
+
+test('the privacy notice describes About you and its separate consent', () => {
+  const start = HTML.indexOf('const PRIVACY_SECTIONS');
+  const notice = HTML.slice(start, HTML.indexOf('];', start));
+  assert.match(notice, /\['About you\.'/);
+  assert.match(notice, /health data/);
+  assert.match(notice, /consent of its own/);
+  assert.match(notice, /never in a plan export/);
+});
+
+test('the Firestore rules let each user reach only their own documents', () => {
+  const rules = readFileSync(new URL('firestore.rules', ROOT), 'utf8');
+  const blocks = [...rules.matchAll(/match \/users\/\{userId\}\/(\w+)\/\{\w+\}\s*\{([^}]*)\}/g)];
+  assert.deepEqual(blocks.map((b) => b[1]).sort(), ['athlete', 'plans']);
+  for (const [, path, body] of blocks) {
+    assert.match(body, /request\.auth != null\s*&& request\.auth\.uid == userId/, `${path} is not owner-only`);
+  }
+});
+
+test('a confirmation opens above the panel that asked for it', () => {
+  // Both roots use a fixed backdrop and #panel-root comes later in the
+  // document, so at equal z-index a question asked from a panel is buried.
+  const at = (id) => HTML.indexOf(`<div id="${id}">`);
+  assert.ok(at('panel-root') > at('dialog-root'), 'the roots were reordered; re-check this rule');
+  const rule = HTML.match(/#dialog-root \.modal-backdrop\s*\{\s*z-index:\s*(\d+)/);
+  const panel = HTML.match(/\.pnl-back \{[^}]*z-index:\s*(\d+)/);
+  assert.ok(rule && panel);
+  assert.ok(Number(rule[1]) > Number(panel[1]));
+});

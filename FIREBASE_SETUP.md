@@ -60,6 +60,12 @@ Or with the Firebase CLI:
 firebase deploy --only firestore:rules
 ```
 
+**Deploy them again whenever `firestore.rules` changes.** The rules are not
+published with the site: a project still running an older copy refuses the
+newer documents. About you (`users/{uid}/athlete/profile`) is one of those.
+Until the rules covering it are published, plans keep syncing and About you
+simply stays in the browser, but nobody's About you reaches the account.
+
 ## 6. Point the app at your project
 
 In `index.html`, near the bottom, replace the `firebaseConfig` object with the
