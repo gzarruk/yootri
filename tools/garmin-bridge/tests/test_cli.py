@@ -101,3 +101,11 @@ def test_default_origins_read_the_repo_cname(tmp_path):
     cname.write_text("yootri.example\n")
     assert default_origins(cname) == ("http://localhost:8000", "https://yootri.example")
     assert default_origins(tmp_path / "missing") == ("http://localhost:8000",)
+
+
+def test_workout_export_is_off_unless_the_flag_is_set():
+    from garmin_bridge.cli import workouts_enabled
+
+    assert workouts_enabled({}) is False
+    assert workouts_enabled({"YOOTRI_GARMIN_WORKOUTS": "0"}) is False
+    assert workouts_enabled({"YOOTRI_GARMIN_WORKOUTS": "1"}) is True

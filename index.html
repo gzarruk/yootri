@@ -1237,6 +1237,12 @@
       <button type="button" class="btn btn-secondary hidden" id="garmin-btn">
         <i class="ph ph-watch" aria-hidden="true"></i> Garmin
       </button>
+      <!-- The other direction: puts upcoming bike sessions in the Garmin calendar
+           as structured workouts. Same bridge, same pairing, and off on the
+           bridge unless it was started with YOOTRI_GARMIN_WORKOUTS=1. -->
+      <button type="button" class="btn btn-secondary hidden" id="garmin-send-btn">
+        <i class="ph ph-paper-plane-tilt" aria-hidden="true"></i> To Garmin
+      </button>
 
       <span class="seg" role="group" aria-label="View" id="view-seg">
         <label class="seg-opt"><input type="radio" name="view" value="week" />Week</label>
@@ -1357,6 +1363,7 @@
   } from './assets/coach/synced.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
+  import { bikeWorkout, workoutHash, planSyncSet } from './assets/coach/workout.js';
 
   /* =========================================================================
      Data model — static sample plan. Swap this (and the storage layer below)
@@ -1623,7 +1630,7 @@
     undoBtn: $('undo-btn'),
     summary: $('summary'), board: $('board'), boardwrap: $('boardwrap'),
     calwrap: $('calwrap'), calendar: $('calendar'), viewSeg: $('view-seg'),
-    addEventBtn: $('add-event-btn'), garminBtn: $('garmin-btn'),
+    addEventBtn: $('add-event-btn'), garminBtn: $('garmin-btn'), garminSendBtn: $('garmin-send-btn'),
     chartCompleted: $('chart-completed'), chartmodeSeg: $('chartmode-seg'),
     chartScroll: $('chart-scroll'), chartSvg: $('chart-svg'), chartTip: $('chart-tip'),
     chartLegend: $('chart-legend'), modalRoot: $('modal-root'), dialogRoot: $('dialog-root'),
@@ -1671,6 +1678,7 @@
   function renderToolbar() {
     els.viewSeg.querySelectorAll('input[name="view"]').forEach((r) => { r.checked = r.value === state.view; });
     els.garminBtn.classList.toggle('hidden', !garminConfig());
+    els.garminSendBtn.classList.toggle('hidden', !garminConfig());
 
     if (state.view === 'month') {
       els.weekPos.textContent = fmtMonthISO(firstOfMonth(calMonth()));
@@ -2202,6 +2210,9 @@
           logSectionHTML(s) +
           '<div class="dialog-foot">' +
             '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ph ph-trash"></i> Delete</button>' +
+            (s.disc === 'Bike' && garminConfig()
+              ? '<button type="button" class="btn btn-ghost" data-act="send-garmin" title="Sends the saved session, not unsaved edits"><i class="ph ph-paper-plane-tilt"></i> Send to Garmin</button>'
+              : '') +
             '<span class="right">' +
               '<button type="button" class="btn btn-secondary" data-act="cancel">Cancel</button>' +
               '<button type="button" class="btn btn-primary" data-act="save">Save changes</button>' +
@@ -3047,6 +3058,8 @@
       'From Google: an account identifier, your email address and your display name. From yootri: your plans — the schedule, your profile settings, which sessions you marked done, what you logged against them, including any note you typed, and any activities you synced from Garmin. It is held in Google Cloud Firestore, in ' + mustSet(PRIVACY_REGION, 'PRIVACY_REGION') + '. Google acts as the processor.'],
     ['Activities from Garmin.',
       'Only if you run the Garmin bridge on your own computer and pair this browser with it. The activities it reads — date and start time, sport, duration, distance, power, the effort rating you gave, and the activity’s name — are kept with the plan you synced them into, so they sync with it when you are signed in and are included when you export it. The average and maximum heart rate of each activity stay in this browser: they are never written into a plan, never synced and never exported, and so do any heart-rate thresholds you enter for working out training load. If you use the coach, the training load figures it reads — some of them worked out from that heart rate — go to the AI provider you configured, along with the rest of what it reads.'],
+    ['Workouts sent to Garmin.',
+      'Only if you choose “To Garmin” or “Send to Garmin” with the bridge running and workout export switched on. For each bike session the bridge is sent the session’s name, its steps with their durations and power targets, your FTP if you entered one, and the date. The bridge passes them to your own Garmin account. Nothing is added to your plan by it, and no heart rate or other health data is part of it. This browser remembers which sessions it sent so a second send does not duplicate them; that record stays in this browser.'],
     ['What never leaves this browser, signed in or not.',
       'Your AI provider API key and every coach conversation, which are stripped before anything is sent, and heart rate read from Garmin, which is never put on a plan at all. None of these is in an export either.'],
     ['What it is used for.',
@@ -4584,6 +4597,8 @@
   // Loopback only, so the token cannot be sent anywhere but this computer.
   const GARMIN_URL_RE = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
   const GARMIN_TIMEOUT_MS = 120000;
+  // What was last sent to Garmin, by session id: this browser only, like the heart rate.
+  const GARMIN_WORKOUTS_KEY = 'yootri_garmin_workouts';
 
   function garminConfig() {
     const cfg = readJson(GARMIN_CONFIG_KEY);
@@ -4596,12 +4611,13 @@
   const bridgeError = (code) =>
     Object.assign(new Error(bridgeErrorMessage(code, { secure: location.protocol === 'https:' })), { code });
 
-  async function bridgeFetch(path, cfg = garminConfig()) {
+  async function bridgeFetch(path, cfg = garminConfig(), post = null) {
     if (!cfg) throw bridgeError('not_configured');
     let res;
     try {
       res = await fetch(cfg.url + path, {
-        headers: { Authorization: 'Bearer ' + cfg.token },
+        ...(post ? { method: 'POST', body: JSON.stringify(post) } : {}),
+        headers: { Authorization: 'Bearer ' + cfg.token, ...(post ? { 'Content-Type': 'application/json' } : {}) },
         cache: 'no-store',
         signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(GARMIN_TIMEOUT_MS) : undefined,
       });
@@ -4678,6 +4694,7 @@
       remove(GARMIN_CONFIG_KEY);
       remove(GARMIN_HR_KEY);
       remove(HR_THRESHOLDS_KEY);
+      remove(GARMIN_WORKOUTS_KEY);
       closePanel();
       renderToolbar();
       setStatus('Garmin disconnected from this browser');
@@ -4819,6 +4836,228 @@
       until: body.until,
       unreadable: (Array.isArray(body.skipped) ? body.skipped.length : 0) + got.rejected,
     });
+  }
+
+
+  /* ---- Workouts to Garmin ----------------------------------------------------
+
+     The other direction: upcoming bike sessions go to the athlete's Garmin
+     calendar as structured workouts, so a trainer app or a head unit linked to
+     that account can run them. The steps are worked out here (workout.js) and
+     handed to the bridge, which is the only thing that talks to Garmin.
+
+     Garmin's workout endpoints are unofficial and can change, so this is a
+     brittle edge by design: it is off unless the bridge was started with
+     YOOTRI_GARMIN_WORKOUTS=1, it never touches the plan, and when Garmin
+     refuses a workout the page says Garmin's side did not accept it and offers
+     the FIT file instead. What was sent is remembered in this browser only
+     (GARMIN_WORKOUTS_KEY), which is what lets a second run send nothing twice. */
+
+  const readSent = () => {
+    const rec = readJson(GARMIN_WORKOUTS_KEY);
+    return rec && typeof rec === 'object' && !Array.isArray(rec) ? rec : {};
+  };
+  function writeSent(rec) {
+    // Entries for long-past sessions are no use to anyone; keep the record small.
+    const cutoff = toISO(new Date(Date.now() - 45 * 86400000));
+    const kept = {};
+    for (const [id, r] of Object.entries(rec)) if (r && r.date >= cutoff) kept[id] = r;
+    save(GARMIN_WORKOUTS_KEY, kept);
+  }
+
+  const wireWorkout = (w) => ({ name: w.name, ftpW: w.ftpW, steps: w.steps });
+
+  // These stop a run: they would fail the same way for every workout after.
+  const WORKOUT_STOPS = new Set(['unreachable', 'not_configured', 'unauthorized', 'forbidden_origin', 'bad_host',
+    'auth_required', 'mfa_required', 'rate_limited', 'unavailable', 'workouts_disabled', 'api_version',
+    'bad_response', 'method_not_allowed', 'not_found']);
+
+  let workoutBusy = false;
+
+  /* Send items one at a time. A changed session is removed from Garmin first;
+     if that fails the new one is still sent and the old one is counted, so the
+     athlete is told rather than left with a silent duplicate. */
+  async function sendWorkouts(items, onProgress) {
+    const cfg = garminConfig();
+    const out = { sent: [], rejected: [], staleLeft: 0, stopped: null };
+    const rec = readSent();
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (onProgress) onProgress(i + 1, items.length);
+      try {
+        if (item.previous && item.previous.workoutId) {
+          try {
+            await bridgeFetch('/v1/workouts/remove', cfg, { workoutId: item.previous.workoutId, scheduleId: item.previous.scheduleId || null });
+            delete rec[item.id];
+          } catch (e) {
+            if (WORKOUT_STOPS.has(e.code)) throw e;
+            out.staleLeft++;
+          }
+        }
+        const r = await bridgeFetch('/v1/workouts', cfg, { workout: wireWorkout(item.workout), date: item.date });
+        rec[item.id] = { hash: item.hash, workoutId: r.workoutId, scheduleId: r.scheduleId, date: item.date };
+        writeSent(rec);
+        out.sent.push(item);
+      } catch (e) {
+        if (WORKOUT_STOPS.has(e.code)) { out.stopped = e; break; }
+        out.rejected.push({ item, error: e });
+      }
+    }
+    writeSent(rec);
+    return out;
+  }
+
+  async function downloadFit(item) {
+    const cfg = garminConfig();
+    try {
+      const res = await fetch(cfg.url + '/v1/workouts/fit', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + cfg.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ workout: wireWorkout(item.workout) }),
+        cache: 'no-store',
+      });
+      if (!res.ok) {
+        let code = 'bad_response';
+        try { code = (await res.json()).error.code || code; } catch (e) { /* keep bad_response */ }
+        throw bridgeError(code);
+      }
+      const url = URL.createObjectURL(await res.blob());
+      const a = Object.assign(document.createElement('a'), { href: url, download: 'yootri-' + item.date + '.fit' });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      setStatus('FIT file downloaded');
+    } catch (e) {
+      setStatus('FIT file not downloaded', true);
+      openGarminSetupPanel(e.code ? e.message : bridgeError('unreachable').message);
+    }
+  }
+
+  function workoutPanelPreflight(st) {
+    if (!st.workouts) {
+      return 'Sending workouts is switched off on the bridge. Stop it, then start it again with `YOOTRI_GARMIN_WORKOUTS=1 make garmin`.';
+    }
+    if (!st.connected) return 'The bridge is not signed in to Garmin. Run `make garmin-login` in a terminal first.';
+    return null;
+  }
+
+  async function openWorkoutSyncPanel() {
+    if (!garminConfig()) { openGarminSetupPanel(); return; }
+    let st;
+    try { st = await bridgeFetch('/v1/status'); } catch (e) { openGarminSetupPanel(e.message); return; }
+    const blocked = workoutPanelPreflight(st);
+    if (blocked) { openGarminSetupPanel(blocked); return; }
+
+    const set = planSyncSet(plan, { today: toISO(new Date()), sent: readSent() });
+    const pending = set.items.filter((i) => i.status !== 'unchanged');
+    const same = set.items.length - pending.length;
+    const tag = { new: 'new', changed: 'updated', unchanged: 'already sent' };
+    const rows = set.items.slice(0, 40).map((i) =>
+      '<li><span class="bm-what">' + esc(i.session.focus || 'Bike') + ' · ' + esc(i.session.dur) + ' · ' + esc(i.session.zone || '') + '</span>' +
+        '<span class="bm-when">' + esc(fmtLongDate(i.date)) + '</span>' +
+        '<span class="bm-tag">' + esc(tag[i.status]) + '</span></li>').join('');
+    const left = set.skipped.filter((x) => x.reason === 'past' || x.reason === 'done').length;
+
+    panelShell(
+      '<h2>Workouts to Garmin</h2>' +
+      '<p class="pnl-sub">' +
+        (pending.length
+          ? 'Sends ' + pending.length + ' bike workout' + (pending.length === 1 ? '' : 's') + ' to your Garmin calendar, each on its day.'
+          : 'Nothing new to send.') +
+        (same ? ' ' + same + ' already there.' : '') +
+        ' Linked trainer apps and devices pick them up from your Garmin account.</p>' +
+      (set.noFtp && pending.length
+        ? '<p class="pnl-hint">No FTP is set, so the steps carry percentages of FTP rather than watts. Add your FTP in the Garmin panel to send watts.</p>'
+        : '') +
+      (set.capped ? '<p class="pnl-hint">That is the most one run sends. Run it again for the rest.</p>' : '') +
+      (rows ? '<ul class="bm-list gm-list">' + rows + '</ul>' : '') +
+      (left ? '<p class="pnl-hint">' + left + ' earlier or finished session' + (left === 1 ? ' is' : 's are') + ' left out.</p>' : '') +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="gw-close">Close</button>' +
+        (pending.length ? '<button type="button" class="btn btn-primary" id="gw-send">Send ' + pending.length + '</button>' : '') +
+      '</div>',
+      'Workouts to Garmin',
+    );
+    $('gw-close').addEventListener('click', closePanel);
+    const go = $('gw-send');
+    if (go) go.addEventListener('click', () => runWorkoutSync(pending));
+  }
+
+  async function runWorkoutSync(items) {
+    if (workoutBusy) return;
+    workoutBusy = true;
+    els.garminSendBtn.disabled = true;
+    closePanel();
+    const out = await sendWorkouts(items, (n, total) => setStatus('Sending ' + n + ' of ' + total + ' to Garmin…'));
+    workoutBusy = false;
+    els.garminSendBtn.disabled = false;
+    setStatus('Garmin: ' + out.sent.length + ' workout' + (out.sent.length === 1 ? '' : 's') + ' sent' +
+      (out.rejected.length || out.stopped ? ', some not sent' : ''), !!(out.rejected.length || out.stopped));
+
+    const bad = out.rejected.map((r) =>
+      '<li><span class="bm-what">' + esc(r.item.session.focus || 'Bike') + '</span>' +
+        '<span class="bm-when">' + esc(fmtLongDate(r.item.date)) + '</span>' +
+        '<span class="bm-tag">not accepted</span></li>').join('');
+    panelShell(
+      '<h2>Workouts to Garmin</h2>' +
+      '<p class="pnl-sub">' + out.sent.length + ' sent' +
+        (out.rejected.length ? ', ' + out.rejected.length + ' not accepted by Garmin' : '') +
+        (out.stopped ? ', then stopped' : '') + '.</p>' +
+      (out.stopped ? '<div class="diff-issues"><b class="err">' + esc(out.stopped.message) + '</b>' +
+        '<p class="pnl-hint">Run it again when that is sorted out. Workouts already sent are not sent twice.</p></div>' : '') +
+      (bad ? '<h3 class="pnl-h3">Not accepted</h3>' +
+        '<p class="pnl-hint">Garmin’s workout service is unofficial and may have changed. The other workouts were not affected.</p>' +
+        '<ul class="bm-list">' + bad + '</ul>' : '') +
+      (out.staleLeft ? '<p class="pnl-hint">' + out.staleLeft + ' earlier version' + (out.staleLeft === 1 ? '' : 's') +
+        ' could not be removed from Garmin Connect; delete ' + (out.staleLeft === 1 ? 'it' : 'them') + ' there if they show twice.</p>' : '') +
+      '<div class="pnl-act"><button type="button" class="btn btn-primary" id="gw-close">Done</button></div>',
+      'Workouts to Garmin',
+    );
+    $('gw-close').addEventListener('click', closePanel);
+  }
+
+  /* One session, from its edit dialog. Same path as the bulk send. */
+  async function sendSessionToGarmin(id) {
+    const where = locateSession(id);
+    const s = sessionById(id);
+    if (!where || !s || workoutBusy) return;
+    const date = dateOf(plan.start, where.absWeek, s.day);
+    const workout = bikeWorkout(s, { ftpW: plan.loadRefs && plan.loadRefs.ftpW });
+    if (!date || !workout.ok) {
+      setStatus(workout.ok ? 'Garmin: this session has no date' : 'Garmin: needs a bike session with a duration', true);
+      return;
+    }
+    const hash = workoutHash(workout, date);
+    const previous = readSent()[id] || null;
+    if (previous && previous.hash === hash && previous.date === date) {
+      setStatus('Already on Garmin for ' + fmtLongDate(date));
+      return;
+    }
+    const item = { id, date, session: s, workout, hash, previous, status: previous ? 'changed' : 'new' };
+    workoutBusy = true;
+    setStatus('Sending to Garmin…');
+    const out = await sendWorkouts([item]);
+    workoutBusy = false;
+    if (out.sent.length) {
+      setStatus('Sent to Garmin for ' + fmtLongDate(date) + (workout.ftpW ? '' : ' (targets in % of FTP)'));
+      return;
+    }
+    const error = out.stopped || (out.rejected[0] && out.rejected[0].error);
+    setStatus('Garmin: workout not sent', true);
+    panelShell(
+      '<h2>Not sent to Garmin</h2>' +
+      '<div class="diff-issues"><b class="err">' + esc(error ? error.message : 'Nothing was sent.') + '</b></div>' +
+      (out.rejected.length ? '<p class="pnl-hint">Garmin’s workout service is unofficial and may have changed. Your plan is untouched. You can still download the workout as a FIT file and load it onto a device yourself.</p>' : '') +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="gw-close">Close</button>' +
+        (out.rejected.length ? '<button type="button" class="btn btn-secondary" id="gw-fit">Download FIT file</button>' : '') +
+      '</div>',
+      'Not sent to Garmin',
+    );
+    $('gw-close').addEventListener('click', closePanel);
+    const fit = $('gw-fit');
+    if (fit) fit.addEventListener('click', () => downloadFit(item));
   }
 
   const MATCH_REASONS = {
@@ -5339,6 +5578,7 @@
 
   els.addEventBtn.addEventListener('click', () => openEventPanel(null));
   els.garminBtn.addEventListener('click', syncFromGarmin);
+  els.garminSendBtn.addEventListener('click', openWorkoutSyncPanel);
 
   // Chart: hover, mode toggle, legend
   function hoverFromEvent(e) {
@@ -5419,6 +5659,8 @@
       updateSession(id, {
         disc: get('#ed-disc'), focus: get('#ed-focus'), dur, zone, desc: get('#ed-desc'),
       });
+    } else if (act.dataset.act === 'send-garmin') {
+      sendSessionToGarmin(state.editingId);
     } else if (act.dataset.act === 'modal-delete') {
       const id = state.editingId;
       state.editingId = null;

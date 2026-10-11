@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
@@ -29,6 +30,15 @@ LOCAL_DEV_ORIGIN = "http://localhost:8000"
 
 # tools/garmin-bridge/garmin_bridge/cli.py → the repo root holds CNAME.
 REPO_CNAME = Path(__file__).resolve().parents[3] / "CNAME"
+
+
+def workouts_enabled(env: dict[str, str] | None = None) -> bool:
+    """Workout export is off unless the athlete switches it on: YOOTRI_GARMIN_WORKOUTS=1.
+
+    It leans on Garmin endpoints nobody promised to keep, so a bridge started
+    without the flag behaves exactly as it did before they were added.
+    """
+    return (env if env is not None else os.environ).get("YOOTRI_GARMIN_WORKOUTS", "").strip() in ("1", "true", "yes")
 
 
 def default_origins(cname: Path = REPO_CNAME) -> tuple[str, ...]:
@@ -114,12 +124,15 @@ def main(
         return GarminClient(open_api(store, api_factory=api_factory),
                             on_tokens_changed=store.write_tokens)
 
-    server = make_server(Config(token=token, origins=origins, store=store, client_provider=provider),
+    server = make_server(Config(token=token, origins=origins, store=store, client_provider=provider,
+                                  workouts=workouts_enabled()),
                          port=args.port)
     port = server.server_address[1]
     say(f"yootri Garmin bridge {__version__} listening on http://127.0.0.1:{port}")
     say(f"Pages allowed to use it: {', '.join(origins)}")
     say(f"Pairing token: {token}")
+    if workouts_enabled():
+        say("Workout export is ON (YOOTRI_GARMIN_WORKOUTS=1): the page may send bike workouts to Garmin.")
     say("Pair a page once: open " + " or ".join(f"{o}/?garmin=setup" for o in origins)
         + " and paste the token.")
     if store.read_tokens() is None:

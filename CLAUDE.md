@@ -43,6 +43,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `synced.js` | Activities synced from the Garmin bridge: the one boundary heart rate crosses (`splitSynced`), the allowlist a stored activity is held to, merging, sync windows and coverage, and the device-only heart-rate store's shape. Pure — the page fetches and stores. |
 | `match.js` | Which synced activity was which planned session: same date, same discipline, closest duration. Proposes actuals; never writes one, never over the athlete's own log. |
 | `load.js` | Training load: one number per session where an hour at threshold is 100 (power, pace, swim pace, session RPE, heart rate as the fallback), and its chronic (42-day) and acute (7-day) averages. Ported from GARMIN-CLAUDE. Never stored — worked out when read. |
+| `workout.js` | A planned bike session as warm-up / main set / cool-down steps with %FTP targets (watts when `loadRefs.ftpW` is set), plus `planSyncSet`, which says what one "send to Garmin" run would do. Worked out when asked for, never stored on a session. |
 | `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
@@ -164,6 +165,17 @@ names a tool call, and the change goes through draft → diff → apply. A
 suggestion's action speaks the engine's 0-based week; `adviceCall` in
 `tools.js` is the one translation to the tools' 1-based weeks, for the model
 and for the page's Preview button alike.
+
+**Workouts go to Garmin through the bridge, and nowhere else.** `POST /v1/workouts`,
+`/v1/workouts/remove` and `/v1/workouts/fit` exist only when the bridge is started
+with `YOOTRI_GARMIN_WORKOUTS=1`; every other method and path is still refused. They
+rest on unofficial Garmin endpoints, so all of it lives in `adapter.py` and a
+refusal is `workout_rejected`, never an engine failure. What was sent is
+remembered in this browser only (`yootri_garmin_workouts`), never on the plan —
+the same rule as heart rate — and a send changes no session. The workout
+contains the session's steps, FTP and date; keep heart rate and anything
+health-related out of it. `tests/copy.test.js` guards the wording of this
+feature (no medical or performance claims).
 
 Plans are schema v3: absolute week keys (`w0`…`w15`), materialized sessions, and
 a stored `season`. A plan is self-contained, so changing the engine never

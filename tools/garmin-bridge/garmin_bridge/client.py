@@ -2,8 +2,9 @@
 
 Adapted from GARMIN-CLAUDE's ``GarminDataSource``. The bridge asks Garmin for
 activity summaries (and, for a multisport race whose legs are missing from the
-list, for those legs one at a time) and for nothing else — no daily data, no
-files, no profile.
+list, for those legs one at a time) and, when workout export is switched on, for
+four workout calls (see ``adapter.py``) — and for nothing else: no daily data,
+no profile.
 
 Every call goes through ``_call``: wait for the token bucket, call, translate
 any failure into a ``BridgeError``, retry only an outage, and hand refreshed
@@ -72,15 +73,16 @@ class GarminClient:
                 self._on_tokens_changed(current)
             self._tokens = current
 
-    def _call(self, name: str, *args: Any, **kwargs: Any) -> Any:
+    def _call(self, name: str, *args: Any, _retries: int | None = None, **kwargs: Any) -> Any:
         method = getattr(self._api, name)
-        for attempt in range(self._retries + 1):
+        retries = self._retries if _retries is None else _retries
+        for attempt in range(retries + 1):
             self._bucket.acquire()
             try:
                 result = method(*args, **kwargs)
             except Exception as exc:  # noqa: BLE001 - every failure is translated
                 error = translate_error(exc)
-                if not isinstance(error, Unavailable) or attempt >= self._retries:
+                if not isinstance(error, Unavailable) or attempt >= retries:
                     raise error from exc
                 delay = backoff(attempt, rng=self._rng)
                 log.warning("Garmin %s: %s, retrying in %.0fs", name, error.code, delay)
@@ -104,6 +106,21 @@ class GarminClient:
 
     def get_activity(self, activity_id: str) -> dict[str, Any]:
         return dict(self._call("get_activity", activity_id) or {})
+
+    # Workout calls (see adapter.py). Never retried: a create that timed out may
+    # have gone through, and asking again would put a second copy in the library.
+
+    def upload_workout(self, workout_json: dict[str, Any]) -> dict[str, Any]:
+        return dict(self._call("upload_workout", workout_json, _retries=0) or {})
+
+    def schedule_workout(self, workout_id: int, date_iso: str) -> dict[str, Any]:
+        return dict(self._call("schedule_workout", workout_id, date_iso, _retries=0) or {})
+
+    def unschedule_workout(self, schedule_id: int) -> Any:
+        return self._call("unschedule_workout", schedule_id, _retries=0)
+
+    def delete_workout(self, workout_id: int) -> Any:
+        return self._call("delete_workout", workout_id, _retries=0)
 
 
 def fetch_activities(

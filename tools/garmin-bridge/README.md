@@ -1,7 +1,8 @@
 # Garmin bridge
 
 A small program you run on your own computer so the yootri page can read your
-recent Garmin activities. It is for **your own account, on your own machine**.
+recent Garmin activities and, if you switch it on, put bike workouts in your
+Garmin calendar. It is for **your own account, on your own machine**.
 
 yootri is a static page with no server. Garmin's official developer program
 only accepts businesses, so there is no official route a personal planner can
@@ -48,8 +49,65 @@ cloud and never included in an exported plan file.
 Nothing else crosses. The mapper keeps an explicit allowlist (`WIRE_KEYS` in
 `garmin_bridge/mapper.py`), so the GPS track, the device, calories, your name on
 the account and Garmin's own scores stay behind even when Garmin sends them.
-The bridge asks Garmin for activity summaries and nothing else — no daily data,
-no files, no profile — and a test asserts exactly which library calls it makes.
+Reading, the bridge asks Garmin for activity summaries and nothing else — no daily
+data, no files, no profile — and a test asserts exactly which library calls it
+makes. Sending workouts (below) is a separate, opt-in path with its own four
+calls.
+
+## Sending bike workouts to Garmin
+
+Off unless you start the bridge with `YOOTRI_GARMIN_WORKOUTS=1`:
+
+```sh
+YOOTRI_GARMIN_WORKOUTS=1 make garmin
+```
+
+The page then shows **To Garmin** in the toolbar. It lists the bike sessions
+from today on that are not done or logged, and on **Send** puts each one in your
+Garmin workout library and schedules it on its day. **Send to Garmin** in a
+session's edit dialog does a single one. Running it again sends only what is new
+or changed; a changed session replaces its earlier workout. A trainer app or
+device linked to your Garmin account picks the workouts up from your calendar —
+check once in your own app that it does, since that part is outside this
+repository. Run and swim sessions are not exported.
+
+How a session becomes steps is in `assets/coach/workout.js`. The %FTP bands
+there are unfitted defaults, not measurements. With no FTP entered (Garmin
+panel → FTP) the steps carry percentages in their description instead of watts.
+If a workout is refused, the page offers it as a **FIT file** to load onto a
+device by hand (`POST /v1/workouts/fit`; Garmin is not called for that).
+
+### This relies on unofficial endpoints
+
+`garminconnect` calls Garmin's own web app endpoints (`upload_workout`,
+`schedule_workout`, `unschedule_workout`, `delete_workout`). Garmin has not
+published or promised them and may change them. Everything touching them is in
+`garmin_bridge/adapter.py`; a refusal comes back as `workout_rejected` and is
+logged on `garmin_bridge.workouts` (error code only), separate from the app's own
+failures. Nothing else in yootri depends on it: stop passing the flag and the
+bridge behaves exactly as before. Workout calls are never retried automatically,
+because a retry after a timeout could create a second copy.
+
+### If Garmin changes its sign-in, or the endpoints stop working
+
+1. Run `make garmin-status`. If the session is gone, or sign-in fails, run
+   `make garmin-login` again. A changed password also ends the session.
+2. If sign-in itself fails for everyone, or workouts are `not accepted` while
+   activity sync still works, Garmin has probably changed something. Check
+   [`garminconnect`'s releases](https://github.com/cyberjunky/python-garminconnect/releases),
+   bump the exact pin in `pyproject.toml`, `uv lock`, and run `make garmin-test`.
+3. Until that is fixed, leave the flag off, or use the FIT download.
+
+### What is sent, and what is not
+
+Per workout: its name, its steps (durations and power targets), your FTP if you
+entered one, and the date. No heart rate, no daily or health data, nothing from
+your profile, and nothing is written into your plan. The only thing kept is the
+browser's own note of which sessions it sent (`yootri_garmin_workouts`, this
+browser only). Heart rate and other health data are what the project treats
+with most care (GDPR Art. 9; see the privacy notice and `CLAUDE.md`); this
+feature adds none and infers nothing about you. That is a description of the
+data flow, not legal advice.
 
 ## Where things are kept
 
@@ -65,8 +123,9 @@ Your e-mail address and password are never written anywhere.
 
 ## Who can talk to it
 
-The bridge listens on `127.0.0.1` only, answers `GET` only, and checks three
-things before it does anything:
+The bridge listens on `127.0.0.1` only, answers `GET` (plus `POST` on the three
+workout routes, only when the flag is on), and checks three things before it
+does anything:
 
 1. **Host** must be `127.0.0.1:<port>` or `localhost:<port>`. A web page that
    points a name it controls at your machine still sends that name, and is

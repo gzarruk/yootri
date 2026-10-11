@@ -88,7 +88,24 @@ class NotFound(BridgeError):
 
 class MethodNotAllowed(BridgeError):
     code, status = "method_not_allowed", 405
-    default = "The bridge only answers GET."
+    default = "The bridge does not answer that request."
+
+
+class BadWorkout(BridgeError):
+    code, status = "bad_workout", 400
+    default = "The workout was not understood."
+
+
+class WorkoutsDisabled(BridgeError):
+    code, status = "workouts_disabled", 403
+    default = "Sending workouts to Garmin is switched off on the bridge."
+
+
+class WorkoutRejected(BridgeError):
+    """Garmin's workout endpoints are unofficial: a refusal here may mean they changed."""
+
+    code, status = "workout_rejected", 502
+    default = "Garmin Connect did not accept the workout."
 
 
 _PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
