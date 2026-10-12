@@ -258,3 +258,8 @@ test('the review shows week 1 and blocks nothing on a buildable plan', () => {
   assert.equal(r.firstWeekMinutes, sessionsAt(p, 0).reduce((a, s) => a + durToMin(s.dur), 0));
   assert.equal(r.hoursByWeek.length, 31);
 });
+
+test('a season built by the wizard is released one week at a time, from week 1', () => {
+  const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
+  assert.deepEqual(p.release, { through: 0 });
+});

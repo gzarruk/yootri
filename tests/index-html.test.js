@@ -453,3 +453,24 @@ test('every step the engine names has a body in the page', () => {
     assert.match(steps[1], new RegExp(`\\n    ${s}\\(\\) \\{`), `no body for ${s}`);
   }
 });
+
+/* ---- weekly release ---- */
+
+test('a week after the release horizon shows no sessions, on the board or in the month', () => {
+  assert.match(fnBody('renderBoard'), /if \(!isReleased\(plan, state\.week\)\)/);
+  assert.match(fnBody('renderCalendar'), /if \(!isReleased\(plan, w\.absWeek\)\) continue;/);
+});
+
+test('a release goes through applyDraft, with an undo, and nothing else writes it but the menu toggle', () => {
+  const body = fnBody('applyRelease');
+  assert.match(body, /applyDraft\(plan, r\.draft/);
+  assert.match(body, /pendingUndo = \{ kind: 'refit'/);
+  const writes = withoutComments(HTML).match(/plan\.release = /g) || [];
+  assert.equal(writes.length, 1, 'only toggleRelease sets the horizon directly');
+  assert.match(fnBody('toggleRelease'), /plan\.release = /);
+});
+
+test('Plan setup and race changes keep the weeks already trained', () => {
+  assert.match(fnBody('previewRefit'), /refit\(plan, \{ profile, keepBefore: trainedWeeks\(\) \}\)/);
+  assert.match(fnBody('applyEvents'), /keepBefore: trainedWeeks\(\)/);
+});

@@ -299,6 +299,9 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
     ? { ...e, name: String(a.race.name).trim() } : e));
 
   if (tune.length) plan = refit({ ...plan, events: [...plan.events, ...tune] }, { weeks: weekCount(plan) });
+  // Released a week at a time: week 1 now, each later week after the review of
+  // the one before (review.js).
+  plan.release = { through: 0 };
   return plan;
 }
 

@@ -20,6 +20,7 @@ import {
 import { generateWeek } from './generate.js';
 import { trailingCompliance, weekCompliance } from './actuals.js';
 import { suggest } from './adapt.js';
+import { releaseState, reviewWeek, proposeNextWeek } from './review.js';
 import { seasonFit, volumeBeyondRace } from './validate.js';
 import { durToMin } from './duration.js';
 import { paceTableFor, formatPace, ZONES } from './paces.js';
@@ -86,6 +87,15 @@ const current = (s) => s.draft ?? s.plan;
 
 /** Start (or continue) a draft. */
 const draftOf = (s) => s.draft ?? clone(s.plan);
+
+/* The weeks before the one `today` falls in have been trained: a change the
+   coach makes reshapes what is still to come, never the record of what was
+   planned for them (refit's keepBefore). With no date the session cannot tell,
+   and refits the whole season as it always has. */
+const trainedWeeks = (s, base) => {
+  const w = s.today ? weekIndexOf(base.start, s.today) : null;
+  return Number.isInteger(w) && w > 0 ? Math.min(w, weekCount(base)) : 0;
+};
 
 /* Week numbering, and the one place it is translated.
 
@@ -220,6 +230,7 @@ function writeEvents(s, base, next, lead) {
   const weeks = race.raceDate ? weeksUntil(base.start, race.raceDate) : null;
   const draft = refit({ ...base, events }, {
     profile,
+    keepBefore: trainedWeeks(s, base),
     ...(Number.isFinite(weeks) && weeks > 0 ? { weeks } : {}),
   });
   s.draft = draft;
@@ -321,6 +332,21 @@ export const TOOL_DEFS = [
       properties: { week: { type: 'integer', description: 'The week being planned, counting from 1 — the same number the athlete sees on the board.' } },
       required: ['week'],
     },
+  },
+  {
+    name: 'get_week_review',
+    description:
+      'For a plan released one week at a time: what happened to each session of the last released week (or the week given) — done or partial from the athlete\'s log or from a matched synced activity, missed when nothing was logged on a day already past, upcoming otherwise — and whether the next week is due to be released. Facts only; it changes nothing.',
+    input_schema: {
+      type: 'object',
+      properties: { week: { type: 'integer', description: 'A week to review, counting from 1. Default: the last released week.' } },
+    },
+  },
+  {
+    name: 'release_next_week',
+    description:
+      'For a plan released one week at a time, once the released week is over: draft the release of the next week. The draft logs what the review found (synced matches as done or partial, sessions with nothing logged as missed) and lets the adaptation rules adjust the week being released — only that week, never one already trained. Nothing is released until the athlete applies the draft. Refused when the plan is shown whole or no week is due.',
+    input_schema: { type: 'object', properties: {} },
   },
   {
     name: 'get_training_history',
@@ -635,6 +661,49 @@ const HANDLERS = {
     });
   },
 
+  get_week_review(s, input) {
+    const p = current(s);
+    if (!s.today) return fail('No date to review against.');
+    const state = releaseState(p, { today: s.today });
+    const week = input.week !== undefined ? toIndex(p, input.week)
+      : state.mode === 'weekly' ? state.reviewWeek : Math.max(0, Math.min((state.current ?? 1) - 1, weekCount(p) - 1));
+    const r = reviewWeek(p, week, { today: s.today });
+    return ok({
+      week: week + 1,
+      from: r.from,
+      to: r.to,
+      ended: r.ended,
+      planned_minutes: r.plannedMinutes,
+      done_minutes: r.doneMinutes,
+      counts: r.counts,
+      sessions: r.rows.map((x) => ({
+        id: x.id, day: x.day, discipline: x.disc, planned_minutes: x.plannedMin,
+        status: x.status, from: x.source, minutes: x.minutes,
+      })),
+      unplanned_activities: r.extra.map((x) => ({ date: x.date, discipline: x.disc, minutes: x.min })),
+      release: state.mode === 'weekly'
+        ? { mode: 'weekly', released_through: state.through + 1, due: state.due, next_week: state.nextWeek + 1 }
+        : { mode: 'whole season shown' },
+    });
+  },
+
+  release_next_week(s) {
+    const base = draftOf(s);
+    if (!s.today) return fail('No date to release against.');
+    const state = releaseState(base, { today: s.today });
+    if (state.mode !== 'weekly') return fail('This plan shows the whole season; there is no week to release.');
+    if (!state.due) return fail(`Week ${state.through + 1} is not over yet, so the next week is not due.`);
+    const r = proposeNextWeek(base, { today: s.today });
+    s.draft = r.draft;
+    const said = [`Week ${r.nextWeek + 1} drafted for release.`];
+    if (r.logged) said.push(`${r.logged} session${r.logged === 1 ? '' : 's'} logged from synced activities.`);
+    if (r.missed) said.push(`${r.missed} session${r.missed === 1 ? '' : 's'} with nothing logged marked missed.`);
+    said.push(r.change
+      ? `Week ${r.nextWeek + 1} changed from ${r.change.fromHours}h to ${r.change.toHours}h: ${r.change.reason}`
+      : `Week ${r.nextWeek + 1} is released as planned.`);
+    return ok(said.join(' '));
+  },
+
   get_adaptation_suggestions(s, input) {
     const p = current(s);
     const list = suggest(p, { week: toIndex(p, input.week) });
@@ -763,7 +832,7 @@ const HANDLERS = {
     const hours = Number(input.hours);
     if (!Number.isFinite(hours) || hours <= 0) return fail('hours must be a positive number.');
     const base = draftOf(s);
-    s.draft = refit(base, { profile: { ...base.profile, annualHours: hours } });
+    s.draft = refit(base, { profile: { ...base.profile, annualHours: hours }, keepBefore: trainedWeeks(s, base) });
     return ok(`Annual hours set to ${Math.round(hours)} and the season refitted.`);
   },
 
@@ -775,7 +844,7 @@ const HANDLERS = {
     if (!Number.isFinite(mins) || mins < 0) return fail('minutes must be zero or more.');
     const base = draftOf(s);
     const availability = { ...base.profile.availability, [input.day]: Math.round(mins) };
-    s.draft = refit(base, { profile: { ...base.profile, availability } });
+    s.draft = refit(base, { profile: { ...base.profile, availability }, keepBefore: trainedWeeks(s, base) });
     return ok(`${input.day} set to ${Math.round(mins)} minutes and the season refitted.`);
   },
 
@@ -815,7 +884,7 @@ const HANDLERS = {
     const constraints = base.profile.constraints
       .filter((c) => !(c.disc === input.discipline && c.rule === rule))
       .concat([{ disc: input.discipline, rule, value }]);
-    s.draft = refit(base, { profile: { ...base.profile, constraints } });
+    s.draft = refit(base, { profile: { ...base.profile, constraints }, keepBefore: trainedWeeks(s, base) });
     return ok(`Constraint applied: ${input.discipline} ${rule}. Season refitted.`);
   },
 
@@ -829,7 +898,7 @@ const HANDLERS = {
     if (!profile.splits?.[input.block]) {
       return fail(`Those weights were not usable. Use discipline names (${DISCIPLINES.join(', ')}) with numbers above zero.`);
     }
-    s.draft = refit(base, { profile });
+    s.draft = refit(base, { profile, keepBefore: trainedWeeks(s, base) });
     return ok(`Split set for ${input.block}. Season refitted.`);
   },
 
@@ -861,7 +930,7 @@ const HANDLERS = {
 
     if (input.enabled !== undefined) shape.enabled = input.enabled !== false;
 
-    s.draft = refit(base, { profile: { ...base.profile, weekShape: shape } });
+    s.draft = refit(base, { profile: { ...base.profile, weekShape: shape }, keepBefore: trainedWeeks(s, base) });
 
     const said = [
       input.spread !== undefined ? `displaced hours go to ${shape.spread}` : null,
@@ -901,7 +970,7 @@ const HANDLERS = {
       longDays,
       maxSessionsPerDay: cap !== undefined ? cap : base.profile.maxSessionsPerDay,
     });
-    s.draft = refit(base, { profile });
+    s.draft = refit(base, { profile, keepBefore: trainedWeeks(s, base) });
 
     const said = [
       input.long_ride_day !== undefined ? `long ride ${profile.longDays?.Bike ?? 'wherever it fits'}` : null,
