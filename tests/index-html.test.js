@@ -423,3 +423,33 @@ test('Plan setup reads the long days and the sessions-a-day cap', () => {
   const panel = fnBody('openSetupPanel');
   for (const id of ['f-long-ride', 'f-long-run', 'f-per-day']) assert.match(panel, new RegExp(`id="${id}"`));
 });
+
+/* ---- the onboarding wizard ---- */
+
+test('the wizard saves through the same doors as everything else', () => {
+  const body = fnBody('finishWizard');
+  // About you goes to the athlete record, never onto the plan.
+  assert.match(body, /saveAthleteLocal\(athleteFromAnswers\(/);
+  assert.doesNotMatch(body, /built\.athlete|athlete:\s*athleteFromAnswers/);
+  // The account copy only under both consents, the plan through addPlan after
+  // the stand-in is dropped — the order every new plan follows.
+  assert.match(body, /hasSyncConsent\(\)[\s\S]*pushAthlete\(\)/);
+  const drop = body.indexOf('dropIfUntouched()');
+  assert.ok(drop !== -1 && drop < body.indexOf('addPlan(built)'));
+});
+
+test('the wizard is reachable from first visit, first sign-in and the plan menu', () => {
+  assert.match(fnBody('maybeShowFirstRun'), /maybeStartWizard\(\)/);
+  assert.match(fnBody('pullFromCloud'), /maybeStartWizard\(\)/);
+  assert.match(fnBody('runMenuAction'), /act === 'new'\) \{\s*return openWizard\(\)/);
+  // It opens by itself only for somebody new, and never twice.
+  assert.match(fnBody('maybeStartWizard'), /orientDone\(\)[\s\S]*planIsUntouched\(\)/);
+});
+
+test('every step the engine names has a body in the page', () => {
+  const steps = HTML.match(/const WIZ_STEP_HTML = \{([\s\S]*?)\n  \};/);
+  assert.ok(steps, 'WIZ_STEP_HTML is gone');
+  for (const s of ['welcome', 'about', 'background', 'thresholds', 'week', 'races', 'goal']) {
+    assert.match(steps[1], new RegExp(`\\n    ${s}\\(\\) \\{`), `no body for ${s}`);
+  }
+});
