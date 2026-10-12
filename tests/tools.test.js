@@ -899,3 +899,34 @@ test('release_next_week refuses when nothing is due, or the plan is shown whole'
   assert.equal(call(whole, 'release_next_week').isError, true);
   assert.equal(call(createSession(plan), 'release_next_week').isError, true, 'no date, no release');
 });
+
+test('release_next_week eases the hardest session only when asked', () => {
+  const base = basePlan();
+  const build = base.season.findIndex((w) => w.block.startsWith('Build'));
+  assert.ok(build > 0, 'the fixture has a Build block');
+  // The weeks before it were trained as planned, so the release keeps its hours.
+  let plan = { ...base, release: { through: build - 1 } };
+  for (const w of [build - 2, build - 1]) {
+    for (const x of sessionsAt(plan, w)) if (durToMin(x.dur) > 0) plan = setActual(plan, x.id, { status: 'done' });
+  }
+  const today = dateOf(plan.start, build, 'Mon');
+
+  const plain = createSession(plan, { today });
+  call(plain, 'release_next_week');
+  assert.ok(sessionsAt(plain.draft, build).some((x) => /Z[3-5]/.test(x.zone)), 'the week has hard sessions');
+
+  const asked = createSession(plan, { today });
+  const r = call(asked, 'release_next_week', { ease: true });
+  assert.notEqual(r.isError, true, r.content);
+  assert.match(r.content, /easy/);
+  const changed = sessionsAt(asked.draft, build).filter((x, i) => JSON.stringify(x) !== JSON.stringify(sessionsAt(plain.draft, build)[i]));
+  assert.equal(changed.length, 1);
+  assert.equal(changed[0].zone, 'Z2');
+  assert.match(sessionsAt(plain.draft, build).find((x) => x.id === changed[0].id).zone, /Z[3-5]/);
+});
+
+test('the release tool says nothing of sleep or overnight heart rate, which the coach never sees', () => {
+  const def = TOOL_DEFS.find((t) => t.name === 'release_next_week');
+  assert.ok(def.input_schema.properties.ease, 'ease is an input');
+  assert.doesNotMatch(JSON.stringify(def), /sleep|HRV|overnight|heart/i);
+});

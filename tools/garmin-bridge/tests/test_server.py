@@ -427,3 +427,89 @@ def test_other_methods_and_paths_are_still_refused(workouts):
     assert request(workouts, "PUT", "/v1/workouts", body=b"{}")[0] == 405
     assert request(workouts, "DELETE", "/v1/workouts/remove")[0] == 405
     assert post(workouts, "/v1/sleep", {})[0] == 405
+
+
+# ---- overnight figures (YOOTRI_GARMIN_OVERNIGHT=1 only) -----------------------
+
+
+class OvernightStub(StubClient):
+    """Answers the three overnight series from the shared payloads."""
+
+    def __init__(self, error=None):
+        super().__init__()
+        self.ranges = []
+        self.overnight_error = error
+
+    def overnight_range(self, series, start, end):
+        self.ranges.append((series, start, end))
+        if self.overnight_error is not None:
+            raise self.overnight_error
+        return {"sleep": payloads.sleep_daily(), "hrv": payloads.hrv_range(), "restingHr": payloads.rhr_daily()}[series]
+
+
+@pytest.fixture
+def overnight(bridge):
+    bridge["server"].cfg.overnight = True
+    stub = OvernightStub()
+    bridge["make"] = lambda: stub
+    bridge["stub"] = stub
+    return bridge
+
+
+def test_status_says_whether_overnight_figures_are_on(bridge):
+    assert request(bridge, "GET", "/v1/status")[2]["overnight"] is False
+    bridge["server"].cfg.overnight = True
+    assert request(bridge, "GET", "/v1/status")[2]["overnight"] is True
+
+
+def test_overnight_figures_are_off_by_default(bridge):
+    status, _, body = request(bridge, "GET", "/v1/overnight?since=2026-09-01&until=2026-09-27")
+    assert status == 403
+    assert body["error"]["code"] == "overnight_disabled"
+    assert bridge["clients"] == []
+
+
+def test_overnight_figures_when_switched_on(overnight):
+    status, _, body = request(overnight, "GET", "/v1/overnight?since=2026-10-01&until=2026-10-07")
+    assert status == 200
+    assert body["ok"] is True and body["api"] == API_VERSION
+    assert (body["since"], body["until"]) == ("2026-10-01", "2026-10-07")
+    assert body["nights"][1] == {"date": "2026-10-05", "sleepMin": 437, "hrvMs": 61, "restingHr": 47}
+    assert body["missing"] == []
+    assert {series for series, _, _ in overnight["stub"].ranges} == {"sleep", "hrv", "restingHr"}
+
+
+def test_switching_overnight_on_changes_nothing_about_activities(overnight):
+    status, _, body = request(overnight, "GET", "/v1/activities?since=2026-09-01&until=2026-09-27")
+    assert status == 200
+    assert "nights" not in body
+    assert overnight["stub"].ranges == []
+
+
+def test_overnight_history_is_capped_tighter_than_activities(overnight):
+    status, _, body = request(overnight, "GET", "/v1/overnight?since=2026-01-01&until=2026-09-27")
+    assert status == 400
+    assert body["error"]["code"] == "bad_request"
+    assert overnight["stub"].ranges == []
+
+
+def test_overnight_needs_the_token_host_and_origin(overnight):
+    path = "/v1/overnight?since=2026-10-01&until=2026-10-07"
+    assert request(overnight, "GET", path, token=None)[0] == 401
+    assert request(overnight, "GET", path, origin="https://evil.test")[0] == 403
+    assert request(overnight, "GET", path, host="evil.test")[0] == 421
+    assert overnight["stub"].ranges == []
+
+
+def test_overnight_is_read_only(overnight):
+    assert request(overnight, "POST", "/v1/overnight", body=b"{}")[0] == 405
+    assert request(overnight, "DELETE", "/v1/overnight")[0] == 405
+
+
+def test_a_rate_limit_on_overnight_figures_says_so(overnight):
+    overnight["make"] = lambda: OvernightStub(error=RateLimited())
+    overnight["server"].forget_client()
+    status, headers, body = request(overnight, "GET", "/v1/overnight?since=2026-10-01&until=2026-10-07")
+    assert status == 429
+    assert body["error"]["code"] == "rate_limited"
+    assert headers["retry-after"] == "900"

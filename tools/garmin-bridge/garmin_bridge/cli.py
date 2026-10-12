@@ -41,6 +41,16 @@ def workouts_enabled(env: dict[str, str] | None = None) -> bool:
     return (env if env is not None else os.environ).get("YOOTRI_GARMIN_WORKOUTS", "").strip() in ("1", "true", "yes")
 
 
+def overnight_enabled(env: dict[str, str] | None = None) -> bool:
+    """Overnight figures are off unless the athlete switches them on: YOOTRI_GARMIN_OVERNIGHT=1.
+
+    Sleep, overnight HRV and resting heart rate are daily measurements of the
+    body, a step past activity summaries, so a bridge started without the flag
+    reads none of them — exactly as it did before they were added.
+    """
+    return (env if env is not None else os.environ).get("YOOTRI_GARMIN_OVERNIGHT", "").strip() in ("1", "true", "yes")
+
+
 def default_origins(cname: Path = REPO_CNAME) -> tuple[str, ...]:
     """`make dev`'s origin, plus the published site named in the repo's CNAME."""
     try:
@@ -125,7 +135,7 @@ def main(
                             on_tokens_changed=store.write_tokens)
 
     server = make_server(Config(token=token, origins=origins, store=store, client_provider=provider,
-                                  workouts=workouts_enabled()),
+                                  workouts=workouts_enabled(), overnight=overnight_enabled()),
                          port=args.port)
     port = server.server_address[1]
     say(f"yootri Garmin bridge {__version__} listening on http://127.0.0.1:{port}")
@@ -133,6 +143,9 @@ def main(
     say(f"Pairing token: {token}")
     if workouts_enabled():
         say("Workout export is ON (YOOTRI_GARMIN_WORKOUTS=1): the page may send bike workouts to Garmin.")
+    if overnight_enabled():
+        say("Overnight figures are ON (YOOTRI_GARMIN_OVERNIGHT=1): the page may read sleep, overnight HRV "
+            "and resting heart rate.")
     say("Pair a page once: open " + " or ".join(f"{o}/?garmin=setup" for o in origins)
         + " and paste the token.")
     if store.read_tokens() is None:

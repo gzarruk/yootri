@@ -3,6 +3,11 @@
     GET  /v1/status                        is there a saved Garmin session?
     GET  /v1/activities?since=…&until=…    activity summaries in that window
 
+only when the bridge was started with overnight figures switched on
+(``YOOTRI_GARMIN_OVERNIGHT=1``):
+
+    GET  /v1/overnight?since=…&until=…     sleep, overnight HRV and resting heart rate per night
+
 and, only when the bridge was started with workout export switched on
 (``YOOTRI_GARMIN_WORKOUTS=1``):
 
@@ -45,7 +50,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from garmin_bridge import API_VERSION, __version__
 from garmin_bridge.adapter import GarminConnectGateway
-from garmin_bridge.client import fetch_activities
+from garmin_bridge.client import fetch_activities, fetch_overnight
 from garmin_bridge.errors import (
     AuthRequired,
     BadHost,
@@ -55,6 +60,7 @@ from garmin_bridge.errors import (
     ForbiddenOrigin,
     MethodNotAllowed,
     NotFound,
+    OvernightDisabled,
     RateLimited,
     Unauthorized,
     WorkoutsDisabled,
@@ -68,6 +74,10 @@ DEFAULT_PORT = 8765
 
 # The page never asks for more than this (synced.js MAX_RANGE_DAYS agrees).
 MAX_RANGE_DAYS = 400
+
+# Nor for more overnight history than this (overnight.js agrees): enough for a
+# baseline and the week after it, and no more.
+MAX_OVERNIGHT_DAYS = 92
 
 # A workout is a few dozen small steps; anything bigger is not one.
 MAX_BODY = 32 * 1024
@@ -87,9 +97,10 @@ class Config:
     client_provider: Callable[[], Any]
     today: Callable[[], date] = date.today
     workouts: bool = False
+    overnight: bool = False
 
 
-def parse_range(query: str, *, today: date) -> tuple[date, date]:
+def parse_range(query: str, *, today: date, max_days: int = MAX_RANGE_DAYS) -> tuple[date, date]:
     params = parse_qs(query, keep_blank_values=True)
 
     def one(name: str) -> str | None:
@@ -110,8 +121,8 @@ def parse_range(query: str, *, today: date) -> tuple[date, date]:
     until = as_date("until", raw_until) if raw_until else today
     if since > until:
         raise BadRequest("`since` is after `until`.")
-    if (until - since).days > MAX_RANGE_DAYS:
-        raise BadRequest(f"Ask for at most {MAX_RANGE_DAYS} days at a time.")
+    if (until - since).days > max_days:
+        raise BadRequest(f"Ask for at most {max_days} days at a time.")
     return since, until
 
 
@@ -148,6 +159,9 @@ class BridgeServer(HTTPServer):
             # `make garmin-login` since this client was opened. Try it once.
             self.forget_client()
             return fetch_activities(self.client(), since, until)
+
+    def overnight(self, since: date, until: date) -> tuple[list, list]:
+        return self.with_session(lambda: fetch_overnight(self.client(), since, until))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -246,6 +260,10 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, self._status())
             elif url.path == "/v1/activities":
                 self._send(200, self._activities(url.query))
+            elif url.path == "/v1/overnight":
+                if not self.server.cfg.overnight:
+                    raise OvernightDisabled()
+                self._send(200, self._overnight(url.query))
             else:
                 raise NotFound()
         except BridgeError as error:
@@ -316,6 +334,7 @@ class Handler(BaseHTTPRequestHandler):
             "connected": store.read_tokens() is not None,
             "tokensSavedAt": store.tokens_saved_at(),
             "workouts": self.server.cfg.workouts,
+            "overnight": self.server.cfg.overnight,
         }
 
     def _schedule_date(self, raw: Any) -> str:
@@ -370,6 +389,20 @@ class Handler(BaseHTTPRequestHandler):
             "fetchedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "activities": activities,
             "skipped": skipped,
+        }
+
+
+    def _overnight(self, query: str) -> dict[str, Any]:
+        since, until = parse_range(query, today=self.server.cfg.today(), max_days=MAX_OVERNIGHT_DAYS)
+        nights, missing = self.server.overnight(since, until)
+        return {
+            "ok": True,
+            "api": API_VERSION,
+            "since": since.isoformat(),
+            "until": until.isoformat(),
+            "fetchedAt": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "nights": nights,
+            "missing": missing,
         }
 
 

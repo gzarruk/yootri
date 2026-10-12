@@ -17,9 +17,17 @@
    The judgement about next week is not new. It is the existing adaptation
    rules (`suggest` in adapt.js), read on the record the review has just
    completed: the logs, the synced matches it proposes, and the sessions that
-   did not happen. No new coaching constant lives here. */
+   did not happen. No new coaching constant lives here.
 
-import { weekCount, sessionsAt, refit, normalizeRelease } from './plan.js';
+   One thing the athlete can add: `ease`, which makes the released week's
+   hardest session an easy one of the same length. It is never on by default.
+   The page offers it beside the athlete's sleep and overnight heart rate when
+   those are outside their usual range (overnight.js), and the coach passes it
+   only when asked — but nothing here reads those figures. The choice is the
+   athlete's; this only carries it out. */
+
+import { weekCount, sessionsAt, setSessionsAt, refit, normalizeRelease } from './plan.js';
+import { easySession, zoneRank } from './generate.js';
 import { getActual, setActual, actualMinutes } from './actuals.js';
 import { matchActivities } from './match.js';
 import { suggest } from './adapt.js';
@@ -110,17 +118,38 @@ export function reviewWeek(plan, absWeek, { today } = {}) {
 }
 
 /**
+ * The session `ease` would change: the week's highest zone (`zoneRank`), the
+ * earliest on a tie — the nearest to the nights that prompted the question.
+ * Never one already logged or on a day already gone, and never one that is as
+ * easy as it gets already. Null when the week has nothing hard in it.
+ */
+export function hardestSession(plan, absWeek, { today } = {}) {
+  let best = null;
+  for (const s of sessionsAt(plan, absWeek)) {
+    const easy = easySession(s);
+    if (!easy || durToMin(s.dur) <= 0) continue;
+    const rank = zoneRank(s.zone);
+    if (rank <= zoneRank(easy.zone)) continue;
+    if (getActual(plan, s.id) || plan.done?.[s.id]) continue;
+    if (today && dateOf(plan.start, absWeek, s.day) < today) continue;
+    if (!best || rank > best.rank) best = { s, rank };
+  }
+  return best ? best.s : null;
+}
+
+/**
  * The draft that releases the next week, and why it looks the way it does.
  *
  * It writes what the review found — synced matches as logged actuals, sessions
  * with nothing against them as missed — then asks the existing adaptation rules
  * about the week being released. If they propose a different week budget, that
  * week (and only that week) is pinned and rebuilt; otherwise it is released as
- * planned. Weeks before it are never touched.
+ * planned. Weeks before it are never touched. With `ease`, the released week's
+ * hardest session is then made easy (see `hardestSession`); its hours stay.
  *
- * @returns {{ draft, nextWeek, review, change: null | {fromHours, toHours, reason}, logged: number, missed: number }}
+ * @returns {{ draft, nextWeek, review, change: null | {fromHours, toHours, reason}, eased: null | object, logged: number, missed: number }}
  */
-export function proposeNextWeek(plan, { today } = {}) {
+export function proposeNextWeek(plan, { today, ease = false } = {}) {
   const state = releaseState(plan, { today });
   const reviewed = state.mode === 'weekly' ? state.reviewWeek : null;
   const nextWeek = state.mode === 'weekly' ? state.nextWeek : null;
@@ -158,8 +187,19 @@ export function proposeNextWeek(plan, { today } = {}) {
     }
   }
 
+  let eased = null;
+  const hard = ease ? hardestSession(draft, nextWeek, { today }) : null;
+  if (hard) {
+    const easy = easySession(hard);
+    draft = setSessionsAt(draft, nextWeek, sessionsAt(draft, nextWeek).map((s) => (s.id === hard.id ? easy : s)));
+    eased = {
+      id: hard.id, day: hard.day, disc: hard.disc, dur: hard.dur,
+      from: { focus: hard.focus, zone: hard.zone }, to: { focus: easy.focus, zone: easy.zone },
+    };
+  }
+
   draft.release = { through: nextWeek };
   draft.pendingActuals = pendingActuals;
-  return { draft, nextWeek, review, change, logged, missed };
+  return { draft, nextWeek, review, change, eased, logged, missed };
 }
 

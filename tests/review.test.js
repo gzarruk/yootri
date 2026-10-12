@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  releaseState, isReleased, normalizeRelease, reviewWeek, proposeNextWeek,
+  releaseState, isReleased, normalizeRelease, reviewWeek, proposeNextWeek, hardestSession,
 } from '../assets/coach/review.js';
 import { newPlan, loadPlan, applyDraft, refit, sessionsAt, weekCount } from '../assets/coach/plan.js';
 import { setActual, getActual } from '../assets/coach/actuals.js';
@@ -200,4 +200,69 @@ test('a refit with keepBefore leaves the weeks before it exactly as they were', 
     assert.deepEqual(draft.season[w], p.season[w], `week ${w} season entry`);
   }
   assert.notDeepEqual(sessionsAt(draft, 5), sessionsAt(p, 5), 'later weeks are refitted');
+});
+
+/* ---- easing one session of the week released ---- */
+
+// The first Build week of this plan: every ride, run and swim in it is Z3–Z4.
+const BUILD = 14;
+const buildMonday = dateOf(START, BUILD, 'Mon');
+const beforeBuild = () => weekly(BUILD - 1);
+
+test('the hardest session of a week is its highest zone, the earliest on a tie', () => {
+  const h = hardestSession(beforeBuild(), BUILD, { today: buildMonday });
+  const firstHard = sessionsAt(beforeBuild(), BUILD).find((s) => s.zone === 'Z3–Z4');
+  assert.equal(h.id, firstHard.id);
+  assert.equal(h.day, 'Tue');
+});
+
+test('an easy week has no hard session to ease', () => {
+  assert.equal(hardestSession(weekly(0), 1, { today: '2026-10-12' }), null);
+});
+
+test('a session already logged, or on a day already gone, is never the one eased', () => {
+  let p = beforeBuild();
+  const first = hardestSession(p, BUILD, { today: buildMonday });
+  p = setActual(p, first.id, { status: 'done' });
+  assert.notEqual(hardestSession(p, BUILD, { today: buildMonday }).id, first.id);
+  const wed = dateOf(START, BUILD, 'Wed');
+  assert.ok(['Wed', 'Thu', 'Fri', 'Sat', 'Sun'].includes(hardestSession(beforeBuild(), BUILD, { today: wed }).day));
+});
+
+test('easing changes that one session and leaves the rest of the week as it was', () => {
+  const p = beforeBuild();
+  const plain = proposeNextWeek(p, { today: buildMonday });
+  const eased = proposeNextWeek(p, { today: buildMonday, ease: true });
+  assert.equal(plain.eased, null, 'nothing is eased unless the athlete asks');
+
+  const before = sessionsAt(plain.draft, BUILD);
+  const after = sessionsAt(eased.draft, BUILD);
+  assert.equal(after.length, before.length);
+  const changed = after.filter((s, i) => JSON.stringify(s) !== JSON.stringify(before[i]));
+  assert.equal(changed.length, 1);
+  const [s] = changed;
+  const was = before.find((x) => x.id === s.id);
+  assert.equal(s.zone, 'Z2');
+  assert.equal(s.dur, was.dur, 'the same length: the week keeps its hours');
+  assert.equal(s.day, was.day);
+  assert.deepEqual(eased.eased, {
+    id: s.id, day: s.day, disc: s.disc, dur: s.dur,
+    from: { focus: was.focus, zone: was.zone }, to: { focus: s.focus, zone: s.zone },
+  });
+  assert.equal(eased.draft.season[BUILD].hours, plain.draft.season[BUILD].hours);
+});
+
+test('the eased session is what the applied plan holds', () => {
+  const p = beforeBuild();
+  const r = proposeNextWeek(p, { today: buildMonday, ease: true });
+  const applied = applyDraft(p, r.draft);
+  assert.equal(sessionsAt(applied, BUILD).find((s) => s.id === r.eased.id).zone, 'Z2');
+  assert.deepEqual(applied.release, { through: BUILD });
+});
+
+test('asking to ease a week with nothing hard in it changes nothing', () => {
+  const p = weekly(0);
+  const r = proposeNextWeek(p, { today: '2026-10-12', ease: true });
+  assert.equal(r.eased, null);
+  assert.deepEqual(sessionsAt(r.draft, 1), sessionsAt(proposeNextWeek(p, { today: '2026-10-12' }).draft, 1));
 });

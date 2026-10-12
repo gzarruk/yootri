@@ -2,9 +2,10 @@
 
 Adapted from GARMIN-CLAUDE's ``GarminDataSource``. The bridge asks Garmin for
 activity summaries (and, for a multisport race whose legs are missing from the
-list, for those legs one at a time) and, when workout export is switched on, for
-four workout calls (see ``adapter.py``) — and for nothing else: no daily data,
-no profile.
+list, for those legs one at a time); when workout export is switched on, for
+four workout calls (see ``adapter.py``); and when overnight figures are switched
+on, for three range summaries (see ``overnight.py``) — and for nothing else: no
+other daily data, no profile.
 
 Every call goes through ``_call``: wait for the token bucket, call, translate
 any failure into a ``BridgeError``, retry only an outage, and hand refreshed
@@ -25,14 +26,32 @@ from collections.abc import Callable
 from datetime import date, timedelta
 from typing import Any
 
-from garmin_bridge.errors import AuthRequired, BridgeError, RateLimited, Unavailable, translate_error
+from garmin_bridge.errors import (
+    AuthRequired,
+    BridgeError,
+    GarminError,
+    RateLimited,
+    Unavailable,
+    translate_error,
+)
 from garmin_bridge.mapper import discipline_of, map_activities
+from garmin_bridge.overnight import map_overnight
 from garmin_bridge.resilience import TokenBucket, backoff
 
 log = logging.getLogger("garmin_bridge")
 
 CHUNK_DAYS = 30
 MAX_LEGS = 20
+
+# The overnight series and the one library call each is read with. The sleep
+# stats endpoint answers at most 28 days at a time, so every series is asked
+# for in chunks of that size: one request each, all of them paced.
+OVERNIGHT_SERIES = {
+    "sleep": "get_sleep_daily",
+    "hrv": "get_hrv_data_range",
+    "restingHr": "get_rhr_daily",
+}
+OVERNIGHT_CHUNK_DAYS = 28
 
 
 class GarminClient:
@@ -107,6 +126,13 @@ class GarminClient:
     def get_activity(self, activity_id: str) -> dict[str, Any]:
         return dict(self._call("get_activity", activity_id) or {})
 
+    # Overnight figures (see overnight.py), only with YOOTRI_GARMIN_OVERNIGHT=1.
+    # Range summaries, one request per chunk — never the per-night endpoints,
+    # whose answers carry minute-by-minute series nothing here wants.
+
+    def overnight_range(self, series: str, start: date, end: date) -> Any:
+        return self._call(OVERNIGHT_SERIES[series], start.isoformat(), end.isoformat())
+
     # Workout calls (see adapter.py). Never retried: a create that timed out may
     # have gone through, and asking again would put a second copy in the library.
 
@@ -162,3 +188,35 @@ def fetch_activities(
             listed.add(child_id)
     activities, unmapped = map_activities([*raws, *extra])
     return activities, [*skipped, *unmapped]
+
+
+def fetch_overnight(
+    client: GarminClient, since: date, until: date, *, chunk_days: int = OVERNIGHT_CHUNK_DAYS
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Nights in the window, mapped to the wire shape, plus the series Garmin did not have.
+
+    A watch that does not record HRV, or an account with no sleep tracked, is
+    answered with a refusal for that series: it is reported by name and the
+    other two still come back. A lost session, a rate limit or an outage
+    applies to every series alike and stops the fetch.
+    """
+    answers: dict[str, list[Any]] = {series: [] for series in OVERNIGHT_SERIES}
+    missing: list[str] = []
+    for series in OVERNIGHT_SERIES:
+        start = since
+        try:
+            while start <= until:
+                end = min(until, start + timedelta(days=chunk_days - 1))
+                answers[series].append(client.overnight_range(series, start, end))
+                start = end + timedelta(days=1)
+        except GarminError:
+            missing.append(series)
+            answers[series] = []
+
+    def flat(pages: list[Any]) -> list[Any]:
+        return [row for page in pages if isinstance(page, list) for row in page]
+
+    nights = map_overnight(
+        flat(answers["sleep"]), answers["hrv"], flat(answers["restingHr"]), since=since, until=until
+    )
+    return nights, missing

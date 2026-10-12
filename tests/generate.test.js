@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { generateWeek, weekMinutes, raceDemandMinutes, blockFamily } from '../assets/coach/generate.js';
+import { generateWeek, weekMinutes, raceDemandMinutes, blockFamily, easySession, zoneRank } from '../assets/coach/generate.js';
 import { ZONE_FOR_LABEL } from '../assets/coach/paces.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -613,4 +613,28 @@ test('a cap the week cannot fit under leaves the time unscheduled rather than br
 test('long days and the session cap are deterministic', () => {
   const profile = { availability: anyDay(240), longDays: { Bike: 'Sat', Run: 'Sun' }, maxSessionsPerDay: 2 };
   assert.deepEqual(gen({ hours: 11, profile }), gen({ hours: 11, profile }));
+});
+
+/* ---- one session made easy ---- */
+
+test('an easy version of a session keeps its day, length and id, at the Prep focus and zone', () => {
+  const run = { id: 'w9-3', day: 'Thu', disc: 'Run', focus: 'Tempo', dur: '0:50', zone: 'Z3–Z4', paceZone: 'threshold' };
+  assert.deepEqual(easySession(run), { ...run, focus: 'Easy aerobic', zone: 'Z2', paceZone: 'easy' });
+  const bike = { id: 'w9-1', day: 'Tue', disc: 'Bike', focus: 'Threshold intervals', dur: '1:30', zone: 'Z3–Z4' };
+  assert.deepEqual(easySession(bike), { ...bike, focus: 'Endurance spin', zone: 'Z2' });
+  assert.equal('paceZone' in easySession(bike), false, 'a ride carries no pace band');
+});
+
+test('strength and rest have nothing to ease', () => {
+  assert.equal(easySession({ id: 'a', day: 'Mon', disc: 'Strength', focus: 'Power & durability', dur: '0:45', zone: '—' }), null);
+  assert.equal(easySession({ id: 'b', day: 'Mon', disc: 'Rest', focus: 'Recovery & mobility', dur: '0:00', zone: '—' }), null);
+  assert.equal(easySession(null), null);
+});
+
+test('intensity is read from the zone label: the highest zone named', () => {
+  assert.equal(zoneRank('Z3–Z4'), 4);
+  assert.equal(zoneRank('Z3'), 3);
+  assert.equal(zoneRank('Z1–Z2'), 2);
+  assert.equal(zoneRank('—'), 0);
+  assert.equal(zoneRank(undefined), 0);
 });

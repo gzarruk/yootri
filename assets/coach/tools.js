@@ -346,7 +346,15 @@ export const TOOL_DEFS = [
     name: 'release_next_week',
     description:
       'For a plan released one week at a time, once the released week is over: draft the release of the next week. The draft logs what the review found (synced matches as done or partial, sessions with nothing logged as missed) and lets the adaptation rules adjust the week being released — only that week, never one already trained. Nothing is released until the athlete applies the draft. Refused when the plan is shown whole or no week is due.',
-    input_schema: { type: 'object', properties: {} },
+    input_schema: {
+      type: 'object',
+      properties: {
+        ease: {
+          type: 'boolean',
+          description: 'Only when the athlete asks for an easier week: make the hardest session of the week released (its highest zone, the earliest on a tie) an easy one of the same length. Nothing else changes, and the week keeps its hours. Default false.',
+        },
+      },
+    },
   },
   {
     name: 'get_training_history',
@@ -687,13 +695,13 @@ const HANDLERS = {
     });
   },
 
-  release_next_week(s) {
+  release_next_week(s, input) {
     const base = draftOf(s);
     if (!s.today) return fail('No date to release against.');
     const state = releaseState(base, { today: s.today });
     if (state.mode !== 'weekly') return fail('This plan shows the whole season; there is no week to release.');
     if (!state.due) return fail(`Week ${state.through + 1} is not over yet, so the next week is not due.`);
-    const r = proposeNextWeek(base, { today: s.today });
+    const r = proposeNextWeek(base, { today: s.today, ease: input?.ease === true });
     s.draft = r.draft;
     const said = [`Week ${r.nextWeek + 1} drafted for release.`];
     if (r.logged) said.push(`${r.logged} session${r.logged === 1 ? '' : 's'} logged from synced activities.`);
@@ -701,6 +709,11 @@ const HANDLERS = {
     said.push(r.change
       ? `Week ${r.nextWeek + 1} changed from ${r.change.fromHours}h to ${r.change.toHours}h: ${r.change.reason}`
       : `Week ${r.nextWeek + 1} is released as planned.`);
+    if (r.eased) {
+      said.push(`${r.eased.day}'s ${r.eased.disc.toLowerCase()} (${r.eased.from.focus}, ${r.eased.from.zone}) becomes easy: ${r.eased.to.focus}, ${r.eased.to.zone}, same length.`);
+    } else if (input?.ease === true) {
+      said.push(`Week ${r.nextWeek + 1} has no hard session left to ease.`);
+    }
     return ok(said.join(' '));
   },
 

@@ -294,6 +294,15 @@ test('every error code has a sentence', () => {
   assert.ok(bridgeErrorMessage('something-new').length > 20, 'unknown codes still get a sentence');
 });
 
+test('every error the bridge can answer with has a sentence of its own', () => {
+  // A code the page does not know would fall back to "something went wrong
+  // inside the bridge", which is the wrong thing to tell the athlete.
+  const py = readFileSync(new URL('../tools/garmin-bridge/garmin_bridge/errors.py', import.meta.url), 'utf8');
+  const codes = [...py.matchAll(/code, status = "([a-z_]+)"/g)].map((m) => m[1]);
+  assert.ok(codes.length >= 10, 'errors.py still declares its codes this way');
+  for (const code of codes) assert.ok(BRIDGE_ERROR_CODES.includes(code), code);
+});
+
 test('an unreachable bridge on a secure page mentions Safari', () => {
   assert.match(bridgeErrorMessage('unreachable', { secure: true }), /Safari/);
   assert.match(bridgeErrorMessage('unreachable'), /make garmin/);

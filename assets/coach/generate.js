@@ -100,6 +100,28 @@ const ZONE = {
    Running only. A swim marked Z3 is not a threshold run. */
 const paceZoneFor = (disc, zone) => (disc === 'Run' ? ZONE_FOR_LABEL[zone] : undefined);
 
+/** How hard a zone label asks a session to be: the highest zone it names
+    ("Z3–Z4" → 4), or 0 for a label with none ("—"). */
+export function zoneRank(zone) {
+  const found = String(zone ?? '').match(/Z(\d)/g);
+  return found ? Math.max(...found.map((z) => Number(z.slice(1)))) : 0;
+}
+
+/**
+ * The same session made easy: its id, day, discipline and length kept, its
+ * focus and zone taken from the Prep row of the tables above — the easiest
+ * thing this engine already writes for that discipline, so easing a session
+ * adds no new coaching content. A run's pace band follows its new zone.
+ * Strength and rest have no zone to lower and give null.
+ */
+export function easySession(s) {
+  if (!s || !FOCUS[s.disc] || s.disc === 'Strength') return null;
+  const zone = ZONE[s.disc].Prep;
+  const { paceZone: _old, ...rest } = s;
+  const paceZone = paceZoneFor(s.disc, zone);
+  return { ...rest, focus: FOCUS[s.disc].Prep, zone, ...(paceZone ? { paceZone } : {}) };
+}
+
 /** Map a block name onto its family, so "Base 1".."Base 3" share one shape. */
 export function blockFamily(block) {
   const b = String(block ?? '');
