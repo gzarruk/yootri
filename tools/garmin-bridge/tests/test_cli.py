@@ -109,3 +109,12 @@ def test_workout_export_is_off_unless_the_flag_is_set():
     assert workouts_enabled({}) is False
     assert workouts_enabled({"YOOTRI_GARMIN_WORKOUTS": "0"}) is False
     assert workouts_enabled({"YOOTRI_GARMIN_WORKOUTS": "1"}) is True
+
+
+def test_overnight_figures_are_off_unless_the_flag_is_set():
+    from garmin_bridge.cli import overnight_enabled
+
+    assert overnight_enabled({}) is False
+    assert overnight_enabled({"YOOTRI_GARMIN_OVERNIGHT": "0"}) is False
+    assert overnight_enabled({"YOOTRI_GARMIN_WORKOUTS": "1"}) is False
+    assert overnight_enabled({"YOOTRI_GARMIN_OVERNIGHT": "1"}) is True

@@ -294,6 +294,57 @@ test('heart-rate thresholds are kept in this browser, never on a plan', () => {
   assert.equal(/plan\.hrThresholds|plan\.loadRefs\s*=\s*\{[^}]*(lthr|rest|max)/.test(HTML), false);
 });
 
+/* ---- sleep and overnight heart rate ----
+
+   Daily measurements of the body, so they live where heart rate does: in this
+   browser's own storage, never on a plan (which syncs and exports), never in
+   what the coach is given, and gone when the athlete unticks the box or
+   disconnects the bridge. */
+
+test('sleep and overnight heart rate are kept in this browser, never on a plan', () => {
+  if (!HTML.includes('/v1/overnight')) return;
+  assert.match(HTML, /const GARMIN_OVERNIGHT_KEY = 'yootri_overnight';/);
+  // The code, not its copy: the panel says "never written into a plan" in so many words.
+  const code = (name) => fnBody(name).replace(/'(?:[^'\\]|\\.)*'/g, "''");
+  for (const name of ['syncOvernight', 'setOvernight', 'overnightSectionHTML', 'overnightReviewHTML']) {
+    assert.doesNotMatch(code(name), /\bplan\b|persistPlan|cloudPush|coach/, `${name} reaches a plan or the coach`);
+  }
+  assert.doesNotMatch(HTML, /plan\.(overnight|nights|sleep|hrv)\b/i);
+});
+
+test('the coach is never given sleep or overnight heart rate', () => {
+  assert.doesNotMatch(fnBody('coachContext'), /overnight|nights|sleep/i);
+  for (const f of ['assets/coach/tools.js', 'assets/coach/agent.js', 'assets/coach/plan.js', 'assets/coach/portable.js']) {
+    assert.doesNotMatch(readFileSync(new URL(f, ROOT), 'utf8'), /overnight\.js/, `${f} reads the nights`);
+  }
+});
+
+test('disconnecting the bridge deletes the nights with the heart rate', () => {
+  const at = HTML.indexOf("$('gm-forget')");
+  assert.ok(at > 0, 'the disconnect handler is gone');
+  const handler = HTML.slice(at, HTML.indexOf('});', at));
+  assert.match(handler, /remove\(GARMIN_HR_KEY\)/);
+  assert.match(handler, /remove\(GARMIN_OVERNIGHT_KEY\)/);
+});
+
+test('if the page reads nights, the privacy notice says what and where', () => {
+  if (!HTML.includes('/v1/overnight')) return;
+  const start = HTML.indexOf('const PRIVACY_SECTIONS');
+  const notice = HTML.slice(start, HTML.indexOf('];', start));
+  assert.match(notice, /sleep and overnight heart rate/i);
+  assert.match(notice, /never synced/);
+  assert.match(notice, /never given to the coach/);
+});
+
+test('nothing is made easy unless the athlete ticks the box', () => {
+  // The nights may be shown beside the box; they never tick it.
+  assert.match(HTML, /function openWeekReview\(\{ ease = false \} = \{\}\)/);
+  const body = fnBody('openWeekReview');
+  assert.match(body, /proposeNextWeek\(plan, \{ today, ease \}\)/);
+  assert.match(body, /id="rv-ease"' \+ \(ease \? ' checked' : ''\)/);
+  assert.doesNotMatch(body, /ease\s*[:=][^=]*offer/);
+});
+
 /* ---- the plan lifecycle ----
 
    These paths are page code, so like the consent guard above they are checked

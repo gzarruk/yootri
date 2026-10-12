@@ -29,7 +29,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | Module | Responsibility |
 | --- | --- |
 | `season.js` | Annual hours → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands the block model on a runway of N weeks. |
-| `generate.js` | One week's hour budget → actual sessions. Deterministic. |
+| `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. |
 | `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
 | `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. |
@@ -46,8 +46,9 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `workout.js` | A planned bike session as warm-up / main set / cool-down steps with %FTP targets (watts when `loadRefs.ftpW` is set), plus `planSyncSet`, which says what one "send to Garmin" run would do. Worked out when asked for, never stored on a session. |
 | `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; `estimateAnnualHours` sizes a season so it opens near recent weekly hours. Never on a plan — see below. |
 | `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by `estimateAnnualHours`, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
-| `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules). No coaching constant of its own. |
+| `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules, plus — only when the athlete ticks it — `ease`, which makes `hardestSession` easy). No coaching constant of its own, and it never reads the overnight figures. |
 | `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
+| `overnight.js` | Sleep and overnight heart rate from the bridge: the device-only store's shape (`normalizeNight` is an allowlist), its sync window, and `compareNights` — the last seven nights against the athlete's own four weeks before them. Describes nights, decides nothing. See below. |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
@@ -142,7 +143,7 @@ file, so a heart-rate field that reached a plan would be one sync from being
 stored. File imports and the Strava mapper still read past it entirely
 (`activities.js` has a test asserting the value never survives). Garmin sync is
 the one place it is read, since 28 Sep, and only per activity (average and
-maximum — no daily data of any kind): `splitSynced` in `synced.js` is the only
+maximum): `splitSynced` in `synced.js` is the only
 function that touches it, and hands it back *separately* for the page to keep in
 this browser's own storage (`yootri_activity_hr`). The activity that goes on the
 plan carries none of it, and `normalizeSyncedActivity` is an allowlist that
@@ -162,8 +163,9 @@ and versioned by the privacy notice like sync consent. The cloud copy carries
 the consent it was written under, and withdrawing replaces it with a bare
 `withdrawnAt` marker rather than deleting it, so another device that still
 remembers agreeing learns otherwise on its next pull instead of re-uploading.
-`tests/index-html.test.js` pins the guards; the bridge still reads no daily or
-body data of any kind.
+`tests/index-html.test.js` pins the guards. The bridge reads no body data, and
+its only daily data are the overnight figures below, which never leave the
+browser.
 
 **Garmin.** Garmin's developer program only takes businesses, so the page asks
 `tools/garmin-bridge` — run by the athlete on their own machine, for their own
@@ -193,6 +195,22 @@ the same rule as heart rate — and a send changes no session. The workout
 contains the session's steps, FTP and date; keep heart rate and anything
 health-related out of it. `tests/copy.test.js` guards the wording of this
 feature (no medical or performance claims).
+
+**Sleep and overnight heart rate are device-only, opted into twice, and decide
+nothing.** Since 12 Oct the bridge can read three figures a night — minutes
+asleep, the overnight HRV average, resting heart rate — from three range calls,
+only when it was started with `YOOTRI_GARMIN_OVERNIGHT=1` *and* the athlete
+ticked the box in the Garmin panel. `garmin_bridge/overnight.py` is an
+allowlist that drops Garmin's own scores, statuses, baselines and feedback. The
+page keeps the nights in `yootri_overnight`, this browser only: never on a plan,
+so never synced or exported, and never in a coach session — no engine module but
+`overnight.js` reads them, and `tests/index-html.test.js` pins that. The weekly
+review sets the last seven nights beside the four weeks before them; when two
+figures are outside the athlete's usual range it says so beside a box that makes
+next week's hardest session easy, and that box is never ticked for them. The
+plan records the eased session, not why. Unticking the box or disconnecting the
+bridge deletes the store. Keep Garmin's vocabulary for these out of the copy
+(`tests/copy.test.js`). Every threshold in `OVERNIGHT` is unfitted.
 
 **A plan can be released one week at a time.** `release: { through }` is
 another field added without a schema bump: sessions are shown up to that week,

@@ -21,7 +21,7 @@ Each phase below is one pull request and keeps `npm test` green.
 ```
 P0 groundwork ─► P1 athlete record + consent ─► P2 habits in the engine ─► P3 wizard
                                                                               │
-                              P5 readiness data (gated) ◄── P4 weekly release ◄┘
+                        P5 sleep + overnight heart rate ◄── P4 weekly release ◄┘
 ```
 
 ## What the design leans on
@@ -169,23 +169,40 @@ Read the R&D findings first: this changes adaptation.
   matches and missed sessions (`pendingActuals`, written at apply, never over
   the athlete's own log). The plan menu toggles weekly release for older plans.
 
-## Phase 5 — readiness data (gated)
+## Phase 5 — sleep and overnight heart rate (done)
 
-Reverses a documented, tested stance — the bridge reads activities only — so it
-needs a deliberate decision after re-reading the R&D findings and the private
-legal note. FINDINGS (28 Sep) is explicit that the daily-physiology scores and
-the ingestion of daily data they feed on (HRV, sleep and Garmin's own daily
-figures) were **deliberately not ported**, and that their vocabulary is barred
-from yootri's copy; Phase 5 would reverse that recorded decision, not just a
-default.
+Reverses a documented, tested stance — the bridge read activities only — so it
+waited for a deliberate decision. FINDINGS (28 Sep) records that the
+daily-physiology scores and the ingestion of daily data they feed on (HRV, sleep
+and Garmin's own daily figures) were deliberately not ported, and that their
+vocabulary is barred from yootri's copy. The repository owner decided on 12 Oct
+to go ahead; this phase is built to stay as close to that earlier stance as the
+feature allows.
 
-- A bridge endpoint for daily sleep, overnight HRV and resting heart rate, off
-  unless explicitly enabled, with the bridge tests that forbid it updated on
-  purpose.
-- `assets/coach/readiness.js` reduces those to weekly flags. Raw values stay in
-  this browser; only the flags reach the athlete record, under health consent.
-- `proposeNextWeek` may swap a hard session for an easy one or trim a little on
-  those flags. Never more, and never a health conclusion.
+- The bridge serves `GET /v1/overnight` only when started with
+  `YOOTRI_GARMIN_OVERNIGHT=1`, and the page asks only when the athlete has
+  ticked a box in the Garmin panel. Three range calls, never the per-night
+  endpoints; the tests that pinned "activities only" now pin exactly which
+  calls each path makes.
+- Per night, at most three numbers: minutes asleep, the overnight HRV average,
+  resting heart rate. Garmin's own scores, statuses, baselines and feedback are
+  dropped in the bridge; so are sleep stages, SpO2 and respiration.
+- `assets/coach/overnight.js` (not `readiness.js`: the word is barred from the
+  copy) compares the last seven nights with the four weeks before them, figure
+  by figure, against the athlete's own usual range.
+- In the weekly review, a box makes next week's hardest session easy — the same
+  length, at the Prep row's focus and zone. It is never ticked for the athlete;
+  when two figures are outside the usual range the review says so beside it.
+  The coach can do the same through `release_next_week`'s `ease`, only when the
+  athlete asks, and never sees the nights.
+- As built, narrower than planned: **nothing reaches the athlete record or the
+  cloud** — not even derived flags. The nights live in this browser only, like
+  heart rate, so the privacy position for synced data is unchanged. There is no
+  "trim a little" (it would have been a new unfitted constant), no weight from
+  Garmin, and no sleep score.
+- Not yet measured against a real Garmin account: the response shapes come from
+  `garminconnect` 0.3.16's own code and typed models, and the mapper drops what
+  it cannot read rather than guessing.
 
 ## Later
 

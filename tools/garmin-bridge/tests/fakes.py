@@ -12,8 +12,13 @@ from typing import Any
 
 from garminconnect import GarminConnectAuthenticationError
 
-# The only library methods the bridge is allowed to use.
+# The only library methods the bridge is allowed to use to sync activities.
 ALLOWED_CALLS = {"login", "get_activities_by_date", "get_activity"}
+
+# And the only ones it may use for overnight figures, which it reads only when
+# started with YOOTRI_GARMIN_OVERNIGHT=1: three range summaries — never the
+# per-night endpoints, whose answers carry minute-by-minute series.
+OVERNIGHT_CALLS = {"get_sleep_daily", "get_hrv_data_range", "get_rhr_daily"}
 
 
 class FakeClient:
@@ -93,9 +98,21 @@ class FakeGarmin:
     def get_activity(self, activity_id):
         return self._respond("get_activity", activity_id)
 
+    def get_sleep_daily(self, start, end):
+        return self._respond("get_sleep_daily", start, end)
+
+    def get_hrv_data_range(self, start, end):
+        return self._respond("get_hrv_data_range", start, end)
+
+    def get_rhr_daily(self, start, end):
+        return self._respond("get_rhr_daily", start, end)
+
     # Present on the real class; the bridge must never call them.
     def get_sleep_data(self, *_a, **_k):  # pragma: no cover - guarded by ALLOWED_CALLS
         return self._respond("get_sleep_data")
 
     def get_hrv_data(self, *_a, **_k):  # pragma: no cover
         return self._respond("get_hrv_data")
+
+    def get_heart_rates(self, *_a, **_k):  # pragma: no cover
+        return self._respond("get_heart_rates")

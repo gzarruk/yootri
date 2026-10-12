@@ -101,6 +101,11 @@ class WorkoutsDisabled(BridgeError):
     default = "Sending workouts to Garmin is switched off on the bridge."
 
 
+class OvernightDisabled(BridgeError):
+    code, status = "overnight_disabled", 403
+    default = "Reading sleep and overnight heart rate is switched off on the bridge."
+
+
 class WorkoutRejected(BridgeError):
     """Garmin's workout endpoints are unofficial: a refusal here may mean they changed."""
 

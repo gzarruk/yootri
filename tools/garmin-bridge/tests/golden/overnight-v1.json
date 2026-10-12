@@ -1,0 +1,18 @@
+[
+  {
+    "date": "2026-10-03",
+    "sleepMin": 420,
+    "hrvMs": 55,
+    "restingHr": 49
+  },
+  {
+    "date": "2026-10-05",
+    "sleepMin": 437,
+    "hrvMs": 61,
+    "restingHr": 47
+  },
+  {
+    "date": "2026-10-06",
+    "restingHr": 52
+  }
+]

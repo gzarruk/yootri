@@ -51,8 +51,39 @@ Nothing else crosses. The mapper keeps an explicit allowlist (`WIRE_KEYS` in
 the account and Garmin's own scores stay behind even when Garmin sends them.
 Reading, the bridge asks Garmin for activity summaries and nothing else — no daily
 data, no files, no profile — and a test asserts exactly which library calls it
-makes. Sending workouts (below) is a separate, opt-in path with its own four
-calls.
+makes. Overnight figures and sending workouts (below) are separate, opt-in paths
+with calls of their own.
+
+## Sleep and overnight heart rate
+
+Off unless you start the bridge with `YOOTRI_GARMIN_OVERNIGHT=1` **and** tick
+*Also read sleep and overnight heart rate* in the page's Garmin panel:
+
+```sh
+YOOTRI_GARMIN_OVERNIGHT=1 make garmin
+```
+
+Per night, at most three numbers: minutes asleep, the overnight HRV average
+(ms) and the day's resting heart rate. They come from three range calls
+(`get_sleep_daily`, `get_hrv_data_range`, `get_rhr_daily`), never from the
+per-night endpoints, whose answers carry minute-by-minute series; a test
+asserts which calls are made. Garmin's own reading of the numbers — its sleep
+and HRV scores, statuses, baselines and feedback — and the sleep stages, SpO2
+and respiration that come in the same answers are dropped in
+`garmin_bridge/overnight.py` (`NIGHT_KEYS` is the allowlist). A value outside a
+plausible range is dropped, not clamped. A watch that does not record one of
+the three is reported as `missing`, and the other two still come back.
+
+**The page keeps these in the browser that synced them** (`yootri_overnight`):
+never on a plan, never synced, never exported, never sent to the coach's AI
+provider. The weekly review compares your last seven nights with the four weeks
+before them and, when two of the three are outside your usual range, offers to
+make next week's hardest session an easy one — an offer, never a change made
+for you. Unticking the box in the Garmin panel deletes everything it kept.
+
+These endpoints are unofficial, like the rest. If one stops answering, sync
+carries on without it; leave the flag off and the bridge behaves exactly as
+before.
 
 ## Sending bike workouts to Garmin
 
