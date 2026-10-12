@@ -976,6 +976,14 @@
   .wiz-bars i.race { background: var(--color-accent-300); }
   .wiz-tune { display: grid; grid-template-columns: 1fr 10rem 10rem auto; gap: .5rem; align-items: end; margin-bottom: .4rem; }
   @media (max-width: 680px) { .wiz-tune { grid-template-columns: 1fr 1fr; } }
+  /* A week not released yet: what it will be, in place of the seven days. */
+  .unreleased { grid-column: 1 / -1; padding: 1.4rem 1.2rem; border: 1px dashed var(--color-divider);
+    border-radius: var(--radius-lg, 12px); display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; }
+  .unreleased-lead { margin: 0; font-size: .95rem; }
+  .unreleased-sub { margin: 0; font-size: .82rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .rv-done { color: var(--color-accent-300); }
+  .rv-partial { color: var(--color-accent-100); }
+  .rv-missed, .rv-sick { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
   /* The fit hint only exists when there is something wrong to say, so it must
      take up no room at all the rest of the time. */
   .fit-warn:empty { display: none; }
@@ -1349,6 +1357,7 @@
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
     landingsOf, freshWeek, isUntouchedPlan,
   } from './assets/coach/plan.js';
+  import { releaseState, isReleased, reviewWeek, proposeNextWeek } from './assets/coach/review.js';
   import {
     STEPS as WIZARD_STEPS, prefill, stepProblems, racePreview, athleteFromAnswers,
     buildPlanFromAnswers, planReview, isReturning,
@@ -1756,6 +1765,16 @@
 
     const icon = (name) => '<i class="ph ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
 
+    // A week not released yet has no sessions to count: show only the hours
+    // it is planned to hold, as the board does.
+    if (!isReleased(plan, state.week)) {
+      els.summary.innerHTML =
+        cell('Planned volume', 'about ' + esc(String(weekInfo(state.week).hours)) + ' h', { accent: true }) +
+        cell('Sessions', '—') + cell(icon('Swim'), '—') + cell(icon('Bike'), '—') + cell(icon('Run'), '—') +
+        cell('Completed', '—', { wide: true });
+      return;
+    }
+
     const comp = weekCompliance(plan, state.week);
     const volSub = comp.logged
       ? ' <span class="sub act">did ' + (fmtTotal(comp.actualMinutes) || '0m') +
@@ -1861,8 +1880,34 @@
     );
   }
 
+  /* The weeks before the one today falls in have been trained. A change made
+     in Plan setup or to the races reshapes what is still to come and keeps
+     those weeks as they were planned (refit's keepBefore). */
+  function trainedWeeks() {
+    const w = weekIndexOf(state.start, toISO(new Date()));
+    return Number.isInteger(w) && w > 0 ? Math.min(w, totalWeeks()) : 0;
+  }
+
   function renderBoard() {
     const todayISO = toISO(new Date());
+
+    // A plan released one week at a time shows a week after the horizon as what
+    // it will be, not what is in it: the sessions are decided at the review.
+    if (!isReleased(plan, state.week)) {
+      const info = weekInfo(state.week);
+      const rel = releaseState(plan, { today: todayISO });
+      els.board.innerHTML =
+        '<div class="unreleased">' +
+          '<p class="unreleased-lead">Week ' + (state.week + 1) + ' · ' + esc(info.block) + (info.recovery ? ' · easy week' : '') +
+            ' · about ' + esc(String(info.hours)) + ' h planned</p>' +
+          '<p class="unreleased-sub">Sessions for this week are set when it is released, after the review of week ' +
+            (plan.release.through + 1) + ' — so they reflect how that week actually went.</p>' +
+          (rel.due
+            ? '<button type="button" class="btn btn-primary" data-act="review-week">Review week ' + (rel.reviewWeek + 1) + '</button>'
+            : '') +
+        '</div>';
+      return;
+    }
 
     els.board.innerHTML = DAYS.map((day) => {
       // Same mapping the month grid uses, so the two cannot disagree about
@@ -1937,7 +1982,9 @@
       '<button type="button" class="cal-rail" data-act="week" data-week="' + absWeek + '">' +
         '<span class="cal-rail-wk">Week ' + (absWeek + 1) + '</span>' +
         '<span class="cal-rail-block">' + esc(info.block) + (info.recovery ? ' · easy' : '') + '</span>' +
-        '<span class="cal-rail-vol">' + (fmtTotal(c.plannedMinutes) || 'Rest') + '</span>' +
+        '<span class="cal-rail-vol">' + (isReleased(plan, absWeek)
+          ? (fmtTotal(c.plannedMinutes) || 'Rest')
+          : 'about ' + esc(String(info.hours)) + ' h · not released') + '</span>' +
         '<span class="cal-rail-bar"><i style="width: ' + pct + '%"></i></span>' +
       '</button>'
     );
@@ -1953,6 +2000,7 @@
     // looking into the same handful of weeks.
     const byDay = {};
     for (const w of plan.season) {
+      if (!isReleased(plan, w.absWeek)) continue;
       for (const s of plan.weeks['w' + w.absWeek] || []) {
         if (durToMin(s.dur) <= 0) continue;
         const iso = dateOf(state.start, w.absWeek, s.day);
@@ -2302,9 +2350,17 @@
      behind every one of them are shown, and nothing applies itself. */
   function renderAdvice() {
     const list = suggest(plan, { week: state.week });
-    if (!list.length) { els.adviceRoot.innerHTML = ''; return; }
+    const rel = releaseState(plan, { today: toISO(new Date()) });
+    const releaseCard = rel.due
+      ? '<div class="advice-card info release-card">' +
+          '<span class="grow"><b>Week ' + (rel.reviewWeek + 1) + ' is over.</b> Review how it went and release week ' +
+            (rel.nextWeek + 1) + '.</span>' +
+          '<button type="button" class="btn btn-primary" data-act="review-week">Review week ' + (rel.reviewWeek + 1) + '</button>' +
+        '</div>'
+      : '';
+    if (!list.length && !releaseCard) { els.adviceRoot.innerHTML = ''; return; }
 
-    els.adviceRoot.innerHTML = '<div class="advice">' + list.map((x, i) =>
+    els.adviceRoot.innerHTML = '<div class="advice">' + releaseCard + list.map((x, i) =>
       '<div class="advice-card ' + esc(x.severity) + '">' +
         '<span class="grow">' + esc(x.message) + '</span>' +
         (x.action
@@ -2315,6 +2371,7 @@
           : '') +
       '</div>').join('') + '</div>';
 
+    els.adviceRoot.querySelectorAll('[data-act="review-week"]').forEach((b) => b.addEventListener('click', openWeekReview));
     els.adviceRoot.querySelectorAll('[data-advice]').forEach((btn) => {
       btn.addEventListener('click', () => {
         // Route it through the same tools → draft → diff → apply path the coach
@@ -3062,6 +3119,7 @@
     const runway = race.raceDate ? weeksUntil(state.start, race.raceDate) : null;
     draft = refit({ ...plan, events: next }, {
       profile,
+      keepBefore: trainedWeeks(),
       // Only a race the season is aimed at can move its length. With none, the
       // weeks already built stay as they are — they have already been trained.
       ...(runway ? { weeks: runway } : {}),
@@ -3550,7 +3608,7 @@
       constraints,
     });
 
-    draft = refit(plan, { profile });
+    draft = refit(plan, { profile, keepBefore: trainedWeeks() });
     // The distance is still set here, and the goal event holds one too — write
     // it across so the two can never disagree about the same race.
     draft.events = state.events.map((e) => (e.priority === 'primary' ? { ...e, raceType: profile.raceType } : e));
@@ -4193,6 +4251,124 @@
       (replaced ? ' · in place of the starter plan' : ''));
   }
 
+  /* ---- Weekly release -----------------------------------------------------
+
+     A plan released one week at a time (review.js) shows sessions up to its
+     release horizon. When the released week is over, the review says what
+     happened to each session — logged, matched to a synced activity, or
+     missed — and proposes the next week: as planned, or changed by the
+     existing adaptation rules read on that record. Nothing is released until
+     "Release week N"; the release goes through applyDraft like any change,
+     with an undo, and never touches a week already trained. */
+
+  const REVIEW_STATUS = { done: 'Done', partial: 'Partly done', missed: 'Missed', sick: 'Sick', upcoming: 'Still to come' };
+
+  function openWeekReview() {
+    const today = toISO(new Date());
+    if (releaseState(plan, { today }).mode !== 'weekly') return;
+    let r;
+    try { r = proposeNextWeek(plan, { today }); } catch (e) { console.error(e); return; }
+    const rv = r.review;
+    const N = r.nextWeek + 1;
+
+    const rows = rv.rows.map((x) =>
+      '<li><b>' + esc(x.day) + '</b> · ' + esc(x.disc) + ' ' + esc(minToDur(x.plannedMin)) + ' — ' +
+        '<span class="rv-' + esc(x.status) + '">' + esc(REVIEW_STATUS[x.status] || x.status) + '</span>' +
+        (x.source === 'synced' ? ' · from Garmin, ' + esc(fmtTotal(x.minutes) || '0m')
+          : x.source === 'logged' && x.minutes ? ' · ' + esc(fmtTotal(x.minutes)) : '') +
+      '</li>').join('');
+    const extra = rv.extra.map((x) => '<li>' + esc(fmtDayISO(x.date)) + ' · ' + esc(x.disc || 'Activity') + ' ' + esc(fmtTotal(x.min) || '') + '</li>').join('');
+
+    // Training load is shown as information, as everywhere else: two averages
+    // that describe training, not the athlete, and decide nothing here.
+    let load = '';
+    if ((plan.activities || []).length) {
+      const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
+      const t = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
+      const L = trainingLoad(plan.activities, { today, weeks: 4, thresholds: t, hrById: hrLookup(readHrStore()), sync: plan.activitySync });
+      if (Object.values(L.byMethod).some((n) => n > 0)) {
+        load = '<dl class="imp-facts">' +
+          '<div><dt>' + esc(L.labels.chronic) + '</dt><dd>' + L.chronic + '</dd></div>' +
+          '<div><dt>' + esc(L.labels.acute) + '</dt><dd>' + L.acute + '</dd></div>' +
+        '</dl>';
+      }
+    }
+
+    const nextSessions = sessionsAt(r.draft, r.nextWeek).filter((x) => durToMin(x.dur) > 0);
+    const d = diffPlans(plan, r.draft);
+    const issues = d.issues.filter((x) => x.weekIndex === r.nextWeek || x.level === 'error');
+
+    panelShell(
+      '<h2>Week ' + (rv.absWeek + 1) + ' in review</h2>' +
+      '<p class="pnl-sub">' + esc(fmtDayISO(rv.from)) + ' – ' + esc(fmtDayISO(rv.to)) + ' · ' +
+        esc(fmtTotal(rv.doneMinutes) || '0m') + ' done of ' + esc(fmtTotal(rv.plannedMinutes) || '0m') + ' planned.</p>' +
+      '<ul class="wiz-list">' + rows + '</ul>' +
+      (r.logged || r.missed
+        ? '<p class="pnl-hint">Releasing logs ' +
+            [r.logged && r.logged + ' session' + (r.logged === 1 ? '' : 's') + ' from your synced activities',
+              r.missed && r.missed + ' with nothing logged as missed'].filter(Boolean).join(', and ') +
+            '. Anything wrong? Close this, fix it on the board, and review again.</p>'
+        : '') +
+      (extra ? '<h3 class="pnl-h3">Also trained</h3><ul class="wiz-list">' + extra + '</ul>' : '') +
+      (garminConfig() ? '<p class="pnl-hint">Synced from Garmin lately? If this week is not in yet, sync first and review again.</p>' : '') +
+      (load ? '<h3 class="pnl-h3">Training load</h3>' + load : '') +
+      '<h3 class="pnl-h3">Week ' + N + '</h3>' +
+      '<p class="pnl-sub">' + (r.change
+        ? 'Changes from ' + esc(String(r.change.fromHours)) + ' h to ' + esc(String(r.change.toHours)) + ' h. ' + esc(r.change.reason)
+        : 'Released as planned: about ' + esc(String(r.draft.season[r.nextWeek].hours)) + ' h.') + '</p>' +
+      '<ul class="wiz-list">' + nextSessions.map((x) =>
+        '<li><b>' + esc(x.day) + '</b> · ' + esc(x.disc) + ' ' + esc(x.dur) + ' — ' + esc(x.focus) + '</li>').join('') + '</ul>' +
+      (issues.length
+        ? '<div class="diff-issues">' + issues.map((x) => '<b class="' + (x.level === 'error' ? 'err' : '') + '">' + esc(x.message) + '</b>').join('<br>') + '</div>'
+        : '') +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost" id="rv-close">Not now</button>' +
+        '<button type="button" class="btn btn-primary" id="rv-release"' + (d.blocked ? ' disabled' : '') + '>Release week ' + N + '</button>' +
+      '</div>',
+      'Week ' + (rv.absWeek + 1) + ' in review',
+    );
+    $('rv-close').addEventListener('click', closePanel);
+    if (!d.blocked) $('rv-release').addEventListener('click', () => applyRelease(r));
+  }
+
+  function applyRelease(r) {
+    const snapshot = JSON.parse(JSON.stringify(plan));
+    const next = applyDraft(plan, r.draft, { now: now() });
+    closePanel();
+    adoptPlan(next);
+    state.view = 'week';
+    state.week = r.nextWeek;
+    state.sessions = sessionsFor(state.week);
+    persistPlan();
+
+    clearUndo();
+    pendingUndo = { kind: 'refit', plan: snapshot, label: 'Release undone' };
+    els.undoBtn.classList.remove('hidden');
+    undoTimer = setTimeout(clearUndo, UNDO_MS);
+    if (coach && coach.session) coach.session = createSession(plan, coachContext());
+
+    renderAll();
+    setStatus('Week ' + (r.nextWeek + 1) + ' released' + (r.change ? ' · ' + r.change.toHours + ' h' : ''));
+  }
+
+  /* Weekly release is a way of showing a plan, chosen from the plan menu. It
+     changes no session, so it is written straight away rather than through a
+     draft — the same exception a benchmark makes. Turning it on releases up
+     to this week. */
+  function toggleRelease() {
+    if (plan.release) {
+      delete plan.release;
+      setStatus('Showing the whole season');
+    } else {
+      const w = weekIndexOf(state.start, toISO(new Date()));
+      plan.release = { through: Math.max(0, Math.min(Number.isInteger(w) ? w : 0, totalWeeks() - 1)) };
+      setStatus('Showing one week at a time — each later week is released after the review of the one before');
+    }
+    persistPlan();
+    if (coach && coach.session) coach.session.plan = plan;
+    renderAll();
+  }
+
   /* ---- Onboarding wizard --------------------------------------------------
 
      A new athlete is walked from "who are you" to a season on the calendar; a
@@ -4462,7 +4638,7 @@
         '</div>' +
         (preview.weeks
           ? '<p class="np-len">That is a <b>' + preview.weeks + '-week</b> season, built backwards from race week so the taper lands on it.' +
-              (preview.longRunway ? ' A runway this long opens with extra base weeks.' : '') + '</p>'
+              (preview.longRunway ? ' A runway this long opens with extra preparation weeks before the base blocks.' : '') + '</p>'
           : '') +
         '<h3 class="pnl-h3">Tune-up races</h3>' +
         (tuneRows || '<p class="pnl-hint">None yet. A tune-up gets a short taper of its own and nothing on race day.</p>') +
@@ -4617,7 +4793,8 @@
       '<h2>Your plan is ready</h2>' +
       '<p class="pnl-sub">' + esc(built.name) + ' runs ' + weekCount(built) + ' weeks to race week. Week 1 is on your calendar now: ' +
         week.length + ' session' + (week.length === 1 ? '' : 's') + ', ' + esc(fmtTotal(week.reduce((x, s) => x + durToMin(s.dur), 0)) || '0m') + '.</p>' +
-      '<p class="pnl-hint">Log what you do as the week goes, or sync it from Garmin. Plan setup, Training paces and About you in the plan menu change anything you told the wizard.</p>' +
+      '<p class="pnl-hint">The rest of the season is released a week at a time: when a week is over, review how it went and the next one is set. ' +
+        'Log what you do as the week goes, or sync it from Garmin. Plan setup, Training paces and About you in the plan menu change anything you told the wizard.</p>' +
       '<div class="pnl-act"><button type="button" class="btn btn-primary" id="wz-done">See week 1</button></div>',
       'Your plan is ready',
     );
@@ -4701,9 +4878,9 @@
       '</div>' +
       '<p class="pnl-hint">' +
         (est
-          ? 'Opening this plan’s ' + weekCount(plan) + ' weeks near ' + esc(a.recentWeeklyHours) +
-            ' h a week is about <b>' + est + ' hours a year</b> in Plan setup; this plan uses ' +
-            esc(plan.profile.annualHours) + '. '
+          ? 'To open this plan’s ' + weekCount(plan) + ' weeks near ' + esc(a.recentWeeklyHours) +
+            ' h a week, set Plan setup’s annual hours to about <b>' + est + '</b>; this plan uses ' +
+            esc(plan.profile.annualHours) + '. (Annual hours is a scale, not a yearly total.) '
           : 'Hours a week lately sizes a season so it starts close to what you already do. ') +
         'The rest of this section is not used for planning yet.</p>' +
 
@@ -6128,6 +6305,7 @@
         menuRow('export', 'download-simple', 'Export this plan') +
         menuRow('paces', 'gauge', 'Training paces…') +
         menuRow('athlete', 'user-circle', 'About you…') +
+        menuRow('release', 'calendar-check', plan.release ? 'Show the whole season' : 'Show one week at a time') +
         '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="delete"' +
           (soleplan ? ' aria-disabled="true"' : '') + '>' +
           '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
@@ -6181,6 +6359,7 @@
     if (act === 'import') return openImportPanel(null);
     if (act === 'paces') { pacesView = null; return openPacesPanel(); }
     if (act === 'athlete') return openAthletePanel();
+    if (act === 'release') return toggleRelease();
     if (act === 'mydata') return downloadMyData();
     if (act === 'blank') return openNewPlanPanel();
     if (act === 'new') {
@@ -6331,7 +6510,9 @@
     const act = e.target.closest('[data-act]');
     if (act) {
       const id = act.dataset.id;
-      if (act.dataset.act === 'edit') {
+      if (act.dataset.act === 'review-week') {
+        openWeekReview();
+      } else if (act.dataset.act === 'edit') {
         state.editingId = id;
         renderModal();
       } else if (act.dataset.act === 'delete') {

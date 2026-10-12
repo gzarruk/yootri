@@ -46,6 +46,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `workout.js` | A planned bike session as warm-up / main set / cool-down steps with %FTP targets (watts when `loadRefs.ftpW` is set), plus `planSyncSet`, which says what one "send to Garmin" run would do. Worked out when asked for, never stored on a session. |
 | `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; `estimateAnnualHours` sizes a season so it opens near recent weekly hours. Never on a plan — see below. |
 | `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by `estimateAnnualHours`, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
+| `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules). No coaching constant of its own. |
 | `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
@@ -192,6 +193,24 @@ the same rule as heart rate — and a send changes no session. The workout
 contains the session's steps, FTP and date; keep heart rate and anything
 health-related out of it. `tests/copy.test.js` guards the wording of this
 feature (no medical or performance claims).
+
+**A plan can be released one week at a time.** `release: { through }` is
+another field added without a schema bump: sessions are shown up to that week,
+later weeks as their block and planned hours. Absent means the whole season is
+shown, which is every plan made before it; the wizard turns it on, and the plan
+menu toggles it. The whole season stays materialized, so the validator, chart
+and adaptation rules read it as before. A release is a draft like any change,
+`applyDraft` never moves the horizon backwards, and the logs a review proposes
+travel as `pendingActuals`, written at apply only for sessions that still exist
+and never over the athlete's own log — `applyDraft` otherwise takes history
+from the stored plan, not the draft. Training load appears in the review as
+information only: per FINDINGS (28 Sep), no rule decides anything from load
+until there is a season of real data.
+
+**A change never rewrites a week already trained.** `refit` takes `keepBefore`:
+weeks before it keep their sessions *and* their planned hours. Plan setup, race
+changes and every coach tool pass the week today falls in; with no date (a coach
+session without `today`) the whole season refits as before.
 
 Plans are schema v3: absolute week keys (`w0`…`w15`), materialized sessions, and
 a stored `season`. A plan is self-contained, so changing the engine never

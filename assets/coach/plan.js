@@ -22,6 +22,7 @@ import { normalizeEvents, secondaryRaces, seedEventsFromProfile } from './events
 import { normalizeBenchmarks } from './paces.js';
 import { normalizeActivities, normalizeActivitySync } from './synced.js';
 import { normalizeLoadRefs } from './load.js';
+import { setActual } from './actuals.js';
 
 const clone = (x) => structuredClone(x);
 const weekKey = (absWeek) => `w${absWeek}`;
@@ -45,14 +46,18 @@ export function loadPlan(raw) {
   const activities = normalizeActivities(p.activities);
   const activitySync = normalizeActivitySync(p.activitySync) ?? undefined;
   const loadRefs = normalizeLoadRefs(p.loadRefs);
+  const release = normalizeRelease(p.release, p.season?.length ?? 0);
 
   // Avoid handing back a needlessly different object for an already-clean plan,
   // so `loadPlan(loadPlan(x))` stays deep-equal to `loadPlan(x)`.
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (same(profile, p.profile) && same(benchmarks, p.benchmarks)
     && same(activities, p.activities) && same(activitySync, p.activitySync)
-    && same(loadRefs, p.loadRefs) && !('athlete' in p)) return p;
+    && same(loadRefs, p.loadRefs) && same(release, p.release) && !('athlete' in p)) return p;
   const out = { ...p, profile, benchmarks, activities };
+  // The release horizon (review.js): absent means the whole season is shown.
+  if (release) out.release = release;
+  else delete out.release;
   // The athlete record (athlete.js) is never plan content: it holds body
   // measurements, which sync only under their own consent, while a plan syncs
   // and exports under the ordinary one. Unknown top-level fields otherwise
@@ -68,6 +73,18 @@ export function loadPlan(raw) {
 }
 
 export const weekCount = (plan) => plan.season.length;
+
+/**
+ * A plan released one week at a time carries `release: { through }`, the last
+ * week whose sessions are shown (review.js). A whole week inside the season, or
+ * absent — which is every plan made before weekly release, shown whole as
+ * before. A season that got shorter pulls the horizon in with it.
+ */
+export function normalizeRelease(raw, weeks) {
+  const n = Number(raw?.through);
+  if (!Number.isInteger(n) || n < 0 || !(weeks > 0)) return undefined;
+  return { through: Math.min(n, weeks - 1) };
+}
 
 const clampWeek = (plan, absWeek) =>
   Math.max(0, Math.min(Number(absWeek) || 0, weekCount(plan) - 1));
@@ -227,8 +244,12 @@ export function freshWeek(plan, absWeek) {
  * @param {object} [opts.profile] replacement profile (annual hours, availability, splits…)
  * @param {number} [opts.from]    first week to regenerate (default: all)
  * @param {number} [opts.to]      last week to regenerate, inclusive
+ * @param {number} [opts.keepBefore] weeks before this one are kept exactly as
+ *        they were, sessions and planned hours alike — the weeks already trained.
+ *        A change to the profile or the race reshapes what is still to come, not
+ *        the record of what was planned for the weeks behind it.
  */
-export function refit(plan, { profile, from = 0, to = Infinity, weeks } = {}) {
+export function refit(plan, { profile, from = 0, to = Infinity, weeks, keepBefore = 0 } = {}) {
   const draft = clone(plan);
   draft.profile = normalizeProfile(profile ?? plan.profile);
 
@@ -252,7 +273,13 @@ export function refit(plan, { profile, from = 0, to = Infinity, weeks } = {}) {
     return Number.isFinite(hours) && hours >= 0 ? { ...w, hours } : w;
   });
 
-  const first = Math.max(0, from);
+  const keep = Math.max(0, Math.floor(Number(keepBefore) || 0));
+  if (keep) {
+    draft.season = draft.season.map((w) =>
+      (w.absWeek < keep && plan.season?.[w.absWeek] ? { ...plan.season[w.absWeek], absWeek: w.absWeek } : w));
+  }
+
+  const first = Math.max(0, from, keep);
   const last = Math.min(weekCount(draft) - 1, to);
 
   for (const w of draft.season) {
@@ -379,7 +406,26 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
   if (plan.loadRefs) next.loadRefs = plan.loadRefs;
   else delete next.loadRefs;
 
-  return next;
+  // Logs a draft proposes — the weekly review's synced matches and missed
+  // sessions (review.js) — are written only now, through setActual, for a
+  // session that still exists and never over a log the athlete has made since.
+  // History above came from the stored plan; this is the one way a draft adds
+  // to it, and the carrier field itself is never stored.
+  const live = new Set(Object.values(next.weeks ?? {}).flat().map((s) => s?.id));
+  let logged = next;
+  for (const { id, actual } of draft.pendingActuals ?? []) {
+    if (!live.has(id) || logged.actuals?.[id]) continue;
+    logged = setActual(logged, id, actual);
+  }
+  delete logged.pendingActuals;
+
+  // Weeks are released forward only. A draft taken before the last release
+  // (a coach session, an open Plan setup) must not hide a week again.
+  const horizons = [plan.release, draft.release].map((r) => normalizeRelease(r, weekCount(next))).filter(Boolean);
+  if (horizons.length) logged.release = { through: Math.max(...horizons.map((r) => r.through)) };
+  else delete logged.release;
+
+  return logged;
 }
 
 /* ---- Starting a new season ------------------------------------------------

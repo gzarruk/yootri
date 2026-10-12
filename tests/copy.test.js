@@ -25,7 +25,9 @@ function surfaces() {
   assert.ok(from > 0 && to > from, 'the Workouts to Garmin section is still where this test looks');
   const privacy = html.match(/\['Workouts sent to Garmin\.',[\s\S]*?\],\n/);
   assert.ok(privacy, 'the privacy notice describes workouts');
+  const relFrom = html.indexOf('/* ---- Weekly release');
   const wizFrom = html.indexOf('/* ---- Onboarding wizard');
+  assert.ok(relFrom > 0 && wizFrom > relFrom, 'the weekly release section is still where this test looks');
   const aboutFrom = html.indexOf('/* ---- About you');
   assert.ok(wizFrom > 0 && aboutFrom > wizFrom, 'the onboarding wizard section is still where this test looks');
   const aboutTo = html.indexOf('/* ---- Training paces');
@@ -38,6 +40,8 @@ function surfaces() {
     'index.html workout section': html.slice(from, to),
     'index.html About you section': html.slice(aboutFrom, aboutTo),
     'index.html onboarding wizard': html.slice(wizFrom, aboutFrom),
+    'index.html weekly release': html.slice(relFrom, wizFrom),
+    'review.js': read('../assets/coach/review.js'),
     'onboarding.js': read('../assets/coach/onboarding.js'),
     'privacy notice': privacy[0],
     'privacy notice, About you': aboutNotice[0],

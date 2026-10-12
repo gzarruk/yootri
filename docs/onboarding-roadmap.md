@@ -144,7 +144,7 @@ the old race is never carried over. Nowhere to swim becomes a swim cap of 0.
 The review shows the season's weekly hours as bars, week 1 session by session,
 and the validator's warnings; an error blocks Create, as it blocks an Apply.
 
-## Phase 4 — weekly release and review
+## Phase 4 — weekly release and review (done)
 
 Read the R&D findings first: this changes adaptation.
 
@@ -161,12 +161,23 @@ Read the R&D findings first: this changes adaptation.
 - A banner once a week has ended: sync from Garmin if paired, review, preview
   next week, Apply. Nothing is released without Apply.
 - Coach tools: `get_week_review`, `release_next_week`.
+- As built: the load rule was **left out**. FINDINGS (28 Sep) records that no
+  rule should decide anything from training load until there is a season of real
+  data, and that ACWR-style readings are deliberately not exposed. The review
+  shows chronic and acute load as information only; next week's change comes
+  solely from the existing adaptation rules. Releasing logs the review's synced
+  matches and missed sessions (`pendingActuals`, written at apply, never over
+  the athlete's own log). The plan menu toggles weekly release for older plans.
 
 ## Phase 5 — readiness data (gated)
 
 Reverses a documented, tested stance — the bridge reads activities only — so it
 needs a deliberate decision after re-reading the R&D findings and the private
-legal note.
+legal note. FINDINGS (28 Sep) is explicit that the daily-physiology scores and
+the ingestion of daily data they feed on (HRV, sleep and Garmin's own daily
+figures) were **deliberately not ported**, and that their vocabulary is barred
+from yootri's copy; Phase 5 would reverse that recorded decision, not just a
+default.
 
 - A bridge endpoint for daily sleep, overnight HRV and resting heart rate, off
   unless explicitly enabled, with the bridge tests that forbid it updated on

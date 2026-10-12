@@ -623,6 +623,7 @@ test('get_plan_summary shows the calendar alongside the blocks', () => {
 
 import { adviceCall } from '../assets/coach/tools.js';
 import { suggest } from '../assets/coach/adapt.js';
+import { dateOf } from '../assets/coach/calendar.js';
 
 const historyPlan = () => {
   const p = newPlan({ name: 'H', startISO: '2026-09-28', raceDate: '2027-06-27', raceType: '70.3', now: 1 });
@@ -835,4 +836,66 @@ test('set_session_preferences refuses what it cannot use, and leaves no draft', 
     assert.equal(r.isError, true, JSON.stringify(input));
     assert.equal(s.draft, null);
   }
+});
+
+/* ---- weeks already trained are kept ---- */
+
+test('a coach change reshapes the weeks to come, not the weeks already trained', () => {
+  const plan = basePlan();
+  const today = dateOf(plan.start, 3, 'Wed');   // week 4 as the athlete counts
+  for (const [tool, input] of [
+    ['set_annual_hours', { hours: 900 }],
+    ['set_availability', { day: 'Sat', minutes: 120 }],
+    ['set_session_preferences', { max_sessions_per_day: 1 }],
+  ]) {
+    const s = createSession(plan, { today });
+    call(s, tool, input);
+    assert.ok(s.draft, `${tool} made a draft`);
+    for (const w of [0, 1, 2]) {
+      assert.deepEqual(s.draft.weeks[`w${w}`], plan.weeks[`w${w}`], `${tool}: week ${w + 1} untouched`);
+      assert.deepEqual(s.draft.season[w], plan.season[w], `${tool}: week ${w + 1} keeps its planned hours`);
+    }
+  }
+});
+
+test('without a date the coach still refits the whole season, as before', () => {
+  const plan = basePlan();
+  const s = createSession(plan);
+  call(s, 'set_annual_hours', { hours: 900 });
+  assert.notDeepEqual(s.draft.weeks.w0, plan.weeks.w0);
+});
+
+/* ---- weekly release ---- */
+
+const weeklyPlan = () => ({ ...basePlan(), release: { through: 0 } });
+
+test('get_week_review says what happened in the last released week', () => {
+  const plan = weeklyPlan();
+  const s = createSession(plan, { today: dateOf(plan.start, 1, 'Tue') });
+  const r = parse(call(s, 'get_week_review'));
+  assert.equal(r.week, 1, 'weeks are counted from 1 at this boundary');
+  assert.ok(r.sessions.length > 0);
+  assert.ok(r.sessions.every((x) => x.status === 'missed'), 'nothing logged, nothing synced');
+  assert.equal(r.release.due, true);
+  assert.equal(r.release.next_week, 2);
+});
+
+test('release_next_week drafts the next week and nothing is released until applied', () => {
+  const plan = weeklyPlan();
+  const s = createSession(plan, { today: dateOf(plan.start, 1, 'Tue') });
+  const r = call(s, 'release_next_week');
+  assert.notEqual(r.isError, true, r.content);
+  assert.deepEqual(s.draft.release, { through: 1 });
+  assert.deepEqual(s.plan.release, { through: 0 }, 'the stored plan is untouched');
+  assert.deepEqual(s.draft.weeks.w0, plan.weeks.w0, 'the reviewed week keeps its sessions');
+});
+
+test('release_next_week refuses when nothing is due, or the plan is shown whole', () => {
+  const plan = weeklyPlan();
+  const early = createSession(plan, { today: dateOf(plan.start, 0, 'Wed') });
+  assert.equal(call(early, 'release_next_week').isError, true);
+  assert.equal(early.draft, null);
+  const whole = createSession(basePlan(), { today: dateOf(plan.start, 1, 'Tue') });
+  assert.equal(call(whole, 'release_next_week').isError, true);
+  assert.equal(call(createSession(plan), 'release_next_week').isError, true, 'no date, no release');
 });
