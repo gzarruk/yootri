@@ -98,3 +98,32 @@ test('normalizing a week shape twice changes nothing', () => {
   const once = normalizeProfile({ weekShape: { spread: 'even', pins: { Sat: 200 } } });
   assert.deepEqual(normalizeProfile(once), once);
 });
+
+/* ---- long-session days and sessions a day ---- */
+
+test('long-session days are kept for the bike and the run, on real days only', () => {
+  const p = normalizeProfile({ longDays: { Bike: 'Sun', Run: 'Sat', Swim: 'Wed', Strength: 'Mon' } });
+  assert.deepEqual(p.longDays, { Bike: 'Sun', Run: 'Sat' });
+  assert.deepEqual(normalizeProfile({ longDays: { Bike: 'Sunday', Run: '' } }).longDays, undefined);
+});
+
+test('a profile that says nothing about long days or doubles stays silent about them', () => {
+  // Writing defaults into every profile would rewrite every stored plan on load
+  // to say nothing, the same reason splits and weekShape stay absent.
+  const p = normalizeProfile({});
+  assert.equal('longDays' in p, false);
+  assert.equal('maxSessionsPerDay' in p, false);
+});
+
+test('sessions a day is a whole number from one to three, or absent', () => {
+  assert.equal(normalizeProfile({ maxSessionsPerDay: 1 }).maxSessionsPerDay, 1);
+  assert.equal(normalizeProfile({ maxSessionsPerDay: '2' }).maxSessionsPerDay, 2);
+  for (const bad of [0, 4, 1.5, -1, 'two', null]) {
+    assert.equal('maxSessionsPerDay' in normalizeProfile({ maxSessionsPerDay: bad }), false, String(bad));
+  }
+});
+
+test('the new fields survive normalizing twice', () => {
+  const once = normalizeProfile({ longDays: { Bike: 'Sat', Run: 'Sun' }, maxSessionsPerDay: 1 });
+  assert.deepEqual(normalizeProfile(once), once);
+});

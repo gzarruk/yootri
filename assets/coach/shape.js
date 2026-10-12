@@ -18,7 +18,7 @@
    randomness. And it never invents time — a day is only ever budgeted up to what
    the athlete said they had. */
 
-import { DAYS, resolveWeekShape } from './profile.js';
+import { DAYS, resolveWeekShape, LONG_DAY_DISCIPLINES } from './profile.js';
 
 const ROUND_TO = 5; // the granularity generate.js already speaks in
 // Below this a day's budget cannot hold anything: it is generate.js's own
@@ -82,6 +82,29 @@ export const DEFAULT_SHAPE_TABLE = {
 };
 
 const keysOf = (table) => Object.keys(table).map(Number).sort((a, b) => a - b);
+
+/* The table puts the week's biggest day on Saturday and the next on Sunday —
+   where the long ride and long run usually go. An athlete who names other days
+   for them moves those shares with them: the long-ride day swaps weights with
+   whichever day holds the biggest, then the long-run day with the biggest of
+   the rest. A swap, not a new shape, so the week keeps the row's own
+   proportions and only changes which day carries which. A named day with no
+   time on it is skipped: handing it the big share would only push that share
+   back out to the other days in proportions the table never wrote. */
+function withLongDays(weight, longDays, avail) {
+  if (!longDays) return weight;
+  const w = { ...weight };
+  const taken = new Set();
+  for (const disc of LONG_DAY_DISCIPLINES) {
+    const day = longDays[disc];
+    if (!day || taken.has(day) || !(avail[day] > 0)) continue;
+    const holder = DAYS.filter((d) => !taken.has(d))
+      .sort((a, b) => w[b] - w[a] || DAYS.indexOf(a) - DAYS.indexOf(b))[0];
+    [w[day], w[holder]] = [w[holder], w[day]];
+    taken.add(day);
+  }
+  return w;
+}
 
 /**
  * The prescribed day-by-day shape for a week of `weeklyMinutes`, as an array of
@@ -247,7 +270,7 @@ export function dayBudgets({ budgetMinutes, profile, closedDays = [], table = DE
   if (!shape.enabled || budget < floor) return { perDay: { ...avail }, targetMinutes: target };
 
   const row = shapeRow(budget, table);
-  const weight = Object.fromEntries(DAYS.map((d, i) => [d, row[i]]));
+  const weight = withLongDays(Object.fromEntries(DAYS.map((d, i) => [d, row[i]])), profile?.longDays, avail);
 
   /* Pins come off the top: a pin is an instruction, not a preference. They are
      still capped by the day itself — the engine does not invent time for a pin

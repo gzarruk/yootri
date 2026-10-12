@@ -83,18 +83,32 @@ Plan-lifecycle bugs the wizard would otherwise inherit:
   would open the current plan near them. The other fields say plainly that
   nothing reads them yet.
 
-## Phase 2 — training habits the engine uses
+## Phase 2 — training habits the engine uses (done)
 
 Read the R&D findings first: this changes session generation.
 
-- Long-ride and long-run day preferences, honoured by `place()` when the day
-  can hold it, with a warning when it cannot.
-- Doubles (`allowed` / `avoid`) and a per-day session cap.
-- No pool → no swims unless open water is available, through the existing
-  constraint.
-- `profile.experience` finally read — only as the fallback for sizing a season
-  when recent volume is unknown. No new universal coaching constants.
-- Plan setup and the coach tools gain the same fields.
+- Long-ride and long-run day preferences (`profile.longDays`). The named day
+  takes the week shape's biggest share (the run day the biggest the ride left),
+  and the long session is placed there first; another discipline's sessions
+  keep off a named day until its long session is down. A day with no time, or
+  one a constraint rules out, falls back and is reported once for the season
+  (`long-day-unavailable`).
+- A per-day session cap (`profile.maxSessionsPerDay`, 1–3; 1 means no
+  two-a-days), honoured by placement and checked by the validator
+  (`too-many-sessions`) for weeks edited by hand or by the coach.
+- Plan setup gains the three fields, and the coach a `set_session_preferences`
+  tool.
+- Both settings are opt-in. A profile without them generates exactly what it
+  did before: checked across 11,620 generated weeks, budgets and plans.
+- Changed from the plan above: pool access stays on About you, and Plan setup
+  points from "no pool, no open water" to the existing swim cap rather than
+  setting it behind the athlete's back; the wizard can map it directly. The
+  experience fallback for season sizing was left out, because it would need a
+  new hours-by-experience table, which is exactly the kind of unfitted default
+  this project avoids — the wizard asks for recent hours instead.
+- Built without `../yootri-rnd/FINDINGS.md` to hand. Nothing tuned an existing
+  constant, but the next session with the notes should check this phase
+  against them and record the long-day behaviour there.
 
 ## Phase 3 — the onboarding wizard
 

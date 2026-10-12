@@ -155,6 +155,22 @@ export function validateWeek(sessions, { profile, budgetMinutes, weekIndex = 0 }
     }
   }
 
+  // A cap the athlete set, broken by a session moved or added by hand — or by
+  // the coach. A warn: two sessions on one day is not impossible, only not
+  // what they asked for.
+  if (profile.maxSessionsPerDay) {
+    const count = {};
+    for (const s of sessions) if (durToMin(s.dur) > 0) count[s.day] = (count[s.day] ?? 0) + 1;
+    for (const d of DAYS) {
+      if ((count[d] ?? 0) > profile.maxSessionsPerDay) {
+        out.push(
+          issue('warn', 'too-many-sessions', weekIndex,
+            `${d} has ${count[d]} sessions; you asked for at most ${profile.maxSessionsPerDay} a day.`),
+        );
+      }
+    }
+  }
+
   if (Number.isFinite(budgetMinutes)) {
     const planned = totalMinutes(sessions);
     if (planned < budgetMinutes) {
@@ -201,6 +217,20 @@ export function validateSeason(weeks, { profile, refusedLandings } = {}) {
   for (const r of refusedLandings ?? []) {
     const said = REFUSED_LANDING[r?.reason];
     if (said) out.push(issue('warn', said[0], r.absWeek, said[1]));
+  }
+
+  /* A long day the week cannot use. Said once for the season, not once a week:
+     it is a fact about the profile, and the generator has already fallen back
+     to the best other day in every week. */
+  for (const [disc, day] of Object.entries(profile?.longDays ?? {})) {
+    const what = disc === 'Bike' ? 'long ride' : 'long run';
+    const why = !(profile.availability[day] > 0) ? 'that day has no time available'
+      : !allowedDays(profile, disc).includes(day) ? `your constraints keep the ${disc.toLowerCase()} off it`
+        : null;
+    if (why) {
+      out.push(issue('warn', 'long-day-unavailable', null,
+        `You asked for the ${what} on ${day}, but ${why}, so it goes on another day.`));
+    }
   }
 
   /* Is the plan aimed at the race it says it is? A budget can be absurd for a

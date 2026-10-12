@@ -464,3 +464,37 @@ test('no refused landings is no new warnings', () => {
   const weeks = seasonOf([600, 610]);
   assert.deepEqual(validateSeason(weeks, { profile }), validateSeason(weeks, { profile, refusedLandings: [] }));
 });
+
+/* ---- long days and sessions a day ---- */
+
+test('more sessions on a day than the athlete allows is a warning', () => {
+  const capped = normalizeProfile({ availability: anyDay(180), maxSessionsPerDay: 1 });
+  const week = [s('Tue', 'Swim', '0:45'), s('Tue', 'Run', '0:40'), s('Wed', 'Bike', '1:00')];
+  const hits = validateWeek(week, { profile: capped }).filter((i) => i.code === 'too-many-sessions');
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].level, 'warn');
+  assert.match(hits[0].message, /Tue/);
+  assert.deepEqual(codes(validateWeek(week, { profile })).filter((c) => c === 'too-many-sessions'), [],
+    'without a cap, two on a day is fine');
+});
+
+test('a long day with no time on it is said once for the season, not every week', () => {
+  const p = normalizeProfile({
+    availability: { ...anyDay(180), Mon: 0 }, longDays: { Bike: 'Mon', Run: 'Sun' },
+  });
+  const weeks = fitToRace({ annualHours: 500, weeks: 6 }).map((w) => ({
+    ...w, sessions: generateWeek({ hours: w.hours, block: w.block, profile: p }).sessions,
+  }));
+  const hits = validateSeason(weeks, { profile: p }).filter((i) => i.code === 'long-day-unavailable');
+  assert.equal(hits.length, 1);
+  assert.match(hits[0].message, /Mon/);
+});
+
+test('a long day a constraint rules out is said too', () => {
+  const p = normalizeProfile({
+    availability: anyDay(180), longDays: { Run: 'Sat' },
+    constraints: [{ disc: 'Run', rule: 'avoidDays', value: ['Sat'] }],
+  });
+  const weeks = [{ absWeek: 0, block: 'Base 1', hours: 8, sessions: [] }];
+  assert.ok(codes(validateSeason(weeks, { profile: p })).includes('long-day-unavailable'));
+});

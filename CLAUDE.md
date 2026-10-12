@@ -30,7 +30,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | --- | --- |
 | `season.js` | Annual hours → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands the block model on a runway of N weeks. |
 | `generate.js` | One week's hour budget → actual sessions. Deterministic. |
-| `profile.js` | Athlete profile: availability, constraints, per-block discipline splits. |
+| `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
 | `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. |
 | `migrate.js` | Schema v2 → v3. `legacy-plan.js` is the frozen old template it needs. |

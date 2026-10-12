@@ -531,3 +531,86 @@ test('the race day rule is not limited to race blocks', () => {
   const { sessions } = generateWeek({ hours: 10, block: 'Base 2', profile: p, idPrefix: 'w0', raceDay: 'Sat' });
   assert.equal(sessions.filter((s) => s.day === 'Sun' && durToMin(s.dur) > 0).length, 0);
 });
+
+/* ---- long-session days and sessions a day ---- */
+
+const longest = (sessions, disc) => sessions
+  .filter((x) => x.disc === disc)
+  .sort((a, b) => durToMin(b.dur) - durToMin(a.dur))[0];
+
+const BLOCKS = ['Prep', 'Base 1', 'Base 3', 'Build 1', 'Build 2', 'Peak'];
+
+test('the long ride and long run go on the days the athlete named', () => {
+  for (const block of BLOCKS) {
+    for (const hours of [6, 9, 12, 15]) {
+      const { sessions } = gen({
+        hours, block,
+        profile: { availability: anyDay(300), longDays: { Bike: 'Sun', Run: 'Sat' } },
+      });
+      assert.equal(longest(sessions, 'Bike').day, 'Sun', `${block} ${hours} h: long ride`);
+      assert.equal(longest(sessions, 'Run').day, 'Sat', `${block} ${hours} h: long run`);
+    }
+  }
+});
+
+test('naming a long day still spends the week exactly and stays inside each day', () => {
+  const profile = { availability: anyDay(300), longDays: { Bike: 'Wed', Run: 'Mon' } };
+  for (const hours of [5, 8, 11, 14]) {
+    const { sessions, budgetMinutes } = gen({ hours, profile });
+    assert.equal(weekMinutes(sessions), budgetMinutes, `${hours} h`);
+    const perDay = {};
+    for (const x of sessions) perDay[x.day] = (perDay[x.day] ?? 0) + durToMin(x.dur);
+    for (const d of DAYS) assert.ok((perDay[d] ?? 0) <= 300, `${d} at ${hours} h`);
+  }
+});
+
+test('the named long day gets the room the long session needs, with the week shape on', () => {
+  // The shape gives Saturday the biggest share. Asking for the long ride on
+  // Sunday has to move that share with it, or the ride is cut to whatever
+  // Sunday was budgeted.
+  const named = gen({ hours: 10, profile: { availability: anyDay(300), longDays: { Bike: 'Sun' } } });
+  const usual = gen({ hours: 10, profile: { availability: anyDay(300) } });
+  assert.equal(durToMin(longest(named.sessions, 'Bike').dur), durToMin(longest(usual.sessions, 'Bike').dur));
+});
+
+test('a long day with no time on it falls back rather than failing', () => {
+  const profile = {
+    availability: { Mon: 0, Tue: 90, Wed: 90, Thu: 90, Fri: 60, Sat: 240, Sun: 150 },
+    longDays: { Bike: 'Mon' },
+  };
+  const { sessions, budgetMinutes } = gen({ hours: 9, profile });
+  assert.equal(weekMinutes(sessions), budgetMinutes);
+  assert.notEqual(longest(sessions, 'Bike').day, 'Mon');
+});
+
+test('a long day is honoured with the week shape switched off too', () => {
+  const profile = { availability: anyDay(240), weekShape: { enabled: false }, longDays: { Run: 'Tue' } };
+  assert.equal(longest(gen({ hours: 10, profile }).sessions, 'Run').day, 'Tue');
+});
+
+test('one session a day means one session a day', () => {
+  for (const block of BLOCKS) {
+    for (const hours of [4, 7, 10, 13]) {
+      const { sessions } = gen({ hours, block, profile: { availability: anyDay(240), maxSessionsPerDay: 1 } });
+      const count = {};
+      for (const x of sessions) if (x.disc !== 'Rest') count[x.day] = (count[x.day] ?? 0) + 1;
+      for (const [day, n] of Object.entries(count)) assert.ok(n <= 1, `${block} ${hours} h: ${n} on ${day}`);
+    }
+  }
+});
+
+test('a cap the week cannot fit under leaves the time unscheduled rather than breaking it', () => {
+  // Three short days and one session a day cannot hold a 9-hour week. The
+  // engine never invents time, so the week comes in short and says so.
+  const profile = { availability: { Mon: 0, Tue: 60, Wed: 0, Thu: 60, Fri: 0, Sat: 300, Sun: 0 }, maxSessionsPerDay: 1 };
+  const r = gen({ hours: 9, profile });
+  const count = {};
+  for (const x of r.sessions) if (x.disc !== 'Rest') count[x.day] = (count[x.day] ?? 0) + 1;
+  assert.ok(Object.values(count).every((n) => n <= 1));
+  assert.ok(r.shortfallMinutes > 0);
+});
+
+test('long days and the session cap are deterministic', () => {
+  const profile = { availability: anyDay(240), longDays: { Bike: 'Sat', Run: 'Sun' }, maxSessionsPerDay: 2 };
+  assert.deepEqual(gen({ hours: 11, profile }), gen({ hours: 11, profile }));
+});
