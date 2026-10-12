@@ -958,6 +958,24 @@
     color: color-mix(in srgb, var(--color-text) 55%, transparent); margin: .35rem 0 .6rem; }
   .ab-gaps { margin: .35rem 0 0; padding-left: 1.1rem; font-size: .78rem; line-height: 1.5;
     color: color-mix(in srgb, var(--color-text) 75%, transparent); }
+  /* The onboarding wizard: progress across the top, a list style, the season
+     bars on the review, and the tune-up rows. */
+  .wiz-steps { display: flex; gap: .3rem; margin: 0 0 .7rem; }
+  .wiz-steps span { flex: 1; height: 4px; border-radius: 2px;
+    background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+  .wiz-steps span.done { background: color-mix(in srgb, var(--color-accent) 55%, transparent); }
+  .wiz-steps span.on { background: var(--color-accent); }
+  .wiz-kicker { margin: 0 0 .35rem; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase;
+    color: color-mix(in srgb, var(--color-text) 55%, transparent); }
+  .wiz-list { margin: .35rem 0 .6rem; padding-left: 1.1rem; font-size: .82rem; line-height: 1.55;
+    color: color-mix(in srgb, var(--color-text) 82%, transparent); }
+  .wiz-bars { display: flex; align-items: flex-end; gap: 2px; height: 64px; margin: .8rem 0 .2rem; }
+  .wiz-bars i { flex: 1; min-height: 2px; border-radius: 2px 2px 0 0;
+    background: color-mix(in srgb, var(--color-accent) 45%, transparent); }
+  .wiz-bars i.now { background: var(--color-accent); }
+  .wiz-bars i.race { background: var(--color-accent-300); }
+  .wiz-tune { display: grid; grid-template-columns: 1fr 10rem 10rem auto; gap: .5rem; align-items: end; margin-bottom: .4rem; }
+  @media (max-width: 680px) { .wiz-tune { grid-template-columns: 1fr 1fr; } }
   /* The fit hint only exists when there is something wrong to say, so it must
      take up no room at all the rest of the time. */
   .fit-warn:empty { display: none; }
@@ -1150,7 +1168,10 @@
       padding: 18px 16px calc(18px + env(safe-area-inset-bottom));
     }
     .pnl-grid { grid-template-columns: 1fr; }
-    .pnl-days { flex-wrap: wrap; }
+    /* Seven columns of minutes do not fit a phone: "240" was cut to "24". The
+       days wrap onto two rows instead. (This used to say flex-wrap, which a
+       grid ignores.) */
+    .pnl-days { grid-template-columns: repeat(4, 1fr); }
     .pnl-act { flex-wrap: wrap; gap: .5rem; }
     .pnl-act .btn { flex: 1 1 auto; min-height: 40px; }
     .pnl-act .spacer { flex-basis: 100%; order: 10; }
@@ -1328,6 +1349,10 @@
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
     landingsOf, freshWeek, isUntouchedPlan,
   } from './assets/coach/plan.js';
+  import {
+    STEPS as WIZARD_STEPS, prefill, stepProblems, racePreview, athleteFromAnswers,
+    buildPlanFromAnswers, planReview, isReturning,
+  } from './assets/coach/onboarding.js';
   import {
     normalizeAthlete, mergeAthletes, athleteGaps, estimateAnnualHours, wattsPerKg, isEmptyAthlete,
     SEXES, LEVELS, SPORTS as ATHLETE_SPORTS,
@@ -2344,16 +2369,16 @@
     els.orientRoot.innerHTML =
       '<div class="orient">' +
         '<p class="orient-lead">yootri plans a triathlon season around the hours you actually have, and keeps it in this browser.</p>' +
-        '<p class="orient-sub">Start from a fitted season, or build one up yourself on an empty calendar.</p>' +
+        '<p class="orient-sub">A few questions about you, your week and your race, and your season is on the calendar.</p>' +
         '<div class="orient-act">' +
-          '<button type="button" class="btn btn-primary" data-orient="new">Create a season</button>' +
+          '<button type="button" class="btn btn-primary" data-orient="new">Set up my season</button>' +
           '<button type="button" class="btn btn-ghost" data-orient="dismiss">Not now</button>' +
         '</div>' +
       '</div>';
     els.orientRoot.querySelectorAll('[data-orient]').forEach((btn) => {
       btn.addEventListener('click', () => {
         try { localStorage.setItem(ORIENT_KEY, '1'); } catch (e) {}
-        if (btn.dataset.orient === 'new') openNewPlanPanel();
+        if (btn.dataset.orient === 'new') openWizard();
         else renderOrientation();
       });
     });
@@ -2965,15 +2990,19 @@
         ', out of the block those weeks are in now. The season stays ' + totalWeeks() + ' weeks long.';
       return;
     }
-    el.innerHTML = {
-      'in-primary-taper': 'That falls inside the taper for the race this season is built around, so ' +
-        'no separate taper week is built for it. The race still goes on the calendar.',
-      'too-close': 'That is too close to another race in this plan for both to have a taper week, ' +
-        'so only the earlier one gets one. The race still goes on the calendar.',
-      'outside-season': 'That is past the end of this season, so it goes on the calendar as a marker ' +
-        'and nothing is built for it yet.',
-    }[refused[0]?.reason] ?? '';
+    el.innerHTML = LANDING_REFUSED[refused[0]?.reason] ?? '';
   }
+
+  /* Why a tune-up got no taper week, in the athlete's words. One map, read by
+     the event panel and the onboarding wizard, so they never disagree. */
+  const LANDING_REFUSED = {
+    'in-primary-taper': 'That falls inside the taper for the race this season is built around, so ' +
+      'no separate taper week is built for it. The race still goes on the calendar.',
+    'too-close': 'That is too close to another race in this plan for both to have a taper week, ' +
+      'so only the earlier one gets one. The race still goes on the calendar.',
+    'outside-season': 'That is past the end of this season, so it goes on the calendar as a marker ' +
+      'and nothing is built for it yet.',
+  };
 
   function saveEventFromPanel(id) {
     const date = $('ev-date').value;
@@ -3139,7 +3168,8 @@
       'Before you start',
     );
     markAcked();
-    $('ack-ok').addEventListener('click', closePanel);
+    // Somebody new goes straight on into setting up their season.
+    $('ack-ok').addEventListener('click', () => { closePanel(); maybeStartWizard(); });
   }
 
   /* Sign-in is optional and its absence is not an error. Say what is and is not
@@ -3835,6 +3865,8 @@
       setStatus('Synced ' + timeStr());
       renderAll();
       renderAccount();
+      // An account that brought no season with it is somebody starting out.
+      maybeStartWizard();
     } catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
   }
 
@@ -4159,6 +4191,437 @@
     addPlan(p);
     setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' +
       (replaced ? ' · in place of the starter plan' : ''));
+  }
+
+  /* ---- Onboarding wizard --------------------------------------------------
+
+     A new athlete is walked from "who are you" to a season on the calendar; a
+     returning one is shown what yootri already knows and asked only for the
+     rest. The steps, their checks and the build all live in onboarding.js —
+     this draws them, reads the boxes, and saves at the end.
+
+     Nothing is written until "Create my plan". Answers are kept in this browser
+     as the athlete goes (`yootri_onboarding_v1`), so closing the panel or the
+     tab loses nothing; finishing or starting over clears them. The plan goes
+     through the same addPlan every new plan does, replacing the first-visit
+     stand-in if that is all there is. Body measurements and background go to
+     About you, never onto the plan. */
+
+  const WIZ_KEY = 'yootri_onboarding_v1';
+  let wiz = null;   // { step, answers, problems, returning }
+
+  const wizToday = () => toISO(new Date());
+  const wizSaved = () => { const d = load(WIZ_KEY); return d && d.answers ? d : null; };
+  const wizSave = () => { if (wiz) save(WIZ_KEY, { step: wiz.step, answers: wiz.answers, at: now() }); };
+  const markOriented = () => { try { localStorage.setItem(ORIENT_KEY, '1'); } catch (e) {} };
+
+  /* The plan a returning athlete is leaving: the one they are on, unless that
+     is the untouched stand-in, which has nothing worth carrying. */
+  const wizBase = () => (currentPlanUntouched() ? null : plan);
+
+  function openWizard({ restart = false } = {}) {
+    const saved = restart ? null : wizSaved();
+    const allPlans = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean);
+    const returning = isReturning({ athlete: loadAthlete(), plans: allPlans });
+    if (restart) remove(WIZ_KEY);
+    wiz = saved
+      ? { step: Math.min(saved.step || 0, WIZARD_STEPS.length - 1), answers: saved.answers, problems: [], returning, resumed: true }
+      : {
+        step: 0, problems: [], returning, resumed: false,
+        answers: {
+          ...prefill({ athlete: loadAthlete(), plan: wizBase() ?? plan, today: wizToday() }),
+          keepInAccount: hasHealthConsent(),
+        },
+      };
+    renderWizard();
+  }
+
+  /* Opened by itself only for somebody new: the first visit after the notice,
+     or a sign-in that brought no season with it. Once put off — "Not now",
+     "Finish later" or a finished plan — never again by itself, and never over
+     another panel. */
+  function maybeStartWizard() {
+    if (orientDone() || !planIsUntouched() || els.panelRoot.firstChild) return;
+    openWizard();
+  }
+
+  function closeWizard() {
+    if (wiz) { readWizardStep(); wizSave(); }
+    wiz = null;
+    markOriented();
+    closePanel();
+    renderOrientation();
+    setStatus('Season setup saved — pick it up again from New season in the plan menu');
+  }
+
+  const WIZ_TITLES = {
+    welcome: 'Welcome', about: 'About you', background: 'Your training', thresholds: 'Your numbers',
+    week: 'Your week', races: 'Your races', goal: 'Your goal', review: 'Your season',
+  };
+
+  function renderWizard() {
+    const name = WIZARD_STEPS[wiz.step];
+    const last = wiz.step === WIZARD_STEPS.length - 1;
+    const steps = WIZARD_STEPS.map((s, i) =>
+      '<span class="' + (i < wiz.step ? 'done' : i === wiz.step ? 'on' : '') + '" title="' + esc(WIZ_TITLES[s]) + '"></span>').join('');
+    const problems = wiz.problems.length
+      ? '<div class="diff-issues">' + wiz.problems.map((x) => '<b class="err">' + esc(x.message) + '</b>').join('<br>') + '</div>'
+      : '';
+
+    let body = '';
+    let review = null;
+    if (name === 'review') {
+      try { review = wizReviewHTML(); } catch (e) { console.error(e); review = { html: '<p class="pnl-hint">That season could not be built. Go back and check the race.</p>', blocked: true }; }
+      body = review.html;
+    } else body = WIZ_STEP_HTML[name]();
+
+    panelShell(
+      '<div class="wiz-steps" aria-hidden="true">' + steps + '</div>' +
+      '<p class="wiz-kicker">Step ' + (wiz.step + 1) + ' of ' + WIZARD_STEPS.length + ' · ' + esc(WIZ_TITLES[name]) + '</p>' +
+      body + problems +
+      '<div class="pnl-act">' +
+        '<button type="button" class="btn btn-ghost spacer" id="wz-close">' + (wiz.step === 0 ? 'Not now' : 'Finish later') + '</button>' +
+        (wiz.step > 0 ? '<button type="button" class="btn btn-ghost" id="wz-back">Back</button>' : '') +
+        (last
+          ? '<button type="button" class="btn btn-primary" id="wz-create"' + (review && review.blocked ? ' disabled' : '') + '>Create my plan</button>'
+          : '<button type="button" class="btn btn-primary" id="wz-next">' + (wiz.step === 0 ? 'Start' : 'Next') + '</button>') +
+      '</div>',
+      'Set up your season',
+    );
+
+    $('wz-close').addEventListener('click', closeWizard);
+    const back = $('wz-back');
+    if (back) back.addEventListener('click', () => { readWizardStep(); wiz.problems = []; wiz.step--; wizSave(); renderWizard(); });
+    const next = $('wz-next');
+    if (next) next.addEventListener('click', wizardNext);
+    const create = $('wz-create');
+    if (create && !create.disabled) create.addEventListener('click', finishWizard);
+    const restart = $('wz-restart');
+    if (restart) restart.addEventListener('click', () => openWizard({ restart: true }));
+    WIZ_STEP_BIND[name]?.();
+  }
+
+  function wizardNext() {
+    readWizardStep();
+    wiz.problems = stepProblems(WIZARD_STEPS[wiz.step], wiz.answers, { today: wizToday() });
+    if (!wiz.problems.length) wiz.step++;
+    wizSave();
+    renderWizard();
+  }
+
+  /* ---- step bodies ---- */
+
+  const wsel = (id, value, options, empty = '—') => '<select class="input" id="' + id + '">' +
+    (empty === null ? '' : '<option value="">' + esc(empty) + '</option>') +
+    options.map(([v, label]) => '<option value="' + esc(v) + '"' + (String(value ?? '') === String(v) ? ' selected' : '') + '>' +
+      esc(label) + '</option>').join('') + '</select>';
+  const wnum = (id, v, attrs = '') => '<input type="number" class="input" id="' + id + '" ' + attrs + ' value="' + esc(v ?? '') + '" />';
+  const wclock = (id, mins, ph) => '<input type="text" class="input" id="' + id + '" placeholder="' + ph + '" value="' +
+    esc(Number.isFinite(mins) && mins > 0 ? minToDur(mins) : '') + '" />';
+  const yesNoOpts = [['true', 'Yes'], ['false', 'No']];
+
+  const WIZ_STEP_HTML = {
+    welcome() {
+      const a = wiz.answers;
+      if (!wiz.returning) {
+        return '<h2>Let’s set up your season</h2>' +
+          '<p class="pnl-sub">A few questions about you, how you train and the race you are training for — about five minutes. ' +
+            'At the end yootri builds the whole season and puts week 1 on your calendar.</p>' +
+          '<ul class="wiz-list">' +
+            '<li><b>About you and your training</b> — only your recent weekly hours are needed; the rest is optional.</li>' +
+            '<li><b>Your week</b> — the time you have each day, and where the long ride and long run go.</li>' +
+            '<li><b>Your races</b> — the race the season is for, and any tune-ups on the way.</li>' +
+          '</ul>' +
+          '<p class="pnl-hint">Nothing is saved until you create the plan. Your answers are kept in this browser as you go, so you can stop and come back.</p>' +
+          (wiz.resumed ? '<p class="pnl-hint">Picking up where you left off. <button type="button" class="btn btn-ghost" id="wz-restart">Start over</button></p>' : '');
+      }
+      const gaps = athleteGaps(athleteFromAnswers(a, { now: 0 }), wizBase() ?? plan).filter((g) => g.used && g.key !== 'race');
+      const known = [
+        a.recentWeeklyHours !== undefined && 'Hours a week lately: ' + a.recentWeeklyHours +
+          (a.prefilledFrom?.recentWeeklyHours === 'garmin' ? ' (from your synced Garmin weeks)' : ''),
+        a.ftpW && 'FTP: ' + a.ftpW + ' W',
+        a.cssSecPer100m && 'Swim CSS: ' + cssText(a.cssSecPer100m) + ' per 100 m',
+        a.runResult && 'Running result: ' + fmtDistance(a.runResult.distanceMeters) + ' in ' + fmtClock(a.runResult.timeSeconds),
+        a.weightKg && 'Weight: ' + a.weightKg + ' kg',
+        (a.longRideDay || a.longRunDay) && 'Long days: ' + [a.longRideDay && 'ride ' + a.longRideDay, a.longRunDay && 'run ' + a.longRunDay].filter(Boolean).join(', '),
+      ].filter(Boolean);
+      return '<h2>Start a new season</h2>' +
+        '<p class="pnl-sub">The questions are the same as the first time, already filled in with what yootri knows — check them, ' +
+          'change what has changed, and choose the race. ' +
+          (currentPlanUntouched() ? '' : '“' + esc(plan.name) + '” stays as it is; the new season is a separate plan you can switch between.') + '</p>' +
+        (known.length ? '<span class="pnl-sub" style="display:block">Already known</span><ul class="wiz-list">' +
+          known.map((k) => '<li>' + esc(k) + '</li>').join('') + '</ul>' : '') +
+        (gaps.length ? '<span class="pnl-sub" style="display:block;margin-top:.6rem">Worth adding this time</span><ul class="wiz-list">' +
+          gaps.map((g) => '<li><b>' + esc(g.label) + '</b> — ' + esc(g.why) + '</li>').join('') + '</ul>' : '') +
+        (wiz.resumed ? '<p class="pnl-hint">Picking up where you left off. <button type="button" class="btn btn-ghost" id="wz-restart">Start over</button></p>' : '');
+    },
+
+    about() {
+      const a = wiz.answers;
+      const canKeep = cloudReady() && authUser && hasSyncConsent();
+      return '<h2>About you</h2>' +
+        '<p class="pnl-sub">All optional. Kept in this browser as About you — never on a plan, never in a plan export, and never read by the coach.</p>' +
+        '<div class="pnl-grid">' +
+          field('Birth year', wnum('wz-born', a.birthYear, 'min="1900" max="2100"')) +
+          field('Sex', wsel('wz-sex', a.sex, SEXES.map((x) => [x, SEX_LABELS[x]]))) +
+          field('Weight (kg)', wnum('wz-kg', a.weightKg, 'min="30" max="250" step="0.1"')) +
+          field('Height (cm)', wnum('wz-cm', a.heightCm, 'min="100" max="250"')) +
+        '</div>' +
+        '<p class="pnl-hint">Weight shows your FTP as watts per kilogram, and sex preselects the heart-rate formula for training load. ' +
+          'Birth year and height are not used for planning yet.</p>' +
+        (canKeep
+          ? '<label class="np-check"><input type="checkbox" id="wz-keep"' + (a.keepInAccount ? ' checked' : '') + ' />' +
+              '<span>Keep About you in my account too, so it follows me to my other devices.</span></label>' +
+            '<p class="pnl-hint">Weight and height are health data, so this is a consent of its own, separate from plan sync. ' +
+              'You can untick it in About you at any time, and the copy in your account is deleted.</p>'
+          : '');
+    },
+
+    background() {
+      const a = wiz.answers;
+      return '<h2>Your training</h2>' +
+        '<p class="pnl-sub">Where you are starting from. The first weeks of the season are sized on your recent hours, so they start close to what you already do.</p>' +
+        '<div class="pnl-grid">' +
+          field('Hours a week, lately', wnum('wz-hours', a.recentWeeklyHours, 'min="0.5" max="40" step="0.5" placeholder="e.g. 7"')) +
+          field('Years in triathlon', wnum('wz-years', a.yearsInSport, 'min="0" max="80"')) +
+          field('Longest recent ride', wclock('wz-ride', a.longestRideMin, '3:00')) +
+          field('Longest recent run', wclock('wz-run', a.longestRunMin, '1:30')) +
+          ATHLETE_SPORTS.map((sp) => field(sp + ' background',
+            wsel('wz-lv-' + sp, a.levels?.[sp], LEVELS.map((l) => [l, LEVEL_LABELS[l]])))).join('') +
+        '</div>' +
+        (a.prefilledFrom?.recentWeeklyHours === 'garmin'
+          ? '<p class="pnl-hint">Hours a week were read from your synced Garmin weeks. Change them if they do not look right.</p>' : '') +
+        '<p class="pnl-hint">Only hours a week is needed. The rest is kept with About you and not used for planning yet.</p>';
+    },
+
+    thresholds() {
+      const a = wiz.answers;
+      const r = a.runResult || {};
+      const known = STANDARD_DISTANCES.some((d) => d.meters === r.distanceMeters);
+      const distOpts = STANDARD_DISTANCES.map((d) => [d.meters, d.label]);
+      return '<h2>Your numbers</h2>' +
+        '<p class="pnl-sub">Leave any of these empty if you do not know them yet — sessions show their zones by feel until you add one, ' +
+          'from Training paces in the plan menu.</p>' +
+        '<div class="pnl-grid">' +
+          field('FTP (watts)', wnum('wz-ftp', a.ftpW, 'min="50" max="600"')) +
+          field('Swim CSS (per 100 m)', '<input type="text" class="input" id="wz-css" placeholder="1:45" value="' + esc(cssText(a.cssSecPer100m)) + '" />') +
+        '</div>' +
+        '<h3 class="pnl-h3">A recent running result</h3>' +
+        '<div class="pnl-grid">' +
+          field('Distance', wsel('wz-rdist', known ? r.distanceMeters : '', distOpts, 'No result')) +
+          field('Time', '<input type="text" class="input" id="wz-rtime" placeholder="45:00" value="' + esc(r.timeSeconds ? fmtClock(r.timeSeconds) : '') + '" />') +
+          field('Date', '<input type="date" class="input" id="wz-rdate" value="' + esc(r.date || '') + '" />') +
+        '</div>' +
+        '<p class="pnl-hint">A race or a flat-out time trial. Every run’s paces are worked out from it.</p>';
+    },
+
+    week() {
+      const a = wiz.answers;
+      const dayOpts = DAYS.map((d) => [d, d]);
+      return '<h2>Your week</h2>' +
+        '<p class="pnl-sub">The most you could train on each day, in minutes. A day at 0 is a rest day. This is the ceiling, not what every week will hold.</p>' +
+        '<div class="pnl-days">' +
+          DAYS.map((d) => '<label>' + d + '<input type="number" class="input" data-wzday="' + d + '" min="0" max="600" step="15" value="' +
+            (a.availability?.[d] || 0) + '" /></label>').join('') +
+        '</div>' +
+        '<div class="pnl-grid" style="margin-top:.9rem">' +
+          field('Long ride day', wsel('wz-longride', a.longRideDay, dayOpts, 'Let yootri choose')) +
+          field('Long run day', wsel('wz-longrun', a.longRunDay, dayOpts, 'Let yootri choose')) +
+          field('Sessions a day', wsel('wz-perday', a.maxSessionsPerDay, [['1', 'One — no two-a-days'], ['2', 'Up to two'], ['3', 'Up to three']], 'As many as fit')) +
+          field('Swims a week, at most', wnum('wz-swims', a.maxSwims, 'min="0" max="14" placeholder="no limit"')) +
+          field('Pool access', wsel('wz-pool', a.pool === undefined ? '' : String(a.pool), yesNoOpts)) +
+          field('Open water', wsel('wz-ow', a.openWater === undefined ? '' : String(a.openWater), yesNoOpts)) +
+          field('Indoor trainer', wsel('wz-trainer', a.indoorTrainer === undefined ? '' : String(a.indoorTrainer), yesNoOpts)) +
+          field('Power meter', wsel('wz-pm', a.powerMeter === undefined ? '' : String(a.powerMeter), yesNoOpts)) +
+        '</div>' +
+        '<p class="pnl-hint">With no pool and no open water the season has no swims, and that time goes to the other sports.</p>';
+    },
+
+    races() {
+      const a = wiz.answers;
+      const r = a.race || {};
+      const preview = racePreview(a, { today: wizToday() });
+      const tuneRows = (a.tuneUps || []).map((t, i) => {
+        const refused = preview.landings.refused.find((x) => x.absWeek === weekIndexOf(preview.startISO, t.date));
+        return '<div class="wiz-tune">' +
+          field('Name', '<input type="text" class="input" data-wztune="' + i + '" data-k="name" value="' + esc(t.name || '') + '" />') +
+          field('Date', '<input type="date" class="input" data-wztune="' + i + '" data-k="date" value="' + esc(t.date || '') + '" />') +
+          field('Distance', '<select class="input" data-wztune="' + i + '" data-k="raceType">' +
+            raceTypeOptions(t.raceType, { keepRetired: false, pool: SECONDARY_RACE_TYPES }) + '</select>') +
+          '<button type="button" class="btn btn-ghost" data-wzdrop="' + i + '">Remove</button>' +
+          (refused ? '<p class="pnl-hint" style="grid-column:1/-1">' + esc(LANDING_REFUSED[refused.reason] || '') + '</p>' : '') +
+        '</div>';
+      }).join('');
+      return '<h2>Your races</h2>' +
+        '<p class="pnl-sub">The race this season is built for, and any tune-up races on the way. The season runs from this Monday to race week.</p>' +
+        '<h3 class="pnl-h3">Main race</h3>' +
+        '<div class="pnl-grid">' +
+          field('Name', '<input type="text" class="input" id="wz-rname" placeholder="e.g. Ironman 70.3 Cascais" value="' + esc(r.name || '') + '" />') +
+          field('Date', '<input type="date" class="input" id="wz-racedate" value="' + esc(r.date || '') + '" />') +
+          field('Distance', '<select class="input" id="wz-racetype">' + raceTypeOptions(r.raceType || RACE_TYPES[0], { keepRetired: false }) + '</select>') +
+        '</div>' +
+        (preview.weeks
+          ? '<p class="np-len">That is a <b>' + preview.weeks + '-week</b> season, built backwards from race week so the taper lands on it.' +
+              (preview.longRunway ? ' A runway this long opens with extra base weeks.' : '') + '</p>'
+          : '') +
+        '<h3 class="pnl-h3">Tune-up races</h3>' +
+        (tuneRows || '<p class="pnl-hint">None yet. A tune-up gets a short taper of its own and nothing on race day.</p>') +
+        '<div class="pnl-act" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="wz-addtune">Add a tune-up race</button></div>';
+    },
+
+    goal() {
+      const a = wiz.answers;
+      const r = a.race || {};
+      const auto = (r.name || '').trim() || (raceTypeLabel(r.raceType) + ' ' + String(r.date || '').slice(0, 4));
+      return '<h2>Your goal</h2>' +
+        '<p class="pnl-sub">Optional. Kept with About you; it does not change the plan yet.</p>' +
+        '<div class="pnl-grid">' +
+          field('Goal', wsel('wz-goal', a.goal, [['finish', 'Finish'], ['time', 'A time']])) +
+          field('Target time', wclock('wz-goaltime', a.goalTime, '5:30')) +
+          field('Plan name', '<input type="text" class="input" id="wz-pname" placeholder="' + esc(auto) + '" value="' + esc(a.planName || '') + '" />') +
+        '</div>';
+    },
+  };
+
+  const WIZ_STEP_BIND = {
+    races() {
+      $('wz-addtune').addEventListener('click', () => {
+        readWizardStep();
+        wiz.answers.tuneUps = [...(wiz.answers.tuneUps || []), { name: '', date: '', raceType: SECONDARY_RACE_TYPES[0] }];
+        renderWizard();
+      });
+      els.panelRoot.querySelectorAll('[data-wzdrop]').forEach((b) => b.addEventListener('click', () => {
+        readWizardStep();
+        wiz.answers.tuneUps = wiz.answers.tuneUps.filter((_, i) => i !== Number(b.dataset.wzdrop));
+        renderWizard();
+      }));
+      // The season length and any refused taper are worth seeing as the date is typed.
+      for (const id of ['wz-racedate', 'wz-racetype']) $(id).addEventListener('change', () => { readWizardStep(); renderWizard(); });
+      els.panelRoot.querySelectorAll('[data-wztune][data-k="date"]').forEach((i) =>
+        i.addEventListener('change', () => { readWizardStep(); renderWizard(); }));
+    },
+  };
+
+  /* Read the current step's boxes into the answers. Empty boxes become
+     "not said" (undefined), never 0, so a cleared field is a cleared answer. */
+  function readWizardStep() {
+    if (!wiz) return;
+    const a = wiz.answers;
+    const v = (id) => ($(id) ? $(id).value.trim() : undefined);
+    const num = (id) => { const x = v(id); return x === undefined || x === '' ? undefined : Number(x); };
+    const mins = (id) => { const x = v(id); return x === undefined || x === '' ? undefined : (durToMin(x) || NaN); };
+    const bool = (id) => { const x = v(id); return x === undefined || x === '' ? undefined : x === 'true'; };
+    switch (WIZARD_STEPS[wiz.step]) {
+      case 'about':
+        Object.assign(a, { birthYear: num('wz-born'), sex: v('wz-sex') || undefined, weightKg: num('wz-kg'), heightCm: num('wz-cm') });
+        if ($('wz-keep')) a.keepInAccount = $('wz-keep').checked;
+        break;
+      case 'background':
+        Object.assign(a, {
+          recentWeeklyHours: num('wz-hours'), yearsInSport: num('wz-years'),
+          longestRideMin: mins('wz-ride'), longestRunMin: mins('wz-run'),
+          levels: Object.fromEntries(ATHLETE_SPORTS.map((sp) => [sp, v('wz-lv-' + sp)]).filter(([, l]) => l)),
+        });
+        if (a.prefilledFrom) delete a.prefilledFrom.recentWeeklyHours;
+        break;
+      case 'thresholds': {
+        const css = v('wz-css');
+        Object.assign(a, { ftpW: num('wz-ftp'), cssSecPer100m: css ? (parseClock(css) ?? NaN) : undefined });
+        const dist = num('wz-rdist');
+        const time = v('wz-rtime');
+        a.runResult = dist && time ? { distanceMeters: dist, timeSeconds: parseClock(time) ?? NaN, date: v('wz-rdate') || '' } : undefined;
+        break;
+      }
+      case 'week':
+        a.availability = Object.fromEntries(DAYS.map((d) => {
+          const i = els.panelRoot.querySelector('[data-wzday="' + d + '"]');
+          return [d, Math.max(0, Number(i && i.value) || 0)];
+        }));
+        Object.assign(a, {
+          longRideDay: v('wz-longride') || '', longRunDay: v('wz-longrun') || '',
+          maxSessionsPerDay: num('wz-perday'), maxSwims: num('wz-swims'),
+          pool: bool('wz-pool'), openWater: bool('wz-ow'), indoorTrainer: bool('wz-trainer'), powerMeter: bool('wz-pm'),
+        });
+        break;
+      case 'races':
+        a.race = { name: v('wz-rname') || '', date: v('wz-racedate') || '', raceType: v('wz-racetype') };
+        a.tuneUps = (a.tuneUps || []).map((t, i) => {
+          const pick = (k) => { const el = els.panelRoot.querySelector('[data-wztune="' + i + '"][data-k="' + k + '"]'); return el ? el.value.trim() : t[k]; };
+          return { name: pick('name'), date: pick('date'), raceType: pick('raceType') };
+        });
+        break;
+      case 'goal':
+        Object.assign(a, { goal: v('wz-goal') || undefined, goalTime: mins('wz-goaltime'), planName: v('wz-pname') || '' });
+        break;
+      default:
+        break;
+    }
+  }
+
+  /* The season these answers build, shown before anything is saved. */
+  function wizReviewHTML() {
+    const built = buildPlanFromAnswers(wiz.answers, { today: wizToday(), now: now(), base: wizBase() });
+    const r = planReview(built);
+    const peak = Math.max(...r.hoursByWeek);
+    const opening = r.hoursByWeek.slice(0, 4);
+    const openAvg = opening.reduce((x, y) => x + y, 0) / opening.length;
+    const bars = r.hoursByWeek.map((h, i) =>
+      '<i class="' + (r.blocks[i] === 'Race' ? 'race' : i === 0 ? 'now' : '') + '" style="height:' + Math.max(4, Math.round((h / peak) * 100)) + '%" title="Week ' + (i + 1) + ' · ' + h + ' h"></i>').join('');
+    const week = r.firstWeek.filter((x) => x.disc !== 'Rest');
+    const issues = r.issues.filter((x) => x.level === 'error' || x.code !== 'budget-shortfall');
+    const race = goalEvent(normalizeEvents(built.events));
+    return {
+      blocked: r.blocked,
+      html: '<h2>Your season</h2>' +
+        '<p class="pnl-sub">Check it over. Nothing is saved until you create it, and everything here can be changed later in Plan setup.</p>' +
+        '<dl class="imp-facts">' +
+          '<div><dt>Plan</dt><dd>' + esc(built.name) + '</dd></div>' +
+          '<div><dt>Race</dt><dd>' + esc(raceTypeLabel(race.raceType)) + ' · ' + esc(fmtLongDate(race.date)) + '</dd></div>' +
+          '<div><dt>Season</dt><dd>' + r.weeks + ' weeks from ' + esc(fmtLongDate(built.start)) + '</dd></div>' +
+          '<div><dt>Opening weeks</dt><dd>about ' + (Math.round(openAvg * 2) / 2) + ' h a week</dd></div>' +
+          '<div><dt>Biggest week</dt><dd>' + peak + ' h</dd></div>' +
+        '</dl>' +
+        '<div class="wiz-bars" aria-label="Planned hours each week">' + bars + '</div>' +
+        '<h3 class="pnl-h3">Week 1</h3>' +
+        '<ul class="wiz-list">' + week.map((x) => '<li><b>' + esc(x.day) + '</b> · ' + esc(x.disc) + ' ' + esc(x.dur) + ' — ' + esc(x.focus) + '</li>').join('') + '</ul>' +
+        (issues.length
+          ? '<div class="diff-issues">' + issues.map((x) => '<b class="' + (x.level === 'error' ? 'err' : '') + '">' + esc(x.message) + '</b>').join('<br>') + '</div>'
+          : ''),
+    };
+  }
+
+  async function finishWizard() {
+    const a = wiz.answers;
+    const built = buildPlanFromAnswers(a, { today: wizToday(), now: now(), base: wizBase() });
+
+    // About you first: the athlete record, and the consent the About step asked.
+    saveAthleteLocal(athleteFromAnswers(a, { now: now() }));
+    if (cloudReady() && authUser && hasSyncConsent()) {
+      if (a.keepInAccount && !hasHealthConsent()) recordHealthConsent();
+      else if (!a.keepInAccount && hasHealthConsent()) { forgetHealthConsent(); await withdrawCloudAthlete(); }
+      if (hasHealthConsent()) await pushAthlete();
+    }
+
+    const replaced = dropIfUntouched();
+    addPlan(built);
+    remove(WIZ_KEY);
+    markOriented();
+    wiz = null;
+    state.view = 'week';
+    select(0);
+    renderAll();
+    setStatus('Created "' + built.name + '" · ' + weekCount(built) + ' weeks' + (replaced ? ' · in place of the starter plan' : ''));
+
+    const week = sessionsAt(built, 0).filter((x) => x.disc !== 'Rest');
+    panelShell(
+      '<h2>Your plan is ready</h2>' +
+      '<p class="pnl-sub">' + esc(built.name) + ' runs ' + weekCount(built) + ' weeks to race week. Week 1 is on your calendar now: ' +
+        week.length + ' session' + (week.length === 1 ? '' : 's') + ', ' + esc(fmtTotal(week.reduce((x, s) => x + durToMin(s.dur), 0)) || '0m') + '.</p>' +
+      '<p class="pnl-hint">Log what you do as the week goes, or sync it from Garmin. Plan setup, Training paces and About you in the plan menu change anything you told the wizard.</p>' +
+      '<div class="pnl-act"><button type="button" class="btn btn-primary" id="wz-done">See week 1</button></div>',
+      'Your plan is ready',
+    );
+    $('wz-done').addEventListener('click', closePanel);
   }
 
   /* ---- About you --------------------------------------------------------
@@ -5669,7 +6132,8 @@
           (soleplan ? ' aria-disabled="true"' : '') + '>' +
           '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
         '<div class="pmenu-sep" role="separator"></div>' +
-        menuRow('new', 'plus', 'New plan') +
+        menuRow('new', 'plus', 'New season…') +
+        menuRow('blank', 'file-plus', 'Blank plan…') +
         menuRow('import', 'upload-simple', 'Import plan…') +
         menuRow('mydata', 'archive', 'Download my data') +
       '</div>';
@@ -5718,8 +6182,9 @@
     if (act === 'paces') { pacesView = null; return openPacesPanel(); }
     if (act === 'athlete') return openAthletePanel();
     if (act === 'mydata') return downloadMyData();
+    if (act === 'blank') return openNewPlanPanel();
     if (act === 'new') {
-      return openNewPlanPanel();
+      return openWizard();
     } else if (act === 'dup') {
       const name = await nameDialog('Duplicate plan', (plan.name || 'Plan') + ' copy', 'Duplicate');
       if (name) duplicatePlan(name);

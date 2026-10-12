@@ -110,7 +110,7 @@ Read the R&D findings first: this changes session generation.
   constant, but the next session with the notes should check this phase
   against them and record the long-day behaviour there.
 
-## Phase 3 — the onboarding wizard
+## Phase 3 — the onboarding wizard (done)
 
 `assets/coach/onboarding.js` holds the steps, per-step validation (races reuse
 `eventProblem` and `planLandings`), prefill from the athlete record, the current
@@ -134,6 +134,15 @@ after a reload, and never loses answers on Back.
 
 It opens on a first visit or first sign-in with no real plan, and from the plan
 menu as "Start a new season". The previous season is kept.
+
+As built: the plan menu's **New season…** opens it (the old quick panel is
+**Blank plan…**), and the first-run notice and a sign-in that brings no season
+open it by themselves until it has been put off once. Only recent weekly hours
+and the main race are required. A returning athlete's welcome lists what is
+already known and what is still worth adding; the steps arrive filled in, and
+the old race is never carried over. Nowhere to swim becomes a swim cap of 0.
+The review shows the season's weekly hours as bars, week 1 session by session,
+and the validator's warnings; an error blocks Create, as it blocks an Apply.
 
 ## Phase 4 — weekly release and review
 
