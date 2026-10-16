@@ -69,3 +69,57 @@ test('workout export wording makes no medical or performance claims', () => {
     }
   }
 });
+
+/* The Training status and Health indicator pages, the sample fitness cards and
+   chart, and the Season panel show numbers that are not worked out from
+   anything yet. They sit closest to the body and to performance claims, so the
+   list here is stricter than the one above: no recovery or readiness talk, no
+   promise about what a number means for an athlete, and no named standard a
+   reader could take as a target. */
+
+const STRICTER = [
+  ...FORBIDDEN,
+  /recover/i, /wellness/i, /overreach/i, /\brisk/i, /\btreat/i, /therap/i, /rehab/i, /RED-S/i, /screen/i,
+  /competitive/i, /kona/i, /qualif/i, /comfortabl/i, /enjoy/i, /worn down/i, /carrying too much/i, /earliest sign/i,
+];
+
+test('the sample fitness surfaces make no claim about the body or about performance', () => {
+  const html = read('../index.html');
+  const pagesFrom = html.indexOf('<div class="page hidden" data-page="status"');
+  const pagesTo = html.indexOf('<div class="page page-foot">');
+  const sampleFrom = html.indexOf('/* ---- Sample fitness, fatigue and form');
+  const sampleTo = html.indexOf('/* ---- Init ---- */');
+  const cardsFrom = html.indexOf('<section class="stack ffm"');
+  assert.ok(pagesFrom > 0 && pagesTo > pagesFrom, 'the Status and Health pages are still where this test looks');
+  assert.ok(sampleFrom > 0 && sampleTo > sampleFrom, 'the sample fitness section is still where this test looks');
+  assert.ok(cardsFrom > 0, 'the fitness cards are still where this test looks');
+  const surfaces = {
+    'Status and Health pages': html.slice(pagesFrom, pagesTo),
+    'sample fitness script': html.slice(sampleFrom, sampleTo),
+    'fitness cards markup': html.slice(cardsFrom, cardsFrom + 600),
+  };
+  for (const [where, text] of Object.entries(surfaces)) {
+    for (const re of STRICTER) {
+      const hit = text.match(re);
+      assert.equal(hit, null, `${where} says "${hit && hit[0]}"`);
+    }
+  }
+});
+
+test('everything drawn from the sample says it is a sample', () => {
+  const html = read('../index.html');
+  // The cards, the chart and the Status page each carry the label, so a screenshot of any one of them says so.
+  assert.match(html, /Sample numbers · calculations coming soon/);
+  assert.match(html, /Sample data\. Fitness calculations are coming soon/);
+  assert.match(html, /Preview with sample data/);
+  assert.match(html, /<span class="tag tag-neutral">Sample<\/span>/, 'each fitness card is tagged Sample');
+  assert.match(html, /aria-label="Sample data\. Planned fitness/, 'the chart is described as sample data to a screen reader');
+});
+
+test('the sample numbers never reach storage or the engine', () => {
+  const html = read('../index.html');
+  const from = html.indexOf('/* ---- Sample fitness, fatigue and form');
+  const to = html.indexOf('/* ---- Init ---- */');
+  const section = html.slice(from, to);
+  assert.doesNotMatch(section, /persistPlan|savePlanLocal|save\(|localStorage|plan\.[a-z]+\s*=[^=]/, 'the sample section writes something');
+});

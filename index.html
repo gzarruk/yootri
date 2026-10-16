@@ -1175,6 +1175,14 @@
       </div>
     </header>
 
+    <section class="stack ffm" aria-label="Fitness, fatigue and form">
+      <div class="k-row">
+        <span class="card-kicker">Fitness, fatigue and form</span>
+        <span class="chip-sample"><i class="ic i-info" aria-hidden="true"></i>Sample numbers · calculations coming soon</span>
+      </div>
+      <div class="ind-grid" id="ffm-root"></div>
+    </section>
+
     <div class="overview">
       <div class="ov-row">
         <span class="ov-label">Plan overview</span>
@@ -1243,32 +1251,115 @@
 
     <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. <b>Plan setup</b> fits the whole season to the hours you actually have; it always shows you the changes before anything is written, and <b>Reset week</b> rebuilds a single week from that fit.</p>
 
-    <div class="im-chartcard">
-      <div class="chart-head">
-        <span class="chart-title">Season training load</span>
-        <span class="right">
-          <span class="chart-completed" id="chart-completed"></span>
-          <span class="seg" role="group" aria-label="Chart mode" id="chartmode-seg">
-            <label class="seg-opt"><input type="radio" name="chartmode" value="weekly" />Weekly</label>
-            <label class="seg-opt"><input type="radio" name="chartmode" value="cumulative" />Cumulative</label>
-          </span>
-        </span>
+    <section class="panel season" aria-label="Season fitness and training load">
+      <div class="season-top">
+        <span class="card-kicker">Season</span>
+        <div class="seg" role="radiogroup" aria-label="Chart view" id="seasonview-seg">
+          <label class="seg-opt"><input type="radio" name="seasonview" value="fit" checked />Fitness</label>
+          <label class="seg-opt"><input type="radio" name="seasonview" value="load" />Training load</label>
+        </div>
       </div>
-      <span class="chart-scrollhint">Scroll sideways to see the whole season →</span>
-      <div class="im-chartscroll" id="chart-scroll">
-        <svg class="im-chartsvg" id="chart-svg" viewBox="0 0 900 220"></svg>
-        <div class="chart-tip hidden" id="chart-tip"></div>
+      <div class="v-fit" id="v-fit"></div>
+      <div class="v-load hidden" id="v-load">
+        <div class="im-chartcard">
+          <div class="chart-head">
+            <span class="chart-title">Season training load</span>
+            <span class="right">
+              <span class="chart-completed" id="chart-completed"></span>
+              <span class="seg" role="group" aria-label="Chart mode" id="chartmode-seg">
+                <label class="seg-opt"><input type="radio" name="chartmode" value="weekly" />Weekly</label>
+                <label class="seg-opt"><input type="radio" name="chartmode" value="cumulative" />Cumulative</label>
+              </span>
+            </span>
+          </div>
+          <span class="chart-scrollhint">Scroll sideways to see the whole season →</span>
+          <div class="im-chartscroll" id="chart-scroll">
+            <svg class="im-chartsvg" id="chart-svg" viewBox="0 0 900 220"></svg>
+            <div class="chart-tip hidden" id="chart-tip"></div>
+          </div>
+          <div class="chart-legend" id="chart-legend"></div>
+        </div>
       </div>
-      <div class="chart-legend" id="chart-legend"></div>
-    </div>
+    </section>
   </div>
 
   <div class="page hidden" data-page="status" tabindex="-1">
     <header>
-      <div class="hdr-top"><span class="kicker">Athlete</span></div>
+      <div class="hdr-top">
+        <span class="kicker">Athlete</span>
+        <span class="chip-sample"><i class="ic i-info" aria-hidden="true"></i>Preview with sample data</span>
+      </div>
       <h1 class="im-h1">Training status</h1>
-      <p class="im-sub">Coming soon.</p>
+      <p class="im-sub">How training load compares with what you are used to. The numbers below are a sample: nothing here is worked out from your sessions yet.</p>
     </header>
+
+    <div class="grid-3">
+      <div class="panel">
+        <span class="card-kicker">Fitness · 42-day load</span>
+        <span class="big">62<small>↑ 4 on last month</small></span>
+        <p class="note">The slow average of training load. It rises when training is steady for weeks.</p>
+      </div>
+      <div class="panel">
+        <span class="card-kicker">Fatigue · 7-day load</span>
+        <span class="big">71<small>↑ 6 on last week</small></span>
+        <p class="note">The fast average. It rises after a big week and falls after an easy one.</p>
+      </div>
+      <div class="panel">
+        <span class="card-kicker">Form</span>
+        <span class="big">−9<small>Fitness minus fatigue</small></span>
+        <p class="note">Positive when fitness is above fatigue, negative when it is below.</p>
+      </div>
+    </div>
+
+    <section class="panel" aria-label="Fitness and fatigue, last 12 weeks">
+      <div class="panel-h">
+        <span class="card-kicker">Fitness and fatigue · last 12 weeks</span>
+        <span class="chip-sample"><i class="ic i-info" aria-hidden="true"></i>Sample data</span>
+      </div>
+      <div class="plot">
+        <div class="plot-y"><span>100</span><span>50</span><span>0</span></div>
+        <svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Sample data. Fitness rises from 48 to 62 over 12 weeks while fatigue swings between 55 and 76 with each hard week.">
+          <line class="grid-l" x1="0" y1="0.5" x2="1000" y2="0.5"></line>
+          <line class="grid-l" x1="0" y1="75" x2="1000" y2="75"></line>
+          <line class="grid-l" x1="0" y1="150" x2="1000" y2="150"></line>
+          <polyline class="ln" style="stroke: var(--disc-bike); stroke-dasharray: 7 5" points="20,67.5 105.5,57 190.9,63 276.4,51 361.8,60 447.3,45 532.7,54 618.2,39 703.6,51 789.1,36 874.5,48 960,43.5"></polyline>
+          <polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5" points="20,78 105.5,75 190.9,72 276.4,70.5 361.8,67.5 447.3,66 532.7,63 618.2,61.5 703.6,60 789.1,58.5 874.5,57.8 960,57"></polyline>
+        </svg>
+        <div class="plot-x"><span>−11</span><span>−10</span><span>−9</span><span>−8</span><span>−7</span><span>−6</span><span>−5</span><span>−4</span><span>−3</span><span>−2</span><span>−1</span><span>Now</span></div>
+      </div>
+      <div class="legend">
+        <span class="lg" style="--c: var(--color-accent)"><i></i>Fitness <span>62</span></span>
+        <span class="lg" style="--c: var(--disc-bike)"><i class="dash"></i>Fatigue <span>71</span></span>
+      </div>
+    </section>
+
+    <div class="grid-2">
+      <section class="panel" aria-label="Load by discipline">
+        <div class="panel-h"><span class="card-kicker">Load by discipline · last 28 days</span><span class="chip-sample">Sample data</span></div>
+        <div class="hbar">
+          <div class="hbar-h"><b style="font-weight: 500"><i class="ic i-bike" style="color: var(--disc-bike); margin-right: 6px"></i>Bike</b><span>18h 40m · 52%</span></div>
+          <div class="bar"><i style="width: 52%; background: var(--disc-bike)"></i></div>
+        </div>
+        <div class="hbar">
+          <div class="hbar-h"><b style="font-weight: 500"><i class="ic i-run" style="color: var(--disc-run); margin-right: 6px"></i>Run</b><span>11h 20m · 31%</span></div>
+          <div class="bar"><i style="width: 31%; background: var(--disc-run)"></i></div>
+        </div>
+        <div class="hbar">
+          <div class="hbar-h"><b style="font-weight: 500"><i class="ic i-swim" style="color: var(--disc-swim); margin-right: 6px"></i>Swim</b><span>6h 10m · 17%</span></div>
+          <div class="bar"><i style="width: 17%; background: var(--disc-swim)"></i></div>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="What the numbers say">
+        <div class="panel-h"><span class="card-kicker">Where this will come from</span></div>
+        <div class="rows">
+          <div class="row"><span>Fitness and fatigue</span><b>Training load of each session</b></div>
+          <div class="row"><span>Sessions counted</span><b>Synced from your Garmin bridge</b></div>
+          <div class="row"><span>Where it is kept</span><b>Worked out when you open the page</b></div>
+        </div>
+        <p class="note">Nothing on this page is stored, and none of it changes your plan. Until it is worked out from your own sessions, every number here is a sample.</p>
+      </section>
+    </div>
   </div>
 
   <div class="page hidden" data-page="biometrics" tabindex="-1">
@@ -1285,10 +1376,47 @@
 
   <div class="page hidden" data-page="health" tabindex="-1">
     <header>
-      <div class="hdr-top"><span class="kicker">Athlete</span></div>
+      <div class="hdr-top">
+        <span class="kicker">Athlete</span>
+        <span class="tag tag-neutral">Coming soon</span>
+      </div>
       <h1 class="im-h1">Health indicators</h1>
-      <p class="im-sub">Coming soon.</p>
+      <p class="im-sub">Resting heart rate, heart rate variability and sleep, shown next to your training load. Nothing is shown here yet.</p>
     </header>
+
+    <div class="grid-3">
+      <section class="panel" aria-label="Resting heart rate">
+        <div class="panel-h"><span class="card-kicker"><i class="ic i-pulse" style="margin-right: 6px" aria-hidden="true"></i>Resting heart rate</span></div>
+        <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>bpm</small></span>
+        <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 36 C40 30 60 40 100 34 S170 24 210 32 S270 38 300 30"></path></svg>
+        <p class="note">Overnight, from your Garmin, as a trend beside your training load.</p>
+      </section>
+      <section class="panel" aria-label="Heart rate variability">
+        <div class="panel-h"><span class="card-kicker"><i class="ic i-heart" style="margin-right: 6px" aria-hidden="true"></i>Heart rate variability</span></div>
+        <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>ms</small></span>
+        <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 30 C30 40 60 24 100 32 S160 44 200 30 S260 22 300 34"></path></svg>
+        <p class="note">The overnight average, set against your own last four weeks and nobody else’s.</p>
+      </section>
+      <section class="panel" aria-label="Sleep">
+        <div class="panel-h"><span class="card-kicker"><i class="ic i-moon" style="margin-right: 6px" aria-hidden="true"></i>Sleep</span></div>
+        <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>h per night</small></span>
+        <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 28 C40 34 70 22 110 30 S180 42 220 28 S270 24 300 32"></path></svg>
+        <p class="note">Hours asleep each night, from your Garmin.</p>
+      </section>
+    </div>
+
+    <section class="panel" aria-label="How it works">
+      <div class="panel-h"><span class="card-kicker">How it works</span></div>
+      <div class="rows">
+        <div class="row"><span>Source</span><b>Your Garmin bridge, the same one that syncs activities</b></div>
+        <div class="row"><span>Where it is kept</span><b>On this device only, like heart rate today</b></div>
+        <div class="row"><span>Today</span><b>If you switch sleep and overnight heart rate on in the Garmin panel, the weekly review sets them beside your usual</b></div>
+        <div class="row"><span>On the plan</span><b>Nothing changes unless you tick the box in the review</b></div>
+      </div>
+      <div class="hdr-actions">
+        <button type="button" class="btn btn-secondary" id="health-garmin"><i class="ic i-watch" aria-hidden="true"></i> Open the Garmin panel</button>
+      </div>
+    </section>
   </div>
 
   <div class="page page-foot">
@@ -2423,6 +2551,7 @@
     renderSummary();
     renderViewBody();
     renderChart();
+    renderFitnessSample();
     // A page with typed-but-unsaved boxes is not redrawn under the typist, unless the plan changed.
     if (state.page === 'biometrics' && (!bioDirty || bioPlanId !== plan.id)) renderBiometrics();
   }
@@ -6951,6 +7080,176 @@
       renderModal();
     }
   });
+
+  /* ---- Sample fitness, fatigue and form ----------------------------------
+
+     PLACEHOLDER. Nothing in this section is computed from the athlete's
+     sessions: SAMPLE is a hand-written set of numbers so the layout, the
+     chart and the wording can be seen and judged before the engine exists.
+     Every place it draws says "sample". The only real inputs are how many
+     weeks the plan has, which week is showing, and the race distance.
+
+     When load.js's 42-day and 7-day averages are wired in, SAMPLE and
+     sampleChart() are what get replaced; the markup and the labels stay. The
+     figures are derived on read and must never be stored on a plan. The band
+     ranges are illustrative, to be set with the owner; they are not claims
+     about what any athlete needs. */
+
+  const SAMPLE = {
+    today: { fit: 40, fat: 43, form: -3, dFit: 2, dFat: 6, dForm: -4 },
+    race: { fit: 85, fat: 80, form: 5, dFit: 45, dFat: 37, dForm: 8 },
+    start: 38, peak: 89, trend: 80,
+    bands: [
+      { key: 'olympic', name: 'Olympic', lo: 40, hi: 70, color: 'var(--disc-swim)' },
+      { key: '70.3', name: '70.3', lo: 60, hi: 90, color: 'var(--disc-bike)' },
+      { key: 'ironman', name: 'Ironman', lo: 80, hi: 115, color: 'var(--disc-brick)' },
+    ],
+  };
+
+  const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(n);
+
+  function deltaHTML(n, tail) {
+    const arrow = n > 0 ? '<i class="ic i-up" aria-hidden="true"></i>' : n < 0 ? '<i class="ic i-down" aria-hidden="true"></i>' : '';
+    return '<span class="delta">' + arrow + (n === 0 ? 'No change ' : signed(n) + ' ') + tail + '</span>';
+  }
+
+  // Where form sits on the three-part scale. The cut-offs are placeholders too.
+  function formZone(form) {
+    return form < -10 ? { i: 0, name: 'Low' } : form > 10 ? { i: 2, name: 'High' } : { i: 1, name: 'Neutral' };
+  }
+
+  function ffmCardHTML(title, sub, label, d, tail, foot) {
+    const z = formZone(d.form);
+    const pin = Math.max(4, Math.min(96, 50 + (d.form / 40) * 100));
+    return '<article class="ind" aria-label="' + esc(title) + '">' +
+      '<div class="ind-h"><div class="ind-t"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></div>' +
+        '<span class="sample-h"><span class="tag tag-neutral">Sample</span>' +
+        '<button type="button" class="icon-btn" data-ffm-info aria-label="How fitness, fatigue and form are worked out"><i class="ic i-info" aria-hidden="true"></i></button></span></div>' +
+      '<div class="ind-body">' +
+        '<div class="ind-hero"><span class="kicker kicker-sm">Fitness</span><span class="ind-num">' + d.fit + '</span>' + deltaHTML(d.dFit, tail) + '</div>' +
+        '<div class="ind-side">' +
+          '<div class="ind-row"><span class="ind-lbl">Fatigue' + deltaHTML(d.dFat, tail) + '</span><span class="ind-val">' + d.fat + '</span></div>' +
+          '<div class="ind-row"><span class="ind-lbl">Form' + deltaHTML(d.dForm, tail) + '</span><span class="ind-val">' + signed(d.form) + '</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="scale-wrap"><div class="scale" role="img" aria-label="Form is ' + z.name.toLowerCase() + '">' +
+        [0, 1, 2].map((i) => '<i' + (i === z.i ? ' class="on"' : '') + '></i>').join('') +
+        '<span class="pin" style="left: ' + pin + '%"></span></div>' +
+        '<div class="scale-lbl"><span' + (z.i === 0 ? ' class="now"' : '') + '>Low</span><span' + (z.i === 1 ? ' class="now"' : '') + '>Neutral</span><span' + (z.i === 2 ? ' class="now"' : '') + '>High</span></div></div>' +
+      '<div class="ind-foot"><span class="tag tag-accent">Form: ' + z.name + '</span>' + esc(foot) + '</div>' +
+    '</article>';
+  }
+
+  /* The Fitness view of the Season panel: a planned line, an actual line to
+     today, a trend from today to race day, and the illustrative bands. Weeks
+     are laid across the same 1000-wide box the Training load chart's labels
+     assume: x = 20 + week × 940 / (weeks − 1). */
+  function sampleChart(N, now) {
+    const X = (i) => (N > 1 ? 20 + (i * 940) / (N - 1) : 500);
+    const Y = (v) => 150 - v * 1.25;
+    const f1 = (n) => n.toFixed(1);
+    const last = N - 1;
+    const at = Math.max(0, Math.min(last, now));
+    const planned = Array.from({ length: N }, (_, i) => {
+      if (i === last && N > 1) return SAMPLE.race.fit;
+      const top = N > 2 ? last - 1 : last;
+      return SAMPLE.start + (SAMPLE.peak - SAMPLE.start) * (top ? Math.min(i, top) / top : 0);
+    });
+    const actual = [SAMPLE.start, ...Array.from({ length: at }, (_, k) => SAMPLE.start + (SAMPLE.today.fit - SAMPLE.start) * ((k + 1) / at))];
+    const pts = (arr, from = 0) => arr.map((v, k) => f1(X(from + k)) + ',' + f1(Y(v))).join(' ');
+
+    let svg = [0, 50, 100, 150].map((y) => '<line class="grid-l" x1="0" y1="' + (y || 0.5) + '" x2="1000" y2="' + (y || 0.5) + '"></line>').join('');
+    for (const b of SAMPLE.bands) {
+      svg += '<rect class="band" style="--bc: ' + b.color + '" x="0" y="' + f1(Y(b.hi)) + '" width="1000" height="' + f1(Y(b.lo) - Y(b.hi)) + '"></rect>' +
+        '<line class="band-lo" style="--bc: ' + b.color + '" x1="0" y1="' + f1(Y(b.lo)) + '" x2="1000" y2="' + f1(Y(b.lo)) + '"></line>' +
+        '<line class="band-hi" style="--bc: ' + b.color + '" x1="0" y1="' + f1(Y(b.hi)) + '" x2="1000" y2="' + f1(Y(b.hi)) + '"></line>';
+    }
+    svg += '<line x1="' + f1(X(at)) + '" y1="0" x2="' + f1(X(at)) + '" y2="150" stroke-dasharray="3 4" style="stroke: var(--color-accent); stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
+      '<line x1="' + f1(X(last)) + '" y1="0" x2="' + f1(X(last)) + '" y2="150" style="stroke: var(--color-text); opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
+      '<polyline class="ln" style="stroke: var(--color-accent-300); stroke-dasharray: 7 5" points="' + pts(planned) + '"></polyline>';
+    if (at < last) {
+      svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-dasharray: 1 5; stroke-width: 2.5" points="' + f1(X(at)) + ',' + f1(Y(SAMPLE.today.fit)) + ' ' + f1(X(last)) + ',' + f1(Y(SAMPLE.trend)) + '"></polyline>' +
+        '<circle cx="' + f1(X(last)) + '" cy="' + f1(Y(SAMPLE.trend)) + '" r="4" style="fill: var(--color-surface); stroke: var(--color-accent); stroke-width: 2"></circle>';
+    }
+    svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 3" points="' + pts(actual) + '"></polyline>' +
+      '<circle cx="' + f1(X(0)) + '" cy="' + f1(Y(SAMPLE.start)) + '" r="4" style="fill: var(--color-accent)"></circle>' +
+      '<circle cx="' + f1(X(at)) + '" cy="' + f1(Y(SAMPLE.today.fit)) + '" r="5" style="fill: var(--color-accent); stroke: var(--color-surface); stroke-width: 2"></circle>' +
+      '<circle cx="' + f1(X(last)) + '" cy="' + f1(Y(SAMPLE.race.fit)) + '" r="4" style="fill: var(--color-surface); stroke: var(--color-accent-300); stroke-width: 2"></circle>';
+
+    const step = Math.max(1, Math.ceil(N / 16));
+    const xlab = Array.from({ length: N }, (_, i) => i).filter((i) => i % step === 0 || i === last)
+      .map((i) => '<span style="left: ' + f1(X(i) / 10) + '%">' + (i + 1) + '</span>').join('');
+    const bands = SAMPLE.bands.map((b) => '<span style="top: ' + f1((Y(b.lo) + Y(b.hi)) / 2) + 'px"><b><u style="--bc: ' + b.color + '"></u>' + b.name + '</b><i>' + b.lo + ' to ' + b.hi + '</i></span>').join('');
+    const key = SAMPLE.bands.map((b) => '<span style="--bc: ' + b.color + '"><u></u>' + b.name + ' ' + b.lo + ' to ' + b.hi + '</span>').join('');
+    return { svg, xlab, bands, key };
+  }
+
+  function renderFitnessSample() {
+    const N = totalWeeks();
+    const w = weekIndexOf(state.start, toISO(new Date()));
+    const now = Number.isInteger(w) ? Math.max(0, Math.min(N - 1, w)) : 0;
+    const T = SAMPLE.today, R = SAMPLE.race;
+
+    $('ffm-root').innerHTML =
+      ffmCardHTML('Today', 'Where your training stands right now', 'today', T, 'in 7 days', 'Fitness and fatigue are about level.') +
+      ffmCardHTML('Race day', 'Projection if you follow the plan', 'race', R, 'vs today', 'Fitness is above fatigue on the day.');
+
+    const c = sampleChart(N, now);
+    const band = SAMPLE.bands.find((b) => b.key === (plan.profile && plan.profile.raceType));
+    const rel = (v, edge, word) => (v === edge ? 'At the ' + word : Math.abs(v - edge) + (v > edge ? ' above' : ' below') + ' the ' + word);
+    const goal = band
+      ? '<div class="fgoal">' +
+          '<div><small>Your race</small><b>' + esc(raceTypeLabel(band.key)) + '</b><em>Sample band ' + band.lo + ' to ' + band.hi + '</em></div>' +
+          '<div><small>Planned race-day fitness</small><b>' + R.fit + '</b><em>' + rel(R.fit, band.lo, 'lower edge of the sample band') + '</em></div>' +
+          '<div><small>On current trend</small><b>' + SAMPLE.trend + '</b><em>' + rel(SAMPLE.trend, band.lo, 'lower edge of the sample band') + '</em></div>' +
+          '<div><small>Gap to the upper edge</small><b>' + (band.hi - SAMPLE.trend) + '</b><em>Sample figure only</em></div>' +
+        '</div>'
+      : '';
+
+    $('v-fit').innerHTML =
+      '<div class="sub-h"><p>Fitness is the 42-day average of training load. Each band is a sample range for a race distance: its lower and upper edges are illustrative and have not been set yet.</p>' +
+        '<span class="chip-sample"><i class="ic i-info" aria-hidden="true"></i>Sample data. Fitness calculations are coming soon</span></div>' +
+      '<div class="fplot">' +
+        '<div class="plot-y"><span>120</span><span>80</span><span>40</span><span>0</span></div>' +
+        '<svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Sample data. Planned fitness rises from ' + SAMPLE.start + ' to ' + R.fit + ' on race day in week ' + N +
+          '. Actual fitness so far is ' + SAMPLE.start + ' in week 1 and ' + T.fit + ' in week ' + (now + 1) + '. On the current trend it reaches ' + SAMPLE.trend + ' on race day. ' +
+          SAMPLE.bands.map((b) => b.name + ' band runs ' + b.lo + ' to ' + b.hi).join(', ') + '.">' + c.svg + '</svg>' +
+        '<div class="bands" aria-hidden="true">' + c.bands + '</div>' +
+        '<div class="plot-x">' + c.xlab + '</div>' +
+      '</div>' +
+      '<div class="fplot-key" aria-hidden="true">' + c.key + '</div>' +
+      '<div class="legend">' +
+        '<span class="lg" style="--c: var(--color-accent)"><i></i>Actual, synced from Garmin <span>' + T.fit + ' now</span></span>' +
+        '<span class="lg" style="--c: var(--color-accent-300)"><i class="dash"></i>Planned <span>' + R.fit + ' on race day</span></span>' +
+        '<span class="lg" style="--c: var(--color-accent)"><i class="dot"></i>On current trend <span>' + SAMPLE.trend + ' on race day</span></span>' +
+        '<span class="lg" style="--c: var(--color-text)"><i style="opacity:.5"></i>Race day, week ' + N + '</span>' +
+      '</div>' + goal;
+  }
+
+  function openFitnessInfo() {
+    panelShell(
+      '<h2>Fitness, fatigue and form</h2>' +
+      '<p class="pnl-sub">These numbers are a sample. Nothing computes them from your sessions yet, so none of them describes you.</p>' +
+      '<p class="pnl-hint">When they are worked out, <b>fitness</b> will be the average training load over the last 42 days and ' +
+        '<b>fatigue</b> the average over the last 7. <b>Form</b> is fitness minus fatigue. They will be worked out each time ' +
+        'the page opens from sessions synced through your Garmin bridge, and they will not be stored or put on your plan.</p>' +
+      '<div class="pnl-act"><button type="button" class="btn btn-primary" id="ffm-close">Close</button></div>',
+      'Fitness, fatigue and form',
+    );
+    $('ffm-close').addEventListener('click', closePanel);
+  }
+
+  /* The Season panel opens on Fitness. The choice is not stored. */
+  function setSeasonView(v) {
+    const fit = v !== 'load';
+    $('v-fit').classList.toggle('hidden', !fit);
+    $('v-load').classList.toggle('hidden', fit);
+    $('seasonview-seg').querySelectorAll('input').forEach((r) => { r.checked = r.value === (fit ? 'fit' : 'load'); });
+    if (!fit) renderChart();
+  }
+  $('seasonview-seg').addEventListener('change', (e) => setSeasonView(e.target.value));
+  $('ffm-root').addEventListener('click', (e) => { if (e.target.closest('[data-ffm-info]')) openFitnessInfo(); });
+  $('health-garmin').addEventListener('click', () => openGarminSetupPanel());
 
   /* ---- Init ---- */
 
