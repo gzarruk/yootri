@@ -117,7 +117,7 @@
   background: var(--side-bg); border-right: 1px solid var(--color-divider);
 }
 .main { flex: 1 1 0; min-width: 0; }
-.main .page { max-width: 1320px; margin: 0 auto; padding-top: 32px; padding-bottom: 24px; }
+.main .page { max-width: 1840px; margin: 0 auto; padding-top: 32px; padding-bottom: 24px; }
 .main .page-foot { padding-top: 0; padding-bottom: 40px; }
 .page-foot .im-foot { margin-top: 0; }
 
