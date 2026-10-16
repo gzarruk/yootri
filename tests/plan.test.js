@@ -5,6 +5,7 @@ import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
   refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId, moveSession,
   landingsOf, raceDayFor, freshWeek, isUntouchedPlan,
+  carryOver, upcomingEvents, consolidatePlans,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -787,4 +788,65 @@ test('loadPlan drops an athlete record put on a plan', () => {
   const p = loadPlan({ ...blank(), athlete: { weightKg: 71.4, sex: 'male' } });
   assert.equal('athlete' in p, false);
   assert.deepEqual(loadPlan(p), p, 'still idempotent');
+});
+
+/* ---- One plan per athlete ---- */
+
+const ev = (id, date, priority, kind = 'race') => ({
+  id, name: id, date, kind, raceType: kind === 'race' ? '70.3' : null, priority, note: '',
+});
+
+test('upcomingEvents keeps today and later, in date order, and drops the past', () => {
+  const events = [ev('late', '2027-06-01', 'primary'), ev('past', '2026-09-01', 'secondary'),
+    ev('today', '2026-10-16', null, 'other'), ev('mid', '2027-03-01', 'secondary')];
+  assert.deepEqual(upcomingEvents(events, '2026-10-16').map((e) => e.id), ['today', 'mid', 'late']);
+});
+
+test('carryOver brings the athlete\'s facts and the chosen future events, never the weeks or logs', () => {
+  const base = newPlan({ name: 'Old', startISO: '2026-01-05', raceDate: '2026-06-07', raceType: '70.3', now: 5 });
+  const p = {
+    ...base,
+    events: [ev('a', '2027-06-01', 'primary'), ev('b', '2027-03-01', 'secondary'), ev('gone', '2026-02-01', 'secondary')],
+    done: { x: true }, actuals: { y: {} }, chat: [{ role: 'user' }], weekBudgets: { w1: 5 },
+    benchmarks: [{ id: 'bm', distanceMeters: 10000, timeSeconds: 2700, date: '2026-05-01', source: 'manual', current: true }],
+    loadRefs: { ftpW: 250 },
+    activities: [], activitySync: undefined,
+  };
+  const c = carryOver(p, '2026-10-16', ['a', 'gone']);
+  assert.deepEqual(c.events.map((e) => e.id), ['a'], 'only chosen ids, and only if still upcoming');
+  assert.equal(c.events[0].id, 'a', 'ids are stable');
+  assert.deepEqual(c.loadRefs, { ftpW: 250 });
+  assert.equal(c.benchmarks.length, 1);
+  for (const k of ['done', 'actuals', 'chat', 'weekBudgets', 'weeks', 'season', 'release']) assert.ok(!(k in c), k);
+});
+
+test('consolidatePlans: the newest real plan is the plan, the rest are archived not deleted', () => {
+  const mk = (id, updatedAt, extra = {}) => ({ id, name: id, updatedAt, ...extra });
+  const out = consolidatePlans([mk('old', 1), mk('new', 3), mk('mid', 2)], { now: 99, isStandIn: () => false });
+  assert.equal(out.active.id, 'new');
+  assert.deepEqual(out.archived.map((p) => p.id).sort(), ['mid', 'old']);
+  assert.ok(out.archived.every((p) => p.archivedAt === 99));
+  assert.deepEqual(out.dropped, []);
+});
+
+test('consolidatePlans: untouched stand-ins are dropped, and ties break by id', () => {
+  const mk = (id, updatedAt) => ({ id, name: id, updatedAt });
+  const out = consolidatePlans([mk('b', 5), mk('a', 5), mk('stand', 9)], { now: 1, isStandIn: (p) => p.id === 'stand' });
+  assert.equal(out.active.id, 'a');
+  assert.deepEqual(out.dropped, ['stand']);
+  assert.deepEqual(out.archived.map((p) => p.id), ['b']);
+});
+
+test('consolidatePlans is idempotent and leaves already-archived plans out of the choice', () => {
+  const recs = [{ id: 'x', updatedAt: 1 }, { id: 'y', updatedAt: 2, archivedAt: 50 }];
+  const once = consolidatePlans(recs, { now: 1, isStandIn: () => false });
+  assert.equal(once.active.id, 'x');
+  assert.deepEqual(once.archived, []);
+  const twice = consolidatePlans([once.active, ...recs.slice(1)], { now: 2, isStandIn: () => false });
+  assert.equal(twice.active.id, 'x');
+});
+
+test('consolidatePlans with only a stand-in keeps it; with nothing returns no active plan', () => {
+  assert.equal(consolidatePlans([{ id: 's', updatedAt: 1 }], { isStandIn: () => true }).active.id, 's');
+  assert.equal(consolidatePlans([], {}).active, null);
 });

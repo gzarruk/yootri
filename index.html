@@ -1092,6 +1092,8 @@
   .legal b { color: var(--color-text); font-weight: 500; }
   .legal-about { font-size: .82rem; line-height: 1.65; margin: 0;
     color: color-mix(in srgb, var(--color-text) 70%, transparent); }
+  .pp-list { list-style: none; padding: 0; }
+  .pp-row { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .35rem 0; }
   .np-modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: .3rem 0 0; }
   .np-mode { text-align: left; padding: .6rem .75rem; border-radius: 10px; cursor: pointer;
     background: transparent; color: inherit; font: inherit;
@@ -1355,7 +1357,7 @@
      a browser (`npm test`). This file keeps the markup, styles and DOM. */
   import {
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
-    landingsOf, freshWeek, isUntouchedPlan,
+    landingsOf, freshWeek, isUntouchedPlan, carryOver, upcomingEvents, consolidatePlans,
   } from './assets/coach/plan.js';
   import { releaseState, isReleased, reviewWeek, proposeNextWeek, hardestSession } from './assets/coach/review.js';
   import { normalizeNight, mergeOvernight, overnightNights, overnightSyncWindow, compareNights } from './assets/coach/overnight.js';
@@ -1374,7 +1376,7 @@
   } from './assets/coach/actuals.js';
   import { minToDur } from './assets/coach/duration.js';
   import { createSession, sessionDiff, callTool, adviceCall } from './assets/coach/tools.js';
-  import { newPlan, FALLBACK_WEEKS, mintPlanId } from './assets/coach/plan.js';
+  import { newPlan, mintPlanId } from './assets/coach/plan.js';
   import {
     exportEnvelope, readPlanFile, adoptImported, summarizePlan,
   } from './assets/coach/portable.js';
@@ -1506,6 +1508,11 @@
   const planKey = (id) => STORE + '_plan_' + id;
   const loadIndex = () => load(STORE + '_plans') || [];
   const saveIndex = (ix) => save(STORE + '_plans', ix);
+  // Plans from the multi-plan era. The page holds one active plan; any others
+  // are kept here, read-only, until the athlete downloads or deletes them.
+  const loadArchive = () => load(STORE + '_archive') || [];
+  const saveArchive = (ix) => save(STORE + '_archive', ix);
+  const ARCHIVE_NOTICE_KEY = STORE + '_archive_notice';
   const loadPlanLocal = (id) => load(planKey(id));
   // The plan record carries the training data, so its outcome is what "is my work
   // saved?" actually means — the index and current-id keys are tiny metadata that
@@ -1516,7 +1523,8 @@
   const currentId = () => load(STORE + '_current');
   const setCurrentId = (id) => save(STORE + '_current', id);
 
-  let plans = [];   // index: [{ id, name }]
+  let plans = [];   // index of the active plan: [{ id, name }] — one entry
+  let archive = []; // index of archived plans: [{ id, name }]
   let plan = null;  // the current plan object
 
   /* The no-input path: bootstrap, and the stand-in after deleting your last
@@ -1552,8 +1560,31 @@
     return false;
   }
 
+  /* One active plan. Anything else that is live — plans from before this rule,
+     or ones another device synced in — is archived, not deleted; an untouched
+     stand-in is dropped. consolidatePlans decides, this applies it. Runs before
+     the page exists, so it never touches the DOM. Returns how many were archived. */
+  function settlePlans() {
+    const records = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean);
+    if (!records.length) return 0;
+    const { active, archived, dropped } = consolidatePlans(records, { now: now() });
+    archived.forEach((p) => {
+      savePlanLocal(p);
+      if (!archive.some((x) => x.id === p.id)) archive.push({ id: p.id, name: p.name });
+    });
+    dropped.forEach((id) => { remove(planKey(id)); cloudDelete(id); });
+    plans = active ? [{ id: active.id, name: active.name }] : [];
+    saveIndex(plans);
+    saveArchive(archive);
+    if (active && currentId() !== active.id) setCurrentId(active.id);
+    if (archived.length) save(ARCHIVE_NOTICE_KEY, (load(ARCHIVE_NOTICE_KEY) || 0) + archived.length);
+    return archived.length;
+  }
+
   function ensurePlans() {
     plans = loadIndex();
+    archive = loadArchive();
+    if (plans.length > 1) settlePlans();
     let made = null;
     if (!plans.length) {
       made = hasLegacy() ? migrateLegacy() : blankPlan('My plan');
@@ -2419,7 +2450,7 @@
   });
 
   function planIsUntouched() {
-    return plans.length === 1 && currentPlanUntouched();
+    return currentPlanUntouched();
   }
 
   function renderOrientation() {
@@ -2463,132 +2494,122 @@
   }
 
   /* =========================================================================
-     New plan — a clean canvas that does not disturb the old one.
+     Starting over — the only way a second season comes to exist.
 
-     Plans are separate records, so this never touches the season you already
-     have: its weeks, completions and logs stay exactly as they are, and the
-     plan menu switches back to it whenever you want. What is inherited is the
-     *profile* — your availability, constraints and splits — because a new race
-     does not mean a new life. The previous race date is deliberately not
-     carried over.
+     There is one plan. A new season replaces it: the athlete says which of the
+     races still to come to keep, and the setup wizard opens with them already
+     answered. Nothing is deleted until the wizard finishes (replaceCurrentPlan),
+     so backing out leaves the season exactly as it was. What is true of the
+     athlete — results, FTP/CSS, synced history, About you — comes along;
+     weeks, logs and the coach conversation do not.
      ========================================================================= */
 
-  let npMode = 'fitted';
+  const EVENT_ROLE = { primary: 'A race', secondary: 'B race' };
 
-  // A new season starts this week, not on whatever Monday the current plan
-  // happened to start — that may be months in the past.
-  function npWeeks() {
-    const race = $('np-race')?.value || null;
-    return weeksUntil(defaultStart(), race) ?? FALLBACK_WEEKS;
-  }
-
-  function npRenderLength() {
-    const el = $('np-len');
-    if (!el) return;
-    const race = $('np-race')?.value;
-    const n = npWeeks();
-    el.innerHTML = race
-      ? 'That is a <b>' + n + '-week</b> run-in. The season is built backwards from race week, so the taper lands on it.'
-      : 'No race date — defaulting to <b>' + FALLBACK_WEEKS + ' weeks</b>. You can set a date later in Plan setup.';
-  }
-
-  function openNewPlanPanel() {
-    npMode = 'fitted';
-    // A new plan is a new race, so a retired distance is not carried across
-    // even when the plan being copied from is built for one.
-    const opts = raceTypeOptions(plan.profile.raceType, { keepRetired: false });
-    const replacing = currentPlanUntouched();
-    const carried = [
-      state.benchmarks.length && 'your running result',
-      plan.loadRefs && 'FTP and CSS',
-      (plan.activities || []).length && 'synced Garmin activities',
-    ].filter(Boolean);
-
-    panelShell(
-      '<h2>New plan</h2>' +
-      (replacing
-        ? '<p class="pnl-sub">This takes the place of the starter plan yootri made on your first visit — ' +
-          'nothing has been done with that one yet.</p>'
-        : '<p class="pnl-sub">A separate season. "' + esc(plan.name || 'your current plan') +
-          '" keeps its weeks, its completed sessions and its logs — switch back any time from the plan menu.</p>') +
-      '<div class="pnl-grid">' +
-        field('Name', '<input type="text" class="input" id="np-name" value="' +
-          esc(replacing ? 'My season' : 'My plan ' + (plans.length + 1)) + '" />') +
-        field('Race date', '<input type="date" class="input" id="np-race" />') +
-        field('Race distance', '<select class="input" id="np-type">' + opts + '</select>') +
-      '</div>' +
-      '<p class="np-len" id="np-len"></p>' +
-      '<div class="pnl-sec">' +
-        '<span class="pnl-sub" style="display:block">How should it start?</span>' +
-        '<div class="np-modes" id="np-modes">' +
-          '<button type="button" class="np-mode on" data-mode="fitted">' +
-            '<b>Fitted season</b><span>A full periodised plan sized to the run-in — blocks, recovery weeks and a taper landing on race day.</span></button>' +
-          '<button type="button" class="np-mode" data-mode="empty">' +
-            '<b>Empty calendar</b><span>Every week blank. Add sessions yourself, or ask the coach to fill specific weeks.</span></button>' +
+  function openStartOverDialog() {
+    if (currentPlanUntouched()) return openWizard();
+    const upcoming = upcomingEvents(state.events, wizToday());
+    const rows = upcoming.map((e) =>
+      '<label class="np-check"><input type="checkbox" data-keep="' + esc(e.id) + '" checked />' +
+      '<span><b>' + esc(e.name || raceTypeLabel(e.raceType) || 'Event') + '</b> · ' +
+        esc(fmtLongDate(e.date)) + ' · ' + esc(EVENT_ROLE[e.priority] || 'Marker') + '</span></label>').join('');
+    els.dialogRoot.innerHTML =
+      '<div class="modal-backdrop" id="so-backdrop">' +
+        '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="so-title" style="width: min(460px, 100%);">' +
+          '<div class="dialog-head"><h3 id="so-title">Delete plan &amp; start over</h3></div>' +
+          '<p class="pnl-sub">“' + esc(plan.name || 'This plan') + '” — its weeks, completed sessions, logs and coach ' +
+            'conversation — is removed from this device' + (authUser ? ' and your account' : '') +
+            ' once you finish setting up the new one. Your results, FTP/CSS, synced Garmin history and About you stay.</p>' +
+          (rows
+            ? '<span class="pnl-sub" style="display:block">Keep these races on the calendar</span>' + rows
+            : '<p class="pnl-hint">No races or events are coming up, so there is nothing to keep.</p>') +
+          '<div class="dialog-foot" style="justify-content: flex-end;">' +
+            '<button type="button" class="btn btn-ghost spacer" data-so="import">Start from a plan file…</button>' +
+            '<span class="right"><button type="button" class="btn btn-secondary" data-so="cancel">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" data-so="ok">Continue</button></span>' +
+          '</div>' +
         '</div>' +
-        '<label class="np-check"><input type="checkbox" id="np-inherit" checked />' +
-          '<span>Use my current availability, constraints and discipline splits. Uncheck to start from defaults.</span></label>' +
-        (carried.length
-          ? '<p class="pnl-hint">Comes with you either way: ' + esc(carried.join(', ')) + '.</p>'
-          : '') +
-      '</div>' +
-      '<div class="pnl-act">' +
-        '<button type="button" class="btn btn-ghost" id="np-cancel">Cancel</button>' +
-        '<button type="button" class="btn btn-primary" id="np-create">Create plan</button>' +
-      '</div>',
-    );
-
-    npRenderLength();
-    $('np-cancel').addEventListener('click', closePanel);
-    $('np-race').addEventListener('change', npRenderLength);
-    $('np-race').addEventListener('input', npRenderLength);
-    $('np-modes').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-mode]');
+      '</div>';
+    const close = () => { els.dialogRoot.innerHTML = ''; els.dialogRoot.onclick = null; };
+    els.dialogRoot.onclick = (e) => {
+      if (e.target.id === 'so-backdrop') return close();
+      const b = e.target.closest('[data-so]');
       if (!b) return;
-      npMode = b.dataset.mode;
-      $('np-modes').querySelectorAll('.np-mode').forEach((x) => x.classList.toggle('on', x === b));
-    });
-    $('np-create').addEventListener('click', createNewPlan);
-    $('np-name').focus();
-  }
-
-  function createNewPlan() {
-    const race = $('np-race').value || null;
-    const created = newPlan({
-      name: $('np-name').value.trim() || 'My plan ' + (plans.length + 1),
-      startISO: defaultStart(),
-      raceDate: race,
-      raceType: $('np-type').value,
-      profile: $('np-inherit').checked ? plan.profile : undefined,
-      // What the athlete has done and measured comes along whatever the
-      // checkbox says: it is a fact about them, not a preference about the
-      // week, and a new race does not make last month's 10 km any slower.
-      benchmarks: state.benchmarks,
-      activities: plan.activities,
-      activitySync: plan.activitySync,
-      loadRefs: plan.loadRefs,
-      mode: npMode,
-      now: now(),
-    });
-    closePanel();
-    const replaced = dropIfUntouched();
-    addPlan(created);
-    setStatus('Created "' + (created.name || 'plan') + '" · ' + created.season.length + ' weeks' +
-      (replaced ? ' · in place of the starter plan' : ''));
+      if (b.dataset.so === 'cancel') return close();
+      if (b.dataset.so === 'import') { close(); return openImportPanel(null); }
+      const keep = Array.from(els.dialogRoot.querySelectorAll('[data-keep]'))
+        .filter((x) => x.checked).map((x) => x.dataset.keep);
+      const events = carryOver({ ...plan, events: state.events }, wizToday(), keep).events;
+      close();
+      openWizard({ restart: true, carry: events });
+    };
   }
 
   /* The page is never without a plan, so a first visit makes a stand-in "My
-     plan". Creating or importing a real season replaces it instead of leaving
-     an unused copy in the plan menu (and in the cloud). Only a plan nobody has
-     touched qualifies — see isUntouchedPlan. Returns whether one was dropped. */
-  function dropIfUntouched() {
-    if (!currentPlanUntouched()) return false;
-    const id = plan.id;
-    plans = plans.filter((x) => x.id !== id);
+     plan". Setting up a real season replaces it. Replacing a plan the athlete
+     has used is the same move with a ten-second Undo. Returns whether the
+     replaced plan was only the stand-in. */
+  function replaceCurrentPlan(next) {
+    const old = plan;
+    const standIn = currentPlanUntouched();
+    clearUndo();
+    plans = plans.filter((x) => x.id !== old.id);
     saveIndex(plans);
-    remove(planKey(id));
-    cloudDelete(id);
-    return true;
+    remove(planKey(old.id));
+    cloudDelete(old.id);
+    addPlan(next);
+    if (!standIn) armUndo({ kind: 'replace', plan: old, newId: next.id });
+    return standIn;
+  }
+
+  /* ---- Past plans: what the multi-plan era left behind -------------------- */
+
+  function showArchiveNotice() {
+    const n = load(ARCHIVE_NOTICE_KEY);
+    if (!n || els.panelRoot.firstChild) return;
+    remove(ARCHIVE_NOTICE_KEY);
+    panelShell(
+      '<h2>One plan at a time</h2>' +
+      '<p class="pnl-sub">yootri now keeps a single plan. ' + n + (n === 1 ? ' earlier plan was' : ' earlier plans were') +
+        ' moved to <b>Past plans</b> in the plan menu, where you can download or delete ' + (n === 1 ? 'it' : 'them') +
+        '. Nothing was deleted.</p>' +
+      '<div class="pnl-act"><button type="button" class="btn btn-primary" id="an-ok">OK</button></div>',
+      'Past plans');
+    $('an-ok').addEventListener('click', closePanel);
+  }
+
+  function openPastPlansPanel() {
+    const rows = archive.map((e) => {
+      const p = loadPlanLocal(e.id);
+      return '<li class="pp-row"><span><b>' + esc(e.name || 'Plan') + '</b>' +
+        (p ? ' · ' + weekCount(loadPlan(p)) + ' weeks' : '') + '</span>' +
+        '<span><button type="button" class="btn btn-ghost" data-pp="dl" data-id="' + esc(e.id) + '">Download</button>' +
+        '<button type="button" class="btn btn-ghost" data-pp="del" data-id="' + esc(e.id) + '">Delete</button></span></li>';
+    }).join('');
+    panelShell(
+      '<h2>Past plans</h2>' +
+      '<p class="pnl-sub">Kept for reference only — they are not training you and the coach does not see them.</p>' +
+      (rows ? '<ul class="wiz-list pp-list">' + rows + '</ul>' : '<p class="pnl-hint">No past plans.</p>') +
+      '<div class="pnl-act"><button type="button" class="btn btn-ghost" id="pp-close">Close</button></div>',
+      'Past plans');
+    $('pp-close').addEventListener('click', closePanel);
+    els.panelRoot.onclick = async (e) => {
+      const b = e.target.closest('[data-pp]');
+      if (!b) return;
+      const p = loadPlanLocal(b.dataset.id);
+      if (b.dataset.pp === 'dl' && p) {
+        downloadJson(exportEnvelope(p), (p.name || 'plan').replace(/[^\w-]+/g, '_').toLowerCase() + '.json');
+      } else if (b.dataset.pp === 'del') {
+        const ok = await confirmDialog('Delete past plan',
+          'Delete "' + (p?.name || 'this plan') + '" for good? This removes it from this device' + (authUser ? ' and the cloud' : '') + '.', 'Delete');
+        if (!ok) return;
+        archive = archive.filter((x) => x.id !== b.dataset.id);
+        saveArchive(archive);
+        remove(planKey(b.dataset.id));
+        cloudDelete(b.dataset.id);
+        openPastPlansPanel();
+      }
+    };
   }
 
   /* =========================================================================
@@ -2864,6 +2885,7 @@
   function closePanel() {
     draft = null;
     els.panelRoot.innerHTML = '';
+    els.panelRoot.onclick = null;
     document.removeEventListener('keydown', onPanelKey);
   }
 
@@ -3896,12 +3918,20 @@
       strays.forEach((e) => remove(planKey(e.id)));
       plans = plans.filter((e) => !strays.includes(e));
     }
-    plans.forEach((e) => {
+    // A plan archived on another device arrives flagged: it belongs in Past
+    // plans here too, not in the index of the one active plan.
+    const flagged = plans.filter((e) => loadPlanLocal(e.id)?.archivedAt);
+    flagged.forEach((e) => { if (!archive.some((x) => x.id === e.id)) archive.push(e); });
+    plans = plans.filter((e) => !flagged.includes(e));
+    // Then the one-plan rule: the newest season stays, any others are archived.
+    settlePlans();
+    [...plans, ...archive].forEach((e) => {
       const lp = loadPlanLocal(e.id);
       const cp = cloudById[e.id];
       if (lp && (!cp || (lp.updatedAt || 0) > (cp.updatedAt || 0))) pushPlan(lp);
     });
     saveIndex(plans);
+    saveArchive(archive);
 
     // If the current plan was the stand-in just dropped, land on the season
     // most recently worked on rather than whichever happens to be listed first.
@@ -3926,6 +3956,7 @@
       setStatus('Synced ' + timeStr());
       renderAll();
       renderAccount();
+      showArchiveNotice();
       // An account that brought no season with it is somebody starting out.
       maybeStartWizard();
     } catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
@@ -3948,16 +3979,8 @@
   }
 
   /* =========================================================================
-     Plans: create / switch / rename / duplicate / delete
+     The plan: rename, replace (Undo), and the archive of earlier plans
      ========================================================================= */
-
-  function switchPlan(id) {
-    const p = loadPlanLocal(id);
-    if (!p) return;
-    setCurrentId(id);
-    adoptPlan(p);
-    renderAll();
-  }
 
   function addPlan(p) {
     savePlanLocal(p);
@@ -3982,15 +4005,7 @@
     renderStatus();
   }
 
-  function duplicatePlan(name) {
-    const copy = JSON.parse(JSON.stringify(plan));
-    copy.id = 'p-' + uid4();
-    copy.name = name;
-    copy.updatedAt = now();
-    addPlan(copy);
-  }
-
-  /* Deleting a plan throws away a whole season, so it stays recoverable for a
+  /* Replacing a plan throws away a whole season, so it stays recoverable for a
      short window: the full plan object is stashed and re-pushed on undo. The
      cloud write is a setDoc at a fixed id, so restoring recreates it exactly. */
   const UNDO_MS = 10000;
@@ -4004,32 +4019,8 @@
     els.undoBtn.classList.add('hidden');
   }
 
-  function deletePlan(id) {
-    const doomed = loadPlanLocal(id);
-    if (!doomed) return;
-    clearUndo();
-    pendingUndo = { plan: doomed, index: plans.findIndex((x) => x.id === id), wasCurrent: currentId() === id };
-
-    plans = plans.filter((x) => x.id !== id);
-    saveIndex(plans);
-    remove(planKey(id));
-    cloudDelete(id);
-    if (!plans.length) {
-      const p = blankPlan('My plan');
-      savePlanLocal(p);
-      plans = [{ id: p.id, name: p.name }];
-      saveIndex(plans);
-      setCurrentId(p.id);
-      adoptPlan(p);
-      if (cloudReady() && authUser) pushPlan(p);
-      pendingUndo.autoCreatedId = p.id;
-    } else if (currentId() === id) {
-      setCurrentId(plans[0].id);
-      adoptPlan(loadPlanLocal(plans[0].id));
-    }
-    renderAll();
-
-    setStatus('Deleted "' + (doomed.name || 'plan') + '"');
+  function armUndo(entry) {
+    pendingUndo = entry;
     els.undoBtn.classList.remove('hidden');
     undoTimer = setTimeout(clearUndo, UNDO_MS);
   }
@@ -4046,23 +4037,17 @@
       setStatus(label);
       return;
     }
-    const { plan: p, index, wasCurrent, autoCreatedId } = pendingUndo;
+    // A replaced season: take the new plan away and put the old one back.
+    const { plan: p, newId } = pendingUndo;
     clearUndo();
+    plans = plans.filter((x) => x.id !== newId);
+    remove(planKey(newId));
+    cloudDelete(newId);
     savePlanLocal(p);
-    if (!plans.some((x) => x.id === p.id)) {
-      plans.splice(index < 0 ? plans.length : index, 0, { id: p.id, name: p.name });
-    }
-    // Deleting the last plan spawns a blank stand-in; drop it again on undo.
-    if (autoCreatedId) {
-      const stand = loadPlanLocal(autoCreatedId);
-      if (isUntouchedPlan(stand)) {
-        plans = plans.filter((x) => x.id !== autoCreatedId);
-        remove(planKey(autoCreatedId));
-        cloudDelete(autoCreatedId);
-      }
-    }
+    plans = [{ id: p.id, name: p.name }];
     saveIndex(plans);
-    if (wasCurrent || !loadPlanLocal(currentId())) { setCurrentId(p.id); adoptPlan(p); }
+    setCurrentId(p.id);
+    adoptPlan(p);
     if (cloudReady() && authUser) pushPlan(p);
     renderAll();
     setStatus('Restored "' + (p.name || 'plan') + '"');
@@ -4094,7 +4079,7 @@
      needs no asking. Heart rate and coach conversations are not in it for the
      reason they are in no export: they never leave this browser. */
   function downloadMyData() {
-    const all = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean).map((p) => exportEnvelope(p).plan);
+    const all = [...plans, ...archive].map((e) => loadPlanLocal(e.id)).filter(Boolean).map((p) => exportEnvelope(p).plan);
     downloadJson({
       _type: 'yootri-my-data',
       version: 1,
@@ -4157,9 +4142,10 @@
           '<b>Export this plan</b>. The whole season travels in it: your hours and availability, ' +
           'the block structure, every session, what you have ticked off and anything you have logged.</p>' +
         (error ? '<div class="diff-issues"><b class="err">' + esc(error) + '</b></div>' : '') +
-        '<p class="pnl-hint">An imported plan arrives alongside the ones you already have — ' +
-          '"' + esc(plan.name || 'your current plan') + '" is not touched, and you can switch ' +
-          'between them from the plan menu.</p>' +
+        (currentPlanUntouched()
+          ? '<p class="pnl-hint">An imported plan takes the place of the starter plan yootri made on your first visit.</p>'
+          : '<p class="pnl-hint">An imported plan <b>replaces</b> "' + esc(plan.name || 'your current plan') +
+            '" — you can undo it for a few seconds afterwards.</p>') +
         '<div class="pnl-act">' +
           '<button type="button" class="btn btn-ghost spacer" id="imp-example">Try the example plan</button>' +
           '<button type="button" class="btn btn-ghost" id="imp-cancel">Cancel</button>' +
@@ -4248,8 +4234,7 @@
       name: String(typed || '').trim() || fallback,
     });
     closePanel();
-    const replaced = dropIfUntouched();
-    addPlan(p);
+    const replaced = replaceCurrentPlan(p);
     setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' +
       (replaced ? ' · in place of the starter plan' : ''));
   }
@@ -4419,9 +4404,13 @@
      is the untouched stand-in, which has nothing worth carrying. */
   const wizBase = () => (currentPlanUntouched() ? null : plan);
 
-  function openWizard({ restart = false } = {}) {
+  let wizCarry = null;   // the races kept when starting over, so the wizard's own restart keeps them
+
+  function openWizard({ restart = false, carry = null } = {}) {
+    if (carry) wizCarry = carry;
+    carry = carry ?? wizCarry;
     const saved = restart ? null : wizSaved();
-    const allPlans = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean);
+    const allPlans = [...plans, ...archive].map((e) => loadPlanLocal(e.id)).filter(Boolean);
     const returning = isReturning({ athlete: loadAthlete(), plans: allPlans });
     if (restart) remove(WIZ_KEY);
     wiz = saved
@@ -4429,7 +4418,7 @@
       : {
         step: 0, problems: [], returning, resumed: false,
         answers: {
-          ...prefill({ athlete: loadAthlete(), plan: wizBase() ?? plan, today: wizToday() }),
+          ...prefill({ athlete: loadAthlete(), plan: wizBase() ?? plan, today: wizToday(), carry }),
           keepInAccount: hasHealthConsent(),
         },
       };
@@ -4451,7 +4440,7 @@
     markOriented();
     closePanel();
     renderOrientation();
-    setStatus('Season setup saved — pick it up again from New season in the plan menu');
+    setStatus('Season setup saved — pick it up again from the plan menu');
   }
 
   const WIZ_TITLES = {
@@ -4548,7 +4537,7 @@
       return '<h2>Start a new season</h2>' +
         '<p class="pnl-sub">The questions are the same as the first time, already filled in with what yootri knows — check them, ' +
           'change what has changed, and choose the race. ' +
-          (currentPlanUntouched() ? '' : '“' + esc(plan.name) + '” stays as it is; the new season is a separate plan you can switch between.') + '</p>' +
+          (currentPlanUntouched() ? '' : '“' + esc(plan.name) + '” is replaced when you finish — nothing is removed before then.') + '</p>' +
         (known.length ? '<span class="pnl-sub" style="display:block">Already known</span><ul class="wiz-list">' +
           known.map((k) => '<li>' + esc(k) + '</li>').join('') + '</ul>' : '') +
         (gaps.length ? '<span class="pnl-sub" style="display:block;margin-top:.6rem">Worth adding this time</span><ul class="wiz-list">' +
@@ -4802,8 +4791,8 @@
       if (hasHealthConsent()) await pushAthlete();
     }
 
-    const replaced = dropIfUntouched();
-    addPlan(built);
+    const replaced = replaceCurrentPlan(built);
+    wizCarry = null;
     remove(WIZ_KEY);
     markOriented();
     wiz = null;
@@ -6415,32 +6404,20 @@
   }
 
   function openPlanMenu() {
-    const soleplan = plans.length <= 1;
+    const standIn = currentPlanUntouched();
     els.menuRoot.innerHTML =
       '<div class="pmenu" role="menu" aria-labelledby="plan-title">' +
-        '<div class="pmenu-list">' +
-          plans.map((e) => {
-            const cur = plan && e.id === plan.id;
-            return '<button type="button" role="menuitemradio" aria-checked="' + (cur ? 'true' : 'false') + '" ' +
-              'class="pmenu-item" data-pm="switch" data-id="' + esc(e.id) + '">' +
-              '<i class="ph ph-check" aria-hidden="true"' + (cur ? '' : ' style="visibility: hidden;"') + '></i>' +
-              '<span class="pmenu-label">' + esc(e.name) + '</span></button>';
-          }).join('') +
-        '</div>' +
-        '<div class="pmenu-sep" role="separator"></div>' +
         menuRow('rename', 'pencil-simple', 'Rename') +
-        menuRow('dup', 'copy', 'Duplicate') +
         menuRow('export', 'download-simple', 'Export this plan') +
         menuRow('paces', 'gauge', 'Training paces…') +
         menuRow('athlete', 'user-circle', 'About you…') +
         menuRow('release', 'calendar-check', plan.release ? 'Show the whole season' : 'Show one week at a time') +
-        '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="delete"' +
-          (soleplan ? ' aria-disabled="true"' : '') + '>' +
-          '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
         '<div class="pmenu-sep" role="separator"></div>' +
-        menuRow('new', 'plus', 'New season…') +
-        menuRow('blank', 'file-plus', 'Blank plan…') +
-        menuRow('import', 'upload-simple', 'Import plan…') +
+        (standIn
+          ? menuRow('startover', 'plus', 'Set up my season…') + menuRow('import', 'upload-simple', 'Import plan…')
+          : '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="startover">' +
+            '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan &amp; start over…</span></button>') +
+        (archive.length ? menuRow('past', 'archive', 'Past plans…') : '') +
         menuRow('mydata', 'archive', 'Download my data') +
       '</div>';
     els.planTitle.setAttribute('aria-expanded', 'true');
@@ -6479,8 +6456,7 @@
 
   // Menu actions that open a dialog must close the menu first — #menu-root and
   // #dialog-root are separate roots and must not be live at the same time.
-  async function runMenuAction(act, id) {
-    if (act === 'switch') { closePlanMenu(false); if (id !== plan.id) switchPlan(id); return; }
+  async function runMenuAction(act) {
     closePlanMenu(act !== 'rename');
     if (act === 'rename') return startRename();
     if (act === 'export') return exportPlan();
@@ -6489,18 +6465,8 @@
     if (act === 'athlete') return openAthletePanel();
     if (act === 'release') return toggleRelease();
     if (act === 'mydata') return downloadMyData();
-    if (act === 'blank') return openNewPlanPanel();
-    if (act === 'new') {
-      return openWizard();
-    } else if (act === 'dup') {
-      const name = await nameDialog('Duplicate plan', (plan.name || 'Plan') + ' copy', 'Duplicate');
-      if (name) duplicatePlan(name);
-    } else if (act === 'delete') {
-      if (plans.length <= 1) return;
-      const ok = await confirmDialog('Delete plan',
-        'Delete "' + (plan.name || 'this plan') + '"? This removes it from this device' + (authUser ? ' and the cloud' : '') + '.', 'Delete');
-      if (ok) deletePlan(plan.id);
-    }
+    if (act === 'past') return openPastPlansPanel();
+    if (act === 'startover') return openStartOverDialog();
   }
 
   /* ---- Inline rename: the title edits itself in place ---- */
@@ -6552,7 +6518,7 @@
   els.menuRoot.addEventListener('click', (e) => {
     const b = e.target.closest('.pmenu-item');
     if (!b || b.getAttribute('aria-disabled') === 'true') return;
-    runMenuAction(b.dataset.pm, b.dataset.id);
+    runMenuAction(b.dataset.pm);
   });
   els.undoBtn.addEventListener('click', undoDelete);
   els.importFile.addEventListener('change', (e) => {
@@ -6850,6 +6816,7 @@
   renderAll();
   renderAccount();
   maybeShowFirstRun();
+  showArchiveNotice();
 
   // A Strava connection finishes on a redirect back to this page, so the code
   // in the address bar has to be spent on the way in. Does nothing at all
