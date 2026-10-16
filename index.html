@@ -1137,7 +1137,7 @@
                (tools/garmin-bridge). Not the cloud Sync button in the toolbar:
                this one talks only to 127.0.0.1. Hidden until this browser is
                paired, so the published page offers nothing a visitor cannot use. -->
-          <button type="button" class="nav hidden" id="garmin-btn"><i class="ic i-watch" aria-hidden="true"></i><span class="nav-txt">Garmin</span><span class="dot" title="Paired"></span></button>
+          <button type="button" class="nav hidden" id="garmin-btn"><i class="ic i-watch" aria-hidden="true"></i><span class="nav-txt">Garmin<small class="nav-sub" id="garmin-state" role="status">Not checked yet</small></span><span class="dot off" id="garmin-dot" aria-hidden="true"></span></button>
         </div>
 
         <div class="side-foot">
@@ -1450,7 +1450,7 @@
   } from './assets/coach/activities.js';
   import {
     ingestSynced, mergeActivities, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, bridgeErrorMessage,
-    BRIDGE_URL_RE, MIN_TOKEN, parsePairing,
+    BRIDGE_URL_RE, MIN_TOKEN, parsePairing, bridgeState,
   } from './assets/coach/synced.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
@@ -1768,6 +1768,7 @@
     els.viewSeg.querySelectorAll('input[name="view"]').forEach((r) => { r.checked = r.value === state.view; });
     syncNav();
     els.garminBtn.classList.toggle('hidden', !garminConfig());
+    renderBridgeState();
     els.garminSendBtn.classList.toggle('hidden', !garminConfig());
 
     if (state.view === 'month') {
@@ -5783,7 +5784,7 @@
   const bridgeError = (code) =>
     Object.assign(new Error(bridgeErrorMessage(code, { secure: location.protocol === 'https:' })), { code });
 
-  async function bridgeFetch(path, cfg = garminConfig(), post = null) {
+  async function bridgeFetch(path, cfg = garminConfig(), post = null, timeoutMs = GARMIN_TIMEOUT_MS) {
     if (!cfg) throw bridgeError('not_configured');
     let res;
     try {
@@ -5791,7 +5792,7 @@
         ...(post ? { method: 'POST', body: JSON.stringify(post) } : {}),
         headers: { Authorization: 'Bearer ' + cfg.token, ...(post ? { 'Content-Type': 'application/json' } : {}) },
         cache: 'no-store',
-        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(GARMIN_TIMEOUT_MS) : undefined,
+        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : undefined,
       });
     } catch (e) {
       // A refused connection, a blocked one (Safari, or Chrome's local network
@@ -5812,6 +5813,7 @@
       '<h2>Garmin</h2>' +
       '<p class="pnl-sub">Pair this browser with the Garmin bridge running on this computer. Start it with ' +
         '<code>make garmin</code>, then <code>make garmin-pair</code> opens a link that pairs this browser in one click. To pair by hand, paste the address and token <code>make garmin</code> prints.</p>' +
+      '<div class="rows"><div class="row"><span>Bridge</span><b id="gm-state"></b></div></div>' +
       '<div class="pnl-grid">' +
         field('Bridge address', '<input type="text" class="input" id="gm-url" value="' + esc(cfg.url) + '" spellcheck="false" />') +
         field('Pairing token', '<input type="password" class="input" id="gm-token" value="' + esc(cfg.token) + '" autocomplete="off" spellcheck="false" />') +
@@ -5831,6 +5833,7 @@
       '</div>',
       'Garmin',
     );
+    renderBridgeState();
 
     const typed = () => ({ url: $('gm-url').value.trim().replace(/\/+$/, ''), token: $('gm-token').value.trim() });
     const valid = (c) => GARMIN_URL_RE.test(c.url) && c.token.length >= MIN_TOKEN;
@@ -5846,6 +5849,7 @@
       if (!valid(c)) { openGarminSetupPanel(invalid); return; }
       try {
         const st = await bridgeFetch('/v1/status', c);
+        bridgeNow = bridgeState({ status: st });
         const nightsOff = overnightOn() && !st.overnight
           ? ' It is not reading sleep and overnight heart rate: start it with `YOOTRI_GARMIN_OVERNIGHT=1 make garmin`.' : '';
         openGarminSetupPanel((st.connected
@@ -5854,6 +5858,7 @@
         st.connected && !nightsOff ? 'ok' : 'err');
         $('gm-url').value = c.url; $('gm-token').value = c.token;
       } catch (e) {
+        bridgeNow = bridgeState({ error: e.code || 'internal' });
         openGarminSetupPanel(e.message);
         $('gm-url').value = c.url; $('gm-token').value = c.token;
       }
@@ -5865,6 +5870,7 @@
       closePanel();
       renderToolbar();
       setStatus('Paired with the Garmin bridge');
+      checkBridge();
     });
     const forget = $('gm-forget');
     if (forget) forget.addEventListener('click', () => {
@@ -5990,6 +5996,7 @@
       if (save(GARMIN_CONFIG_KEY, pairing)) {
         renderToolbar();
         setStatus('Paired with the Garmin bridge');
+        checkBridge();
       } else if (ackSeen()) {
         openGarminSetupPanel('This browser would not store the pairing.');
       }
@@ -5999,6 +6006,41 @@
       openGarminSetupPanel(fragmentGiven ? 'That pairing link could not be used. Run `make garmin-pair` again, or paste the address and token here.' : undefined);
     }
   }
+
+  /* Is the bridge there, and signed in? Asked only of a browser that has been
+     paired — an unpaired one makes no request to this computer at all, so the
+     published page never provokes a local-network prompt for a visitor who never
+     meant to use it. The answer is words under the Garmin item and a row in its
+     panel; nothing else depends on it, and a sync still tries whatever it says. */
+  let bridgeNow = { state: 'unknown', label: 'Not checked yet', hint: '' };
+  let bridgeCheckedAt = 0;
+
+  function renderBridgeState() {
+    const paired = !!garminConfig();
+    const b = paired ? bridgeNow : { state: 'unknown', label: 'Not paired', hint: '' };
+    const el = $('garmin-state');
+    if (el) el.textContent = b.label;
+    const dot = $('garmin-dot');
+    if (dot) { dot.classList.toggle('off', b.state !== 'ready'); dot.title = b.label; }
+    const row = $('gm-state');
+    if (row) row.textContent = b.label;
+  }
+
+  async function checkBridge(cfg = garminConfig()) {
+    if (!cfg) { bridgeNow = { state: 'unknown', label: 'Not paired', hint: '' }; renderBridgeState(); return bridgeNow; }
+    bridgeCheckedAt = Date.now();
+    try {
+      bridgeNow = bridgeState({ status: await bridgeFetch('/v1/status', cfg, null, 3000) });
+    } catch (e) {
+      bridgeNow = bridgeState({ error: e.code || 'internal' });
+    }
+    renderBridgeState();
+    return bridgeNow;
+  }
+
+  // Looking at the page again is a good moment to look at the bridge, at most
+  // twice a minute.
+  window.addEventListener('focus', () => { if (garminConfig() && Date.now() - bridgeCheckedAt > 30000) checkBridge(); });
 
   let garminBusy = false;
   let garminReview = null;
@@ -6017,6 +6059,7 @@
       garminBusy = false;
       els.garminBtn.disabled = false;
       setStatus('Garmin: not synced', true);
+      checkBridge();
       openGarminSetupPanel(e.message);
       return;
     }
@@ -6036,6 +6079,7 @@
     if (coach && coach.session) coach.session.plan = plan;
 
     const found = matchActivities(plan, plan.activities, { from: body.since, to: body.until });
+    bridgeNow = bridgeState({ status: { ok: true, connected: true } });
     renderAll();
     setStatus('Garmin: ' + got.activities.length + ' activit' + (got.activities.length === 1 ? 'y' : 'ies') + ' read');
     openGarminReviewPanel({
@@ -7389,6 +7433,7 @@
 
   // `?garmin=setup` pairs this browser with the bridge (see the Garmin section).
   maybeOpenGarminSetup();
+  if (garminConfig()) checkBridge();
 
   // The Firebase module (below) is a deferred module, so it loads after this
   // classic script. Bind when it signals ready; if it never loads, stay local.

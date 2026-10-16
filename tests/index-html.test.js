@@ -661,3 +661,21 @@ test('the loopback rule for a pairing is the engine\'s, not a copy', () => {
   assert.match(HTML, /const GARMIN_URL_RE = BRIDGE_URL_RE;/);
   assert.doesNotMatch(HTML, /GARMIN_URL_RE = \/\^http/, 'the page has its own loopback pattern again');
 });
+
+/* ---- The bridge's state in the page ---- */
+
+test('the bridge is only asked about by a browser that has been paired', () => {
+  const check = fnBody('checkBridge');
+  assert.match(check, /if \(!cfg\)[\s\S]*?return/, 'checkBridge must stop before any request when nothing is paired');
+  assert.ok(check.indexOf('if (!cfg)') < check.indexOf('bridgeFetch('), 'the pairing check comes first');
+  // Every place it is started is gated on a pairing or follows one.
+  assert.match(HTML, /if \(garminConfig\(\)\) checkBridge\(\);/);
+  assert.match(HTML, /if \(garminConfig\(\) && Date\.now\(\) - bridgeCheckedAt > 30000\) checkBridge\(\)/);
+});
+
+test('the state is words, not only a colour, and comes from the engine', () => {
+  assert.match(fnBody('checkBridge'), /bridgeState\(/);
+  assert.match(fnBody('renderBridgeState'), /textContent = b\.label/);
+  assert.match(HTML, /id="garmin-state" role="status"/);
+  assert.match(HTML, /<div class="row"><span>Bridge<\/span><b id="gm-state">/);
+});

@@ -7,7 +7,7 @@ import {
   MAX_RANGE_DAYS, NAME_MAX,
   splitSynced, normalizeSyncedActivity, normalizeActivities, ingestSynced, mergeActivities,
   normalizeActivitySync, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, asRunEffort,
-  bridgeErrorMessage, BRIDGE_ERROR_CODES, BRIDGE_URL_RE, parsePairing,
+  bridgeErrorMessage, BRIDGE_ERROR_CODES, BRIDGE_URL_RE, parsePairing, bridgeState,
 } from '../assets/coach/synced.js';
 import { benchmarkCandidates } from '../assets/coach/activities.js';
 
@@ -339,4 +339,49 @@ test('a short, missing or odd token is refused, and nothing throws', () => {
 
 test('an ordinary page route is never mistaken for a pairing', () => {
   for (const hash of ['#/week', '#/calendar', '#/biometrics']) assert.equal(parsePairing(hash), null);
+});
+
+/* ---- what state the bridge is in ---- */
+
+test('a signed-in bridge is ready', () => {
+  const s = bridgeState({ status: { ok: true, connected: true } });
+  assert.equal(s.state, 'ready');
+  assert.match(s.label, /ready/i);
+});
+
+test('a bridge that is up but not signed in to Garmin says to sign in, with the command', () => {
+  const s = bridgeState({ status: { ok: true, connected: false } });
+  assert.equal(s.state, 'not-signed-in');
+  assert.match(s.hint, /make garmin-login/);
+  assert.equal(bridgeState({ error: 'auth_required' }).state, 'not-signed-in');
+  assert.equal(bridgeState({ error: 'mfa_required' }).state, 'not-signed-in');
+});
+
+test('no answer at all means the bridge is not running, and says how to start it', () => {
+  const s = bridgeState({ error: 'unreachable' });
+  assert.equal(s.state, 'unreachable');
+  assert.match(s.label, /not running/i);
+  assert.match(s.hint, /make garmin/);
+});
+
+test('a refused token or page says what to do about the pairing', () => {
+  const t = bridgeState({ error: 'unauthorized' });
+  assert.equal(t.state, 'wrong-token');
+  assert.match(t.hint, /make garmin-pair/);
+  assert.equal(bridgeState({ error: 'forbidden_origin' }).state, 'wrong-token');
+});
+
+test('anything else is a problem with the sentence the bridge code already has', () => {
+  const s = bridgeState({ error: 'rate_limited' });
+  assert.equal(s.state, 'problem');
+  assert.equal(s.hint, bridgeErrorMessage('rate_limited'));
+});
+
+test('before any check the state is unknown, and every state has a label and a hint or is quiet', () => {
+  assert.equal(bridgeState().state, 'unknown');
+  assert.equal(bridgeState({}).state, 'unknown');
+  for (const code of BRIDGE_ERROR_CODES) {
+    const s = bridgeState({ error: code });
+    assert.ok(s.state && s.label, code);
+  }
 });

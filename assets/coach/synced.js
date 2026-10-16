@@ -298,7 +298,7 @@ const MISMATCH = 'This page and the Garmin bridge disagree about how to talk to 
 const BRIDGE_MESSAGES = {
   unreachable: 'The Garmin bridge did not answer. Start it with `make garmin` in a terminal on this computer, then sync again.',
   not_configured: 'This browser is not paired with a Garmin bridge yet. Start the bridge with `make garmin` and open the setup link it prints.',
-  unauthorized: 'The bridge did not accept this browser’s pairing token. Paste the token `make garmin` prints into the Garmin setup panel again.',
+  unauthorized: 'The bridge did not accept this browser’s pairing token. Run `make garmin-pair` to pair this browser again, or paste the token `make garmin` prints into the Garmin setup panel.',
   forbidden_origin: 'The bridge does not allow this page. Use yootri from http://localhost:8000, or start the bridge with `--allow-origin` set to this page’s address.',
   bad_host: 'The bridge only answers at 127.0.0.1 or localhost. Check the address in the Garmin setup panel.',
   not_found: MISMATCH,
@@ -353,4 +353,34 @@ export function parsePairing(hash) {
   const token = (params.get('token') ?? '').trim();
   if (!BRIDGE_URL_RE.test(url) || token.length < MIN_TOKEN) return null;
   return { url, token };
+}
+
+/**
+ * What state the bridge is in, in words for the athlete, from the answer to
+ * `/v1/status` (`{ status }`) or from the error code a failed call came back
+ * with (`{ error }`). `state` is for the page to switch on; `label` is short
+ * enough to sit under a menu item; `hint` says what to do, with the command.
+ * Nothing is asked of the bridge here — this only reads an answer already had.
+ */
+export function bridgeState({ status, error } = {}) {
+  if (status && status.ok === true) {
+    return status.connected === true
+      ? { state: 'ready', label: 'Ready', hint: 'The bridge is running and signed in to Garmin.' }
+      : { state: 'not-signed-in', label: 'Sign in to Garmin', hint: BRIDGE_MESSAGES.auth_required };
+  }
+  switch (error) {
+    case undefined:
+    case null:
+      return { state: 'unknown', label: 'Not checked yet', hint: '' };
+    case 'unreachable':
+      return { state: 'unreachable', label: 'Bridge not running', hint: BRIDGE_MESSAGES.unreachable };
+    case 'auth_required':
+    case 'mfa_required':
+      return { state: 'not-signed-in', label: 'Sign in to Garmin', hint: BRIDGE_MESSAGES[error] };
+    case 'unauthorized':
+    case 'forbidden_origin':
+      return { state: 'wrong-token', label: error === 'unauthorized' ? 'Pair again' : 'Page not allowed', hint: BRIDGE_MESSAGES[error] };
+    default:
+      return { state: 'problem', label: 'Bridge problem', hint: bridgeErrorMessage(error) };
+  }
 }

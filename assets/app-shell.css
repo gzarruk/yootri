@@ -391,3 +391,5 @@ table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transp
   .page[data-page="status"] .plot, .page[data-page="status"] .panel { min-width: 0; }
 }
 #status-root { display: flex; flex-direction: column; gap: 14px; }
+.nav-sub { display: block; margin-top: 1px; font-size: 11px; line-height: 1.3; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+.nav.on .nav-sub, .nav:hover .nav-sub { color: color-mix(in srgb, var(--color-text) 72%, transparent); }
