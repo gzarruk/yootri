@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yootri: biometrics</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yootri/components/bundle.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="yt shell" data-theme="{{theme}}">
+  <div class="side-wrap">
+    <dc-import name="Sidebar" active="bio" theme="{{theme}}" on-theme="{{setTheme}}" hint-size="248px,1140px"></dc-import>
+  </div>
+
+  <main class="main">
+    <div class="main-in">
+
+      <header style="display: flex; flex-direction: column; gap: 10px">
+        <div class="hdr-top">
+          <span class="kicker">Athlete</span>
+          <span class="hdr-actions"><button class="btn btn-primary"><i class="ic i-check"></i>Save changes</button></span>
+        </div>
+        <div>
+          <h1 class="im-h1">Biometrics</h1>
+          <p class="im-sub">About you, your thresholds and your training paces. This stays on your account and never travels with a plan file.</p>
+        </div>
+      </header>
+
+      <div class="grid-2">
+        <section class="panel" aria-label="About you">
+          <div class="panel-h"><span class="card-kicker">About you</span></div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+            <div class="field"><label for="b-year">Birth year</label><input id="b-year" class="input" inputmode="numeric" placeholder="e.g. 1985"></div>
+            <div class="field"><label for="b-sex">Sex</label><select id="b-sex" class="input"><option>Prefer not to say</option><option>Female</option><option>Male</option></select></div>
+            <div class="field"><label for="b-h">Height (cm)</label><input id="b-h" class="input" inputmode="numeric" placeholder="cm"></div>
+            <div class="field"><label for="b-w">Weight (kg)</label><input id="b-w" class="input" inputmode="decimal" placeholder="kg"></div>
+          </div>
+          <div class="field"><label for="b-bg">Background</label><select id="b-bg" class="input"><option>Triathlon</option><option>Cycling</option><option>Running</option><option>Swimming</option><option>New to endurance sport</option></select></div>
+          <div class="field"><label for="b-rec">Recent training (hours per week)</label><input id="b-rec" class="input" inputmode="decimal" placeholder="Average over the last 8 weeks"></div>
+          <div class="field"><label for="b-eq">Equipment</label><input id="b-eq" class="input" placeholder="Power meter, smart trainer, pool access…"></div>
+          <div class="field"><label for="b-goal">Goal</label><textarea id="b-goal" class="input" placeholder="What does a good season look like?"></textarea></div>
+        </section>
+
+        <div style="display: flex; flex-direction: column; gap: 14px">
+          <section class="panel" aria-label="Thresholds">
+            <div class="panel-h"><span class="card-kicker">Thresholds</span></div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px">
+              <div class="field"><label for="t-ftp">Bike FTP (watts)</label><input id="t-ftp" class="input" inputmode="numeric" placeholder="W"></div>
+              <div class="field"><label for="t-hr">Threshold heart rate (bpm)</label><input id="t-hr" class="input" inputmode="numeric" placeholder="bpm"></div>
+              <div class="field"><label for="t-css">Swim threshold (per 100 m)</label><input id="t-css" class="input" placeholder="m:ss"></div>
+              <div class="field"><label for="t-max">Max heart rate (bpm)</label><input id="t-max" class="input" inputmode="numeric" placeholder="bpm"></div>
+            </div>
+            <p class="note">With an FTP set, bike sessions sent to Garmin carry watts instead of percentages.</p>
+          </section>
+
+          <section class="panel" aria-label="What yootri uses">
+            <div class="panel-h"><span class="card-kicker">What yootri uses</span></div>
+            <div class="rows">
+              <div class="row"><span>Recent weekly hours</span><span class="tag tag-accent">Sizes your season</span></div>
+              <div class="row"><span>Benchmark result</span><span class="tag tag-accent">Sets run paces</span></div>
+              <div class="row"><span>FTP</span><span class="tag tag-accent">Bike targets in watts</span></div>
+              <div class="row"><span>Height and weight</span><span class="tag tag-neutral">Not used yet</span></div>
+              <div class="row"><span>Birth year and sex</span><span class="tag tag-neutral">Not used yet</span></div>
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <section class="panel" aria-label="Training paces">
+        <div class="panel-h">
+          <span class="card-kicker">Training paces</span>
+          <span class="hdr-actions"><button class="btn btn-secondary"><i class="ic i-plus"></i>Add benchmark</button></span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; max-width: 640px">
+          <div class="field"><label for="p-dist">Benchmark distance</label><select id="p-dist" class="input"><option>5 km</option><option>10 km</option><option>Half marathon</option><option>Marathon</option></select></div>
+          <div class="field"><label for="p-time">Result</label><input id="p-time" class="input" placeholder="h:mm:ss"></div>
+        </div>
+        <table class="t">
+          <thead><tr><th>Zone</th><th>Used for</th><th>Pace per km</th></tr></thead>
+          <tbody>
+            <tr><td>Easy</td><td>Long and recovery runs</td><td>—</td></tr>
+            <tr><td>Marathon</td><td>Race-pace blocks</td><td>—</td></tr>
+            <tr><td>Threshold</td><td>Tempo runs and cruise intervals</td><td>—</td></tr>
+            <tr><td>Interval</td><td>Hard repeats of 3 to 5 minutes</td><td>—</td></tr>
+            <tr><td>Repetition</td><td>Short, fast strides</td><td>—</td></tr>
+          </tbody>
+        </table>
+        <p class="note">Enter a recent race or time trial and these fill in. Paces come from one benchmark; flag the one you trust most as the primary.</p>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"],"section":"Theme"},"$preview":{"width":1440,"height":1140}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = (this.state && this.state.theme) || this.props.theme || 'dark';
+    return {
+      theme,
+      setTheme: (t) => this.setState({ theme: t })
+    };
+  }
+}
+</script>
+</body>
+</html>

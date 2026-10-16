@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yootri: training status</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yootri/components/bundle.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="yt shell" data-theme="{{theme}}">
+  <div class="side-wrap">
+    <dc-import name="Sidebar" active="status" theme="{{theme}}" on-theme="{{setTheme}}" hint-size="248px,1160px"></dc-import>
+  </div>
+
+  <main class="main">
+    <div class="main-in">
+
+      <header style="display: flex; flex-direction: column; gap: 10px">
+        <div class="hdr-top">
+          <span class="kicker">Athlete</span>
+          <span class="chip-sample"><i class="ic i-info"></i>Preview with sample data</span>
+        </div>
+        <div>
+          <h1 class="im-h1">Training status</h1>
+          <p class="im-sub">How this week's load compares with what you are used to. Worked out from your sessions each time you open the page, never stored.</p>
+        </div>
+      </header>
+
+      <div class="grid-3">
+        <div class="panel">
+          <span class="card-kicker">Fitness · 42-day load</span>
+          <span class="big">62<small>↑ 4 on last month</small></span>
+          <p class="note">The slow average of your training load. It rises when you train steadily for weeks.</p>
+        </div>
+        <div class="panel">
+          <span class="card-kicker">Fatigue · 7-day load</span>
+          <span class="big">71<small>↑ 6 on last week</small></span>
+          <p class="note">The fast average. It jumps after a big week and drops after an easy one.</p>
+        </div>
+        <div class="panel">
+          <span class="card-kicker">Form</span>
+          <span class="big">−9<small>Slightly tired</small></span>
+          <p class="note">Fitness minus fatigue. Slightly negative is normal in a base block; aim for a small positive on race week.</p>
+        </div>
+      </div>
+
+      <section class="panel" aria-label="Fitness and fatigue, last 12 weeks">
+        <div class="panel-h">
+          <span class="card-kicker">Fitness and fatigue · last 12 weeks</span>
+          <div class="seg" role="radiogroup" aria-label="Range">
+            <label class="seg-opt"><input type="radio" name="range">6 weeks</label>
+            <label class="seg-opt"><input type="radio" name="range" checked>12 weeks</label>
+            <label class="seg-opt"><input type="radio" name="range">Season</label>
+          </div>
+        </div>
+        <div class="plot">
+          <div class="plot-y"><span>100</span><span>50</span><span>0</span></div>
+          <svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Fitness rises from 48 to 62 over 12 weeks while fatigue swings between 55 and 76 with each hard week.">
+            <line class="grid-l" x1="0" y1="0.5" x2="1000" y2="0.5"></line>
+            <line class="grid-l" x1="0" y1="75" x2="1000" y2="75"></line>
+            <line class="grid-l" x1="0" y1="150" x2="1000" y2="150"></line>
+            <polyline class="ln" style="stroke: var(--disc-bike)" points="20,67.5 105.5,57 190.9,63 276.4,51 361.8,60 447.3,45 532.7,54 618.2,39 703.6,51 789.1,36 874.5,48 960,43.5"></polyline>
+            <polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5" points="20,78 105.5,75 190.9,72 276.4,70.5 361.8,67.5 447.3,66 532.7,63 618.2,61.5 703.6,60 789.1,58.5 874.5,57.8 960,57"></polyline>
+          </svg>
+          <div class="plot-x"><span>−11</span><span>−10</span><span>−9</span><span>−8</span><span>−7</span><span>−6</span><span>−5</span><span>−4</span><span>−3</span><span>−2</span><span>−1</span><span>Now</span></div>
+        </div>
+        <div class="legend">
+          <span class="lg" style="--c: var(--color-accent)"><i></i>Fitness <span>62</span></span>
+          <span class="lg" style="--c: var(--disc-bike)"><i></i>Fatigue <span>71</span></span>
+        </div>
+      </section>
+
+      <div class="grid-2">
+        <section class="panel" aria-label="Load by discipline">
+          <div class="panel-h"><span class="card-kicker">Load by discipline · last 28 days</span></div>
+          <div class="hbar">
+            <div class="hbar-h"><b style="font-weight: 500"><i class="ic i-bike" style="color: var(--disc-bike); margin-right: 6px"></i>Bike</b><span>18h 40m · 52%</span></div>
+            <div class="bar"><i style="width: 52%; background: var(--disc-bike)"></i></div>
+          </div>
+          <div class="hbar">
+            <div class="hbar-h"><b style="font-weight: 500"><i class="ic i-run" style="color: var(--disc-run); margin-right: 6px"></i>Run</b><span>11h 20m · 31%</span></div>
+            <div class="bar"><i style="width: 31%; background: var(--disc-run)"></i></div>
+          </div>
+          <div class="hbar">
+            <div class="hbar-h"><b style="font-weight: 500"><i class="ic i-swim" style="color: var(--disc-swim); margin-right: 6px"></i>Swim</b><span>6h 10m · 17%</span></div>
+            <div class="bar"><i style="width: 17%; background: var(--disc-swim)"></i></div>
+          </div>
+        </section>
+
+        <section class="panel" aria-label="What the numbers say">
+          <div class="panel-h"><span class="card-kicker">What this says</span></div>
+          <div class="rows">
+            <div class="row"><span>Ramp rate</span><b>+3.1 per week</b></div>
+            <div class="row"><span>Hardest week in the block</span><b>Week 6 · 11h 05m</b></div>
+            <div class="row"><span>Days since a full rest day</span><b>3</b></div>
+          </div>
+          <p class="note">Ramp rate is within the range the plan's validator accepts. These are suggestions for your judgement, not rules.</p>
+          <div><button class="btn btn-secondary"><i class="ic i-chat"></i>Ask the coach about this</button></div>
+        </section>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"],"section":"Theme"},"$preview":{"width":1440,"height":1160}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = (this.state && this.state.theme) || this.props.theme || 'dark';
+    return {
+      theme,
+      setTheme: (t) => this.setState({ theme: t })
+    };
+  }
+}
+</script>
+</body>
+</html>
