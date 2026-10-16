@@ -22,6 +22,7 @@ from typing import Any, TextIO
 from urllib.parse import quote
 
 from garmin_bridge import __version__
+from garmin_bridge.agent import Agent
 from garmin_bridge.auth import ApiFactory, login, open_api, quiet_library
 from garmin_bridge.client import GarminClient
 from garmin_bridge.errors import BridgeError, RateLimited
@@ -85,6 +86,15 @@ def _parser() -> argparse.ArgumentParser:
     serve.add_argument("--port", type=int, default=DEFAULT_PORT)
     serve.add_argument("--allow-origin", action="append", default=[], metavar="URL",
                        help="another page allowed to use the bridge (repeatable)")
+    serve.add_argument("--quiet", action="store_true",
+                       help="do not print the pairing token or links (for a bridge that logs to a file)")
+    agent = sub.add_parser("agent", help="keep the bridge running: a macOS LaunchAgent")
+    agent_sub = agent.add_subparsers(dest="agent_command", required=True)
+    install = agent_sub.add_parser("install", help="start the bridge at login and keep it running")
+    install.add_argument("--port", type=int, default=DEFAULT_PORT)
+    install.add_argument("--allow-origin", action="append", default=[], metavar="URL")
+    agent_sub.add_parser("uninstall", help="stop it and remove the agent")
+    agent_sub.add_parser("status", help="is the agent installed and running?")
     pair = sub.add_parser("pair", help="print the pairing token")
     pair.add_argument("--rotate", action="store_true", help="make a new one; pages must be paired again")
     pair.add_argument("--link", action="store_true", help="print one-click pairing links instead of the bare token")
@@ -105,6 +115,7 @@ def main(
     out: TextIO | None = None,
     run_server: Callable[[Any], None] | None = None,
     open_url: Callable[[str], Any] | None = None,
+    agent: Agent | None = None,
 ) -> int:
     args = _parser().parse_args(argv)
     store = store or Store()
@@ -157,6 +168,17 @@ def main(
             say(token)
         return 0
 
+    if args.command == "agent":
+        ag = agent or Agent()
+        if args.agent_command == "install":
+            origins = tuple(dict.fromkeys(args.allow_origin))
+            say(ag.install(port=args.port, origins=origins))
+        elif args.agent_command == "uninstall":
+            say(ag.uninstall())
+        else:
+            say(ag.status())
+        return 0
+
     # serve
     quiet_library()
     token = store.pairing_token() or ""
@@ -172,19 +194,21 @@ def main(
     port = server.server_address[1]
     say(f"yootri Garmin bridge {__version__} listening on http://127.0.0.1:{port}")
     say(f"Pages allowed to use it: {', '.join(origins)}")
-    say(f"Pairing token: {token}")
     if workouts_enabled():
         say("Workout export is ON (YOOTRI_GARMIN_WORKOUTS=1): the page may send bike workouts to Garmin.")
     if overnight_enabled():
         say("Overnight figures are ON (YOOTRI_GARMIN_OVERNIGHT=1): the page may read sleep, overnight HRV "
             "and resting heart rate.")
-    say("Pair a page in one click — open the link for the page you use:")
-    for link in pairing_links(origins, port, token):
-        say("  " + link)
-    say("Or open the page with ?garmin=setup and paste the token by hand.")
-    if store.read_tokens() is None:
-        say("Not signed in to Garmin yet: run `make garmin-login` in another terminal first.")
-    say("Press Ctrl-C to stop.")
+    if not args.quiet:
+        say(f"Pairing token: {token}")
+        say("Pair a page in one click — open the link for the page you use:")
+        for link in pairing_links(origins, port, token):
+            say("  " + link)
+        say("Or open the page with ?garmin=setup and paste the token by hand.")
+        if store.read_tokens() is None:
+            say("Not signed in to Garmin yet: run `make garmin-login` in another terminal first.")
+    if not args.quiet:
+        say("Press Ctrl-C to stop.")
     try:
         (run_server or (lambda s: s.serve_forever()))(server)
     except KeyboardInterrupt:

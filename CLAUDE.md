@@ -186,6 +186,18 @@ suggestion's action speaks the engine's 0-based week; `adviceCall` in
 `tools.js` is the one translation to the tools' 1-based weeks, for the model
 and for the page's Preview button alike.
 
+**Pairing is one click and the bridge's state is shown, never assumed.** `make garmin`
+prints (and `make garmin-pair` opens) a link whose *fragment* carries the bridge
+address and token; `parsePairing` in `synced.js` accepts it only for a loopback
+address and a full-length token, and the page saves it through the one existing
+path and removes it from the address bar first. A paired browser asks the bridge
+what state it is in (`bridgeState`: ready, sign in, not running, pair again) and
+says so under the Garmin item; an **unpaired browser makes no request to this
+computer at all**, which `tests/index-html.test.js` pins. On macOS
+`make garmin-install` keeps the bridge running as a LaunchAgent started with
+`serve --quiet` (no token in its log); it changes nothing about what the bridge
+reads or who may use it.
+
 **Workouts go to Garmin through the bridge, and nowhere else.** `POST /v1/workouts`,
 `/v1/workouts/remove` and `/v1/workouts/fit` exist only when the bridge is started
 with `YOOTRI_GARMIN_WORKOUTS=1`; every other method and path is still refused. They
