@@ -53,7 +53,6 @@
   }
   .seg-opt .ic { margin-right: 6px; font-size: 14px; }
   .page:focus { outline: none; }
-  .tb-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
   .im-h1 {
     font-size: 36px;
     letter-spacing: -0.02em;
@@ -1274,14 +1273,14 @@
 
   <div class="page hidden" data-page="biometrics" tabindex="-1">
     <header>
-      <div class="hdr-top"><span class="kicker">Athlete</span></div>
+      <div class="hdr-top">
+        <span class="kicker">Athlete</span>
+        <span class="hdr-actions"><button type="button" class="btn btn-primary" id="bio-save"><i class="ic i-check" aria-hidden="true"></i> Save changes</button></span>
+      </div>
       <h1 class="im-h1">Biometrics</h1>
-      <p class="im-sub">About you and your training paces.</p>
+      <p class="im-sub">About you, your thresholds and your training paces. About you stays in this browser and never goes on a plan. FTP and swim threshold are saved with the plan; heart-rate figures stay in this browser.</p>
     </header>
-    <div class="tb-row">
-      <button type="button" class="btn btn-secondary" id="bio-about"><i class="ic i-user" aria-hidden="true"></i> About you…</button>
-      <button type="button" class="btn btn-secondary" id="bio-paces"><i class="ic i-gauge" aria-hidden="true"></i> Training paces…</button>
-    </div>
+    <div class="bio" id="bio-root"></div>
   </div>
 
   <div class="page hidden" data-page="health" tabindex="-1">
@@ -2424,6 +2423,8 @@
     renderSummary();
     renderViewBody();
     renderChart();
+    // A page with typed-but-unsaved boxes is not redrawn under the typist, unless the plan changed.
+    if (state.page === 'biometrics' && (!bioDirty || bioPlanId !== plan.id)) renderBiometrics();
   }
 
   /* =========================================================================
@@ -4816,8 +4817,20 @@
     ['ab-ride', 'longest ride', 'longestRideMin'], ['ab-run', 'longest run', 'longestRunMin'],
   ];
 
-  function openAthletePanel() {
-    const a = loadAthlete();
+  /* ---- The Biometrics page ------------------------------------------------
+
+     About you, the thresholds and the training paces on one page. Three stores
+     sit behind it and the page keeps them apart: About you in this browser (and
+     the account, under its own consent), FTP and swim threshold on the plan
+     (`loadRefs`), heart-rate figures in this browser (`yootri_hr_thresholds`).
+     "Save changes" writes About you and the thresholds together, refusing the
+     lot if one value is out of range; a pace result is written the moment it is
+     added, as a benchmark always was. */
+
+  let bioDirty = false;
+  let bioPlanId = null;
+
+  function bioAboutHTML(a) {
     const gaps = athleteGaps(a, plan).filter((g) => g.used);
     const canKeep = cloudReady() && authUser && hasSyncConsent();
     const wkg = wattsPerKg(plan.loadRefs?.ftpW, a.weightKg);
@@ -4834,12 +4847,12 @@
     const clock = (id, v, ph) => '<input type="text" class="input" id="' + id + '" placeholder="' + ph +
       '" value="' + esc(v ? minToDur(v) : '') + '" />';
 
-    panelShell(
-      '<h2>About you</h2>' +
-      '<p class="pnl-sub">Who your seasons are for. Every field is optional. It is kept in this browser — never ' +
+    return '<section class="panel" aria-label="About you">' +
+      '<div class="panel-h"><span class="card-kicker">About you</span></div>' +
+      '<p class="note">Who your seasons are for. Every field is optional. It is kept in this browser — never ' +
         'on a plan, never in a plan export, and never read by the coach.</p>' +
       (gaps.length
-        ? '<div class="pnl-sec"><span class="pnl-sub" style="display:block">Worth adding — these change what yootri shows you:</span>' +
+        ? '<div><span class="note" style="display:block">Worth adding — these change what yootri shows you:</span>' +
           '<ul class="ab-gaps">' + gaps.map((g) => '<li><b>' + esc(g.label) + '</b> — ' + esc(g.why) + '</li>').join('') +
           '</ul></div>'
         : '') +
@@ -4884,7 +4897,7 @@
       '<p class="pnl-hint">Not used for planning yet.</p>' +
 
       (canKeep
-        ? '<div class="pnl-sec"><label class="np-check"><input type="checkbox" id="ab-cloud"' +
+        ? '<div><label class="np-check"><input type="checkbox" id="ab-cloud"' +
             (hasHealthConsent() ? ' checked' : '') + ' />' +
             '<span>Keep About you in my account too, so it follows me to my other devices.</span></label>' +
           '<p class="pnl-hint">Weight and height are health data, so this is a consent of its own, separate ' +
@@ -4893,19 +4906,61 @@
         : '<p class="pnl-hint">Only in this browser. Signed in with sync on, you can choose to keep it in ' +
             'your account too.</p>') +
 
-      '<div class="diff-issues hidden" id="ab-msg"></div>' +
-      '<div class="pnl-act">' +
-        (isEmptyAthlete(a) ? '' : '<button type="button" class="btn btn-ghost spacer danger" id="ab-clear">Clear About you</button>') +
-        '<button type="button" class="btn btn-ghost' + (isEmptyAthlete(a) ? ' spacer' : '') + '" id="ab-close">Close</button>' +
-        '<button type="button" class="btn btn-primary" id="ab-save">Save</button>' +
-      '</div>',
-      'About you',
-    );
+      (isEmptyAthlete(a) ? '' : '<div><button type="button" class="btn btn-ghost danger" id="ab-clear">Clear About you</button></div>') +
+    '</section>';
+  }
 
-    $('ab-close').addEventListener('click', closePanel);
-    $('ab-save').addEventListener('click', saveAthleteFromPanel);
-    const clear = $('ab-clear');
-    if (clear) clear.addEventListener('click', clearAthlete);
+  function bioThresholdsHTML() {
+    const refs = plan.loadRefs || {};
+    const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
+    // Until a formula has been chosen, About you's answer preselects one;
+    // nothing is stored until Save changes.
+    const sex = loadAthlete().sex;
+    const trimp = hr.trimp || (sex === 'male' || sex === 'female' ? sex : '');
+    const opt = (v, label) => '<option value="' + v + '"' + (trimp === v ? ' selected' : '') + '>' + label + '</option>';
+    return '<section class="panel" aria-label="Thresholds">' +
+      '<div class="panel-h"><span class="card-kicker">Thresholds</span></div>' +
+      '<div class="pnl-grid">' +
+        field('Bike FTP (watts)', '<input type="number" class="input" id="bio-ftp" min="50" max="600" value="' + esc(refs.ftpW || '') + '" />') +
+        field('Swim threshold (per 100 m)', '<input type="text" class="input" id="bio-css" placeholder="1:40" value="' + esc(cssText(refs.cssSecPer100m)) + '" />') +
+        field('Threshold heart rate (bpm)', '<input type="number" class="input" id="bio-lthr" min="80" max="220" value="' + esc(hr.lthr || '') + '" />') +
+        field('Maximum heart rate (bpm)', '<input type="number" class="input" id="bio-hrmax" min="100" max="230" value="' + esc(hr.max || '') + '" />') +
+        field('Resting heart rate (bpm)', '<input type="number" class="input" id="bio-hrrest" min="25" max="100" value="' + esc(hr.rest || '') + '" />') +
+        field('Heart-rate formula', '<select class="input" id="bio-trimp"><option value=""' + (trimp ? '' : ' selected') + '>Choose…</option>' +
+          opt('male', 'Banister, men') + opt('female', 'Banister, women') + '</select>') +
+      '</div>' +
+      '<p class="note">With an FTP set, bike sessions sent to Garmin carry watts instead of percentages. ' +
+        'FTP and swim threshold are saved with the plan; the heart-rate figures stay in this browser.</p>' +
+    '</section>';
+  }
+
+  /* What reads each answer today. Written from the hints About you has always
+     carried, so it only claims what the code does; the rest says "Not used yet". */
+  function bioUsesHTML() {
+    const row = (what, tag, cls) => '<div class="row"><span>' + what + '</span><span class="tag ' + cls + '">' + tag + '</span></div>';
+    return '<section class="panel" aria-label="What yootri uses">' +
+      '<div class="panel-h"><span class="card-kicker">What yootri uses</span></div>' +
+      '<div class="rows">' +
+        row('Recent weekly hours', 'Sizes your season', 'tag-accent') +
+        row('Benchmark result', 'Sets run paces', 'tag-accent') +
+        row('FTP', 'Bike targets in watts', 'tag-accent') +
+        row('Weight', 'FTP in watts per kilogram', 'tag-accent') +
+        row('Sex', 'Preselects the heart-rate formula', 'tag-accent') +
+        row('Birth year and height', 'Not used yet', 'tag-neutral') +
+        row('Background, equipment and goal', 'Not used yet', 'tag-neutral') +
+      '</div>' +
+    '</section>';
+  }
+
+  function renderBiometrics() {
+    $('bio-root').innerHTML =
+      '<div class="diff-issues hidden" id="ab-msg" role="alert"></div>' +
+      '<div class="grid-2">' + bioAboutHTML(loadAthlete()) +
+        '<div class="bio-col">' + bioThresholdsHTML() + bioUsesHTML() + '</div>' +
+      '</div>' + bioPacesHTML();
+    wirePacesForm();
+    bioDirty = false;
+    bioPlanId = plan.id;
   }
 
   function readAthleteForm() {
@@ -4926,7 +4981,7 @@
     };
   }
 
-  async function saveAthleteFromPanel() {
+  async function saveBiometrics() {
     const next = normalizeAthlete({ ...readAthleteForm(), updatedAt: now() });
     // Name what was refused rather than storing a different number, or
     // silently none: the boxes stay as typed so it can be corrected in place.
@@ -4934,26 +4989,45 @@
       .filter(([id, , key]) => $(id).value.trim() !== '' && next[key] === undefined)
       .map(([, label]) => label);
     if ($('ab-goaltime').value.trim() !== '' && next.goal === 'time' && next.goalTime === undefined) refused.push('target time');
+
+    const val = (id) => $(id).value.trim();
+    const refs = readLoadRefs(val('bio-ftp'), val('bio-css'));
+    if (val('bio-ftp') && !refs?.ftpW) refused.push('FTP');
+    if (val('bio-css') && !refs?.cssSecPer100m) refused.push('swim threshold');
+    const hr = normalizeHrThresholds({
+      lthr: val('bio-lthr'), max: val('bio-hrmax'), rest: val('bio-hrrest'), trimp: val('bio-trimp'),
+    });
+    for (const [id, key, label] of [['bio-lthr', 'lthr', 'threshold heart rate'], ['bio-hrmax', 'max', 'maximum heart rate'], ['bio-hrrest', 'rest', 'resting heart rate']]) {
+      if (val(id) && hr?.[key] === undefined) refused.push(label);
+    }
     if (refused.length) {
       const msg = $('ab-msg');
       msg.innerHTML = '<b class="err">' + esc('Check the ' + refused.join(', ') + ' — ' +
-        (refused.length === 1 ? 'that value is' : 'those values are') + ' outside what yootri can use.') + '</b>';
+        (refused.length === 1 ? 'that value is' : 'those values are') + ' outside what yootri can use. ' +
+        'A threshold heart rate has to sit between the resting and maximum ones.') + '</b>';
       msg.classList.remove('hidden');
+      msg.scrollIntoView({ block: 'nearest' });
       return;
     }
 
     saveAthleteLocal(next);
-    let status = 'About you saved on this device';
+    saveLoadRefs(refs);
+    if (hr) save(HR_THRESHOLDS_KEY, hr);
+    else remove(HR_THRESHOLDS_KEY);
+    if (coach && coach.session) coach.session.device = { ...coach.session.device, hrThresholds: hr ?? null };
+
+    let status = 'Biometrics saved on this device';
     const box = $('ab-cloud');
     if (box) {
       if (box.checked && !hasHealthConsent()) recordHealthConsent();
       else if (!box.checked && hasHealthConsent()) {
         forgetHealthConsent();
-        if (await withdrawCloudAthlete()) status = 'About you saved on this device and removed from your account';
+        if (await withdrawCloudAthlete()) status = 'Biometrics saved on this device, and About you removed from your account';
       }
-      if (hasHealthConsent() && await pushAthlete()) status = 'About you saved, in your account too';
+      if (hasHealthConsent() && await pushAthlete()) status = 'Biometrics saved, About you in your account too';
     }
-    closePanel();
+    renderAll();
+    renderBiometrics();
     setStatus(status);
   }
 
@@ -4968,7 +5042,7 @@
     if (!ok) return;
     remove(ATHLETE_KEY);
     if (inAccount) { forgetHealthConsent(); await withdrawCloudAthlete(); }
-    closePanel();
+    renderBiometrics();
     setStatus('About you cleared');
   }
 
@@ -5035,17 +5109,16 @@
         '</li>').join('') + '</ul>';
   }
 
-  function openPacesPanel() {
+  function bioPacesHTML() {
     const table = paceTableFor(state.benchmarks);
     const error = pacesView && pacesView.error ? pacesView.error : '';
-
     const distanceOpts = STANDARD_DISTANCES
       .map((d) => '<option value="' + d.meters + '">' + esc(d.label) + '</option>').join('') +
       '<option value="other">Another distance</option>';
 
-    panelShell(
-      '<h2>Training paces</h2>' +
-      '<p class="pnl-sub">Worked out from a running result you enter — a race, or a time trial you ran flat ' +
+    return '<section class="panel" id="bio-paces" aria-label="Training paces">' +
+      '<div class="panel-h"><span class="card-kicker">Training paces</span></div>' +
+      '<p class="note">Worked out from a running result you enter — a race, or a time trial you ran flat ' +
         'out. yootri measures nothing itself, so when that result stops being you, replace it and every week ' +
         'of the season picks up the new one at once.</p>' +
 
@@ -5058,10 +5131,10 @@
           paceTableHTML(table)
         : '<p class="pnl-hint">No result yet, so a Run card shows its zone but no pace. Add one below.</p>') +
 
-      (error ? '<div class="diff-issues"><b class="err">' + esc(error) + '</b></div>' : '') +
+      (error ? '<div class="diff-issues" role="alert"><b class="err">' + esc(error) + '</b></div>' : '') +
 
       '<h3 class="pnl-h3">Add a result</h3>' +
-      '<div class="pnl-grid">' +
+      '<div class="pnl-grid bio-bm-grid">' +
         field('Distance', '<select class="input" id="bm-dist">' + distanceOpts + '</select>') +
         field('Kilometres', '<input type="number" class="input" id="bm-km" min="0.4" max="200" step="0.01" value="10" />') +
         field('Time', '<input type="text" class="input" id="bm-time" placeholder="42:00" />') +
@@ -5071,37 +5144,23 @@
 
       keptListHTML() +
 
-      '<h3 class="pnl-h3">Bike and swim</h3>' +
-      '<p class="pnl-hint">Your FTP puts watts on a bike workout sent to Garmin, and with your CSS it scores ' +
-        'the load of synced rides and swims. Leave either empty if you do not know it yet. Both are saved with ' +
-        'the plan.' +
-        (wattsPerKg(plan.loadRefs?.ftpW, loadAthlete().weightKg)
-          ? ' At the weight in About you that FTP is <b>' + wattsPerKg(plan.loadRefs.ftpW, loadAthlete().weightKg).toFixed(2) + ' W/kg</b>.'
-          : '') + '</p>' +
-      '<div class="pnl-grid">' +
-        field('FTP (watts)', '<input type="number" class="input" id="bm-ftp" min="50" max="600" value="' +
-          esc(plan.loadRefs?.ftpW || '') + '" />') +
-        field('CSS (per 100 m)', '<input type="text" class="input" id="bm-css" placeholder="1:40" value="' +
-          esc(cssText(plan.loadRefs?.cssSecPer100m)) + '" />') +
-      '</div>' +
-      '<div class="pnl-act"><button type="button" class="btn btn-secondary" id="bm-refs-save">Save FTP and CSS</button></div>' +
-
-      '<div class="pnl-act">' +
-        '<button type="button" class="btn btn-ghost spacer" id="bm-file">Import from a file…</button>' +
+      '<div class="bio-acts">' +
+        '<button type="button" class="btn btn-ghost" id="bm-file"><i class="ic i-upload" aria-hidden="true"></i> Import from a file…</button>' +
         (stravaConfig()
           ? '<button type="button" class="btn btn-secondary" id="bm-strava">' +
             (stravaConnected() ? 'Read from Strava' : 'Connect Strava') + '</button>'
           : '') +
-        '<button type="button" class="btn btn-ghost" id="bm-close">Close</button>' +
-        '<button type="button" class="btn btn-primary" id="bm-add">Use this result</button>' +
-      '</div>',
-      'Training paces',
-    );
+        '<button type="button" class="btn btn-secondary" id="bm-add"><i class="ic i-plus" aria-hidden="true"></i> Use this result</button>' +
+      '</div>' +
+    '</section>';
+  }
 
-    // "Another distance" is the only case that needs the kilometres box; for the
-    // rest the select already said, and two ways to say one thing invites them
-    // to disagree.
+  // "Another distance" is the only case that needs the kilometres box; for the
+  // rest the select already said, and two ways to say one thing invites them
+  // to disagree.
+  function wirePacesForm() {
     const dist = $('bm-dist');
+    if (!dist) return;
     const kmField = $('bm-km').closest('.pnl-f');
     const syncDist = () => {
       const other = dist.value === 'other';
@@ -5111,20 +5170,21 @@
     dist.value = String(10000);
     syncDist();
     dist.addEventListener('change', syncDist);
+  }
 
-    $('bm-close').addEventListener('click', closePanel);
-    $('bm-file').addEventListener('click', () => els.activityFile.click());
-    $('bm-add').addEventListener('click', addTypedBenchmark);
-    $('bm-refs-save').addEventListener('click', saveRefsFromPaces);
-    const strava = $('bm-strava');
-    if (strava) strava.addEventListener('click', () => (stravaConnected() ? loadFromStrava() : startStravaConnect()));
+  function renderPacesCard() {
+    const card = $('bio-paces');
+    if (!card) return;
+    card.outerHTML = bioPacesHTML();
+    wirePacesForm();
+  }
 
-    els.panelRoot.querySelectorAll('[data-bm-use]').forEach((b) => {
-      b.addEventListener('click', () => useBenchmark(b.getAttribute('data-bm-use')));
-    });
-    els.panelRoot.querySelectorAll('[data-bm-del]').forEach((b) => {
-      b.addEventListener('click', () => dropBenchmark(b.getAttribute('data-bm-del')));
-    });
+  /* Where the paces are looked at: the Biometrics page. The file and Strava
+     flows still choose a result in a panel, and come back here when done. */
+  function showPaces() {
+    closePanel();
+    if (state.page !== 'biometrics') navigate('biometrics');
+    else renderPacesCard();
   }
 
   /** Write a benchmark list, redraw everything that shows a pace, reopen. */
@@ -5133,7 +5193,7 @@
     persistPlan();
     renderAll();
     if (status) setStatus(status);
-    openPacesPanel();
+    showPaces();
   }
 
   function useBenchmark(id) {
@@ -5176,26 +5236,9 @@
     );
   }
 
-  /* FTP and CSS used to be reachable only from the Garmin panel, and only once
-     something had synced — so without Garmin a bike workout could never show
-     watts. They live here too now, beside the running result they belong with. */
-  function saveRefsFromPaces() {
-    const ftp = $('bm-ftp').value.trim();
-    const css = $('bm-css').value.trim();
-    const refs = readLoadRefs(ftp, css);
-    if (ftp && !refs?.ftpW) return failPaces('An FTP is a number of watts between 50 and 600.');
-    if (css && !refs?.cssSecPer100m) {
-      return failPaces('That CSS could not be read. Write it as a time per 100 m, like 1:40.');
-    }
-    saveLoadRefs(refs);
-    pacesView = null;
-    setStatus(refs ? 'FTP and CSS saved' : 'FTP and CSS cleared');
-    openPacesPanel();
-  }
-
   function failPaces(reason) {
     pacesView = { ...(pacesView || {}), error: reason };
-    openPacesPanel();
+    showPaces();
   }
 
   /* ---- reading an activity file -----------------------------------------
@@ -5364,7 +5407,7 @@
       'Choose a result',
     );
 
-    $('bm-back').addEventListener('click', () => { pacesView = null; openPacesPanel(); });
+    $('bm-back').addEventListener('click', () => { pacesView = null; showPaces(); });
     $('bm-close').addEventListener('click', closePanel);
     const refile = $('bm-refile');
     if (refile) refile.addEventListener('click', () => els.activityFile.click());
@@ -6532,8 +6575,22 @@
     });
   }
   $('events-btn').addEventListener('click', () => openEventPanel(null));
-  $('bio-about').addEventListener('click', openAthletePanel);
-  $('bio-paces').addEventListener('click', () => { pacesView = null; openPacesPanel(); });
+
+  // Biometrics: one set of listeners on the page root, because its cards are
+  // redrawn from scratch and a redrawn button has lost its handler.
+  $('bio-save').addEventListener('click', saveBiometrics);
+  $('bio-root').addEventListener('input', (e) => { if (!e.target.id.startsWith('bm-')) bioDirty = true; });
+  $('bio-root').addEventListener('change', (e) => { if (!e.target.id.startsWith('bm-')) bioDirty = true; });
+  $('bio-root').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'ab-clear') clearAthlete();
+    else if (b.id === 'bm-add') addTypedBenchmark();
+    else if (b.id === 'bm-file') els.activityFile.click();
+    else if (b.id === 'bm-strava') (stravaConnected() ? loadFromStrava() : startStravaConnect());
+    else if (b.dataset.bmUse) useBenchmark(b.dataset.bmUse);
+    else if (b.dataset.bmDel) dropBenchmark(b.dataset.bmDel);
+  });
   $('mydata-btn').addEventListener('click', downloadMyData);
 
   /* Pages. The address bar says which one (#/week, #/calendar, #/status …) so

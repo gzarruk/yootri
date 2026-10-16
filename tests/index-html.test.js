@@ -398,10 +398,26 @@ test('the untouched check is the engine’s, wherever the page asks it', () => {
 });
 
 test('FTP and CSS can be entered without Garmin', () => {
-  const body = fnBody('openPacesPanel');
-  assert.match(body, /id="bm-ftp"/);
-  assert.match(body, /id="bm-css"/);
+  const body = fnBody('bioThresholdsHTML');
+  assert.match(body, /id="bio-ftp"/);
+  assert.match(body, /id="bio-css"/);
   assert.doesNotMatch(body, /synced\s*\?/, 'the fields must not wait for a sync');
+});
+
+test('Biometrics saves About you, the plan references and the heart-rate figures to three separate stores', () => {
+  const body = fnBody('saveBiometrics');
+  assert.match(body, /saveAthleteLocal\(next\)/, 'About you goes to this browser');
+  assert.match(body, /saveLoadRefs\(refs\)/, 'FTP and CSS go on the plan');
+  assert.match(body, /save\(HR_THRESHOLDS_KEY, hr\)/, 'heart-rate figures go to this browser');
+  // Nothing is written until every value has been accepted.
+  assert.ok(body.indexOf('if (refused.length)') < body.indexOf('saveAthleteLocal(next)'), 'a refused value must stop the whole save');
+  // And the heart-rate figures never ride on the plan.
+  assert.doesNotMatch(body, /plan\.(hr|lthr)/);
+});
+
+test('the About you and Paces panels are gone: the Biometrics page is their only home', () => {
+  assert.doesNotMatch(HTML, /function openAthletePanel|function openPacesPanel/);
+  assert.match(HTML, /data-page="biometrics"[\s\S]*id="bio-root"/);
 });
 
 /* ---- About you: the athlete record and its own consent ---- */

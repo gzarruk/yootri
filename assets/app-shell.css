@@ -190,3 +190,24 @@
   .shell { flex-direction: column; align-items: stretch; }
   .side-wrap { position: static; flex: none; width: auto; height: auto; border-right: 0; border-bottom: 1px solid var(--color-divider); overflow: visible; }
 }
+
+/* ---- Pages: panels, rows, notes (from the prototype) ---------------------- */
+.hdr-actions { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.panel { display: flex; flex-direction: column; gap: 14px; padding: 18px; border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.panel-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 14px; align-items: start; }
+.rows { display: flex; flex-direction: column; }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--color-divider); font-size: 13px; }
+.row:first-child { border-top: 0; padding-top: 0; }
+.row > span:first-child { color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.note { margin: 0; font-size: 13px; line-height: 1.55; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.btn.danger { color: var(--color-danger); }
+.btn.danger:hover { color: var(--color-danger); background: color-mix(in srgb, var(--color-danger) 12%, transparent); }
+
+/* Biometrics */
+.bio { display: flex; flex-direction: column; gap: 14px; }
+.bio-col { display: flex; flex-direction: column; gap: 14px; }
+.bio-acts { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
+.bio .pnl-h3 { margin-top: 6px; }
+@media (max-width: 420px) { .grid-2 { grid-template-columns: minmax(0, 1fr); } }
+.bio .pnl-grid { align-items: end; }
