@@ -11,6 +11,7 @@
 #
 #   make garmin-login     sign in to Garmin once (personal use; see tools/garmin-bridge)
 #   make garmin           run the Garmin bridge while you sync from the page
+#   make garmin-pair      open the one-click link that pairs this browser with it
 
 PORT ?= 8000
 OPEN ?= 1
@@ -24,7 +25,7 @@ NEED_UV = command -v uv >/dev/null 2>&1 || { \
 	exit 1; }
 
 .DEFAULT_GOAL := dev
-.PHONY: dev stop test hygiene check help garmin garmin-login garmin-logout garmin-status garmin-test
+.PHONY: dev stop test hygiene check help garmin garmin-pair garmin-login garmin-logout garmin-status garmin-test
 
 ## dev: serve at http://localhost:8000/ (PORT=8001 to change)
 dev:
@@ -62,6 +63,11 @@ garmin-login:
 ## garmin: run the Garmin bridge on 127.0.0.1:8765 while you sync (GARMIN_PORT to change)
 garmin:
 	@$(NEED_UV); $(BRIDGE) python -m garmin_bridge serve --port $(GARMIN_PORT) \
+		--allow-origin http://localhost:$(PORT)
+
+## garmin-pair: open the one-click pairing link in your browser (same GARMIN_PORT / PORT as `make garmin`)
+garmin-pair:
+	@$(NEED_UV); $(BRIDGE) python -m garmin_bridge pair --open --port $(GARMIN_PORT) \
 		--allow-origin http://localhost:$(PORT)
 
 ## garmin-status: is a Garmin session saved on this machine?

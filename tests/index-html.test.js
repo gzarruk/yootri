@@ -255,12 +255,11 @@ test('the Garmin button is hidden until this browser is paired', () => {
   assert.match(m[0], /class="[^"]*\bhidden\b/, 'the Garmin button is visible before anything is paired');
 });
 
-test('the pairing token can only ever be sent to this computer', () => {
+test('the pairing token can only ever be sent to this computer', async () => {
   /* The token goes wherever the stored address says. An address that is not a
      loopback one — typed by mistake, or planted — must not be accepted. */
-  const m = HTML.match(/const GARMIN_URL_RE = (\/.+\/);/);
-  assert.ok(m, 'GARMIN_URL_RE is gone from index.html');
-  const re = new Function(`return ${m[1]}`)();
+  assert.match(HTML, /const GARMIN_URL_RE = BRIDGE_URL_RE;/, 'the page no longer uses the engine\'s loopback rule');
+  const { BRIDGE_URL_RE: re } = await import('../assets/coach/synced.js');
   for (const ok of ['http://127.0.0.1:8765', 'http://localhost:8765', 'http://127.0.0.1:18765']) {
     assert.equal(re.test(ok), true, ok);
   }
@@ -644,4 +643,21 @@ test('the sidebar is the phone sheet, so nothing in it can be missing on a phone
   assert.equal((HTML.match(/<nav class="side"/g) || []).length, 1);
   assert.match(SHELL_CSS, /body\.more-open \.side-wrap \{ display: flex; \}/);
   assert.match(SHELL_CSS, /@media \(max-width: 760px\)[\s\S]*\.im-board \.im-col\.m-on \{ display: flex; \}/);
+});
+
+/* ---- Pairing the bridge from a link ---- */
+
+test('a pairing link is read by the engine, saved to the one place a pairing lives, and removed from the address bar', () => {
+  const body = fnBody('maybeOpenGarminSetup');
+  assert.match(body, /parsePairing\(location\.hash\)/);
+  assert.match(body, /save\(GARMIN_CONFIG_KEY, pairing\)/);
+  // The fragment is replaced before anything else can show it.
+  assert.ok(body.indexOf('history.replaceState') > -1 && body.indexOf('history.replaceState') < body.indexOf('save(GARMIN_CONFIG_KEY'),
+    'the address bar is cleaned before the token is stored');
+  assert.doesNotMatch(body, /setStatus\([^)]*token|console\.[a-z]+\([^)]*(pairing|token)/i, 'the token must never be shown or logged');
+});
+
+test('the loopback rule for a pairing is the engine\'s, not a copy', () => {
+  assert.match(HTML, /const GARMIN_URL_RE = BRIDGE_URL_RE;/);
+  assert.doesNotMatch(HTML, /GARMIN_URL_RE = \/\^http/, 'the page has its own loopback pattern again');
 });

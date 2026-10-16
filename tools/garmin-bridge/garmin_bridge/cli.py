@@ -15,9 +15,11 @@ import argparse
 import getpass
 import os
 import sys
+import webbrowser
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TextIO
+from urllib.parse import quote
 
 from garmin_bridge import __version__
 from garmin_bridge.auth import ApiFactory, login, open_api, quiet_library
@@ -60,6 +62,19 @@ def default_origins(cname: Path = REPO_CNAME) -> tuple[str, ...]:
     return (LOCAL_DEV_ORIGIN, f"https://{host}") if host else (LOCAL_DEV_ORIGIN,)
 
 
+def pairing_links(origins: tuple[str, ...] | list[str], port: int, token: str) -> list[str]:
+    """One link per page allowed to use the bridge, that pairs it in one click.
+
+    The address and token sit after the `#`, so a browser never sends them to
+    the server the page is loaded from — and the page removes them from the
+    address bar as soon as it has read them. Anything that can read the link
+    can pair a browser, so it is shown only on this machine's terminal, the way
+    the bare token always was; `pair --rotate` makes the old ones useless.
+    """
+    bridge = quote(f"http://127.0.0.1:{port}", safe="")
+    return [f"{origin}/?garmin=setup#garmin={bridge}&token={token}" for origin in origins]
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="garmin_bridge", description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -72,6 +87,11 @@ def _parser() -> argparse.ArgumentParser:
                        help="another page allowed to use the bridge (repeatable)")
     pair = sub.add_parser("pair", help="print the pairing token")
     pair.add_argument("--rotate", action="store_true", help="make a new one; pages must be paired again")
+    pair.add_argument("--link", action="store_true", help="print one-click pairing links instead of the bare token")
+    pair.add_argument("--open", action="store_true", help="open the first pairing link in your browser")
+    pair.add_argument("--port", type=int, default=DEFAULT_PORT, help="the port the bridge listens on")
+    pair.add_argument("--allow-origin", action="append", default=[], metavar="URL",
+                      help="another page to make a link for (repeatable)")
     return parser
 
 
@@ -84,6 +104,7 @@ def main(
     getpass_fn: Callable[[str], str] = getpass.getpass,
     out: TextIO | None = None,
     run_server: Callable[[Any], None] | None = None,
+    open_url: Callable[[str], Any] | None = None,
 ) -> int:
     args = _parser().parse_args(argv)
     store = store or Store()
@@ -122,7 +143,18 @@ def main(
         return 0
 
     if args.command == "pair":
-        say(store.pairing_token(rotate=args.rotate) or "")
+        token = store.pairing_token(rotate=args.rotate) or ""
+        if args.link or args.open:
+            origins = tuple(dict.fromkeys([*default_origins(), *args.allow_origin]))
+            links = pairing_links(origins, args.port, token)
+            if args.open:
+                say("Opening the pairing link in your browser…")
+                (open_url or webbrowser.open)(links[0])
+            else:
+                for link in links:
+                    say(link)
+        else:
+            say(token)
         return 0
 
     # serve
@@ -146,8 +178,10 @@ def main(
     if overnight_enabled():
         say("Overnight figures are ON (YOOTRI_GARMIN_OVERNIGHT=1): the page may read sleep, overnight HRV "
             "and resting heart rate.")
-    say("Pair a page once: open " + " or ".join(f"{o}/?garmin=setup" for o in origins)
-        + " and paste the token.")
+    say("Pair a page in one click — open the link for the page you use:")
+    for link in pairing_links(origins, port, token):
+        say("  " + link)
+    say("Or open the page with ?garmin=setup and paste the token by hand.")
     if store.read_tokens() is None:
         say("Not signed in to Garmin yet: run `make garmin-login` in another terminal first.")
     say("Press Ctrl-C to stop.")

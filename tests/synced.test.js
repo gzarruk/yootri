@@ -7,7 +7,7 @@ import {
   MAX_RANGE_DAYS, NAME_MAX,
   splitSynced, normalizeSyncedActivity, normalizeActivities, ingestSynced, mergeActivities,
   normalizeActivitySync, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, asRunEffort,
-  bridgeErrorMessage, BRIDGE_ERROR_CODES,
+  bridgeErrorMessage, BRIDGE_ERROR_CODES, BRIDGE_URL_RE, parsePairing,
 } from '../assets/coach/synced.js';
 import { benchmarkCandidates } from '../assets/coach/activities.js';
 
@@ -307,4 +307,36 @@ test('an unreachable bridge on a secure page mentions Safari', () => {
   assert.match(bridgeErrorMessage('unreachable', { secure: true }), /Safari/);
   assert.match(bridgeErrorMessage('unreachable'), /make garmin/);
   assert.match(bridgeErrorMessage('auth_required'), /make garmin-login/);
+});
+
+/* ---- pairing from a link ---- */
+
+const TOKEN = 'k'.repeat(43);
+const link = (url, token = TOKEN) => `#garmin=${encodeURIComponent(url)}&token=${token}`;
+
+test('a pairing link yields the bridge address and the token', () => {
+  assert.deepEqual(parsePairing(link('http://127.0.0.1:8765')), { url: 'http://127.0.0.1:8765', token: TOKEN });
+  assert.deepEqual(parsePairing(link('http://localhost:9001')), { url: 'http://localhost:9001', token: TOKEN });
+});
+
+test('only an address on this computer can be paired', () => {
+  for (const url of ['http://evil.example:8765', 'https://127.0.0.1:8765', 'http://127.0.0.1.evil.example:8765',
+    'http://127.0.0.1', 'http://127.0.0.1:8765/path', 'http://user@127.0.0.1:8765', 'http://[::1]:8765']) {
+    assert.equal(parsePairing(link(url)), null, url);
+  }
+  assert.ok(BRIDGE_URL_RE.test('http://127.0.0.1:8765'));
+  assert.ok(!BRIDGE_URL_RE.test('http://127.0.0.1:8765/'));
+});
+
+test('a short, missing or odd token is refused, and nothing throws', () => {
+  assert.equal(parsePairing(link('http://127.0.0.1:8765', 'short')), null);
+  assert.equal(parsePairing('#garmin=http%3A%2F%2F127.0.0.1%3A8765'), null);
+  assert.equal(parsePairing(`#token=${TOKEN}`), null);
+  for (const bad of [null, undefined, 42, {}, '', '#', '#/week', '#garmin=%E0%A4%A', '?garmin=setup']) {
+    assert.equal(parsePairing(bad), null);
+  }
+});
+
+test('an ordinary page route is never mistaken for a pairing', () => {
+  for (const hash of ['#/week', '#/calendar', '#/biometrics']) assert.equal(parsePairing(hash), null);
 });

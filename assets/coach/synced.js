@@ -328,3 +328,29 @@ export function bridgeErrorMessage(code, { secure = false } = {}) {
     + 'from http://localhost:8000 (`make dev`) there. Chrome and Edge ask once whether this page may reach '
     + 'devices on your local network — allow it.';
 }
+
+/* ---- pairing a browser with the bridge ---------------------------------- */
+
+/** The only addresses the page will send the pairing token to: this computer. */
+export const BRIDGE_URL_RE = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
+export const MIN_TOKEN = 16;
+
+/**
+ * The address and token a pairing link carries, or null.
+ *
+ * The bridge prints a link whose fragment is `#garmin=<address>&token=<token>`
+ * (the fragment is never sent to a server). Both halves are held to the rules
+ * the page applies to a hand-typed pairing: the address must be a loopback one,
+ * so a link cannot point the token anywhere but this computer, and the token
+ * must be long enough to be the bridge's. Anything else — a page route such as
+ * `#/week`, a half-formed link, a non-string — is null, never an error.
+ */
+export function parsePairing(hash) {
+  if (typeof hash !== 'string' || !hash.startsWith('#garmin=')) return null;
+  let params;
+  try { params = new URLSearchParams(hash.slice(1)); } catch (e) { return null; }
+  const url = (params.get('garmin') ?? '').trim();
+  const token = (params.get('token') ?? '').trim();
+  if (!BRIDGE_URL_RE.test(url) || token.length < MIN_TOKEN) return null;
+  return { url, token };
+}

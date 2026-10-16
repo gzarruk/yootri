@@ -1450,6 +1450,7 @@
   } from './assets/coach/activities.js';
   import {
     ingestSynced, mergeActivities, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, bridgeErrorMessage,
+    BRIDGE_URL_RE, MIN_TOKEN, parsePairing,
   } from './assets/coach/synced.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
@@ -5763,7 +5764,7 @@
   const HR_THRESHOLDS_KEY = 'yootri_hr_thresholds';
   const GARMIN_DEFAULT_URL = 'http://127.0.0.1:8765';
   // Loopback only, so the token cannot be sent anywhere but this computer.
-  const GARMIN_URL_RE = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
+  const GARMIN_URL_RE = BRIDGE_URL_RE;
   const GARMIN_TIMEOUT_MS = 120000;
   // What was last sent to Garmin, by session id: this browser only, like the heart rate.
   const GARMIN_WORKOUTS_KEY = 'yootri_garmin_workouts';
@@ -5773,7 +5774,7 @@
 
   function garminConfig() {
     const cfg = readJson(GARMIN_CONFIG_KEY);
-    return cfg && GARMIN_URL_RE.test(cfg.url) && typeof cfg.token === 'string' && cfg.token.length >= 16 ? cfg : null;
+    return cfg && GARMIN_URL_RE.test(cfg.url) && typeof cfg.token === 'string' && cfg.token.length >= MIN_TOKEN ? cfg : null;
   }
 
   const readHrStore = () => readJson(GARMIN_HR_KEY);
@@ -5810,7 +5811,7 @@
     panelShell(
       '<h2>Garmin</h2>' +
       '<p class="pnl-sub">Pair this browser with the Garmin bridge running on this computer. Start it with ' +
-        '<code>make garmin</code>: it prints the address and the pairing token to paste here.</p>' +
+        '<code>make garmin</code>, then <code>make garmin-pair</code> opens a link that pairs this browser in one click. To pair by hand, paste the address and token <code>make garmin</code> prints.</p>' +
       '<div class="pnl-grid">' +
         field('Bridge address', '<input type="text" class="input" id="gm-url" value="' + esc(cfg.url) + '" spellcheck="false" />') +
         field('Pairing token', '<input type="password" class="input" id="gm-token" value="' + esc(cfg.token) + '" autocomplete="off" spellcheck="false" />') +
@@ -5832,7 +5833,7 @@
     );
 
     const typed = () => ({ url: $('gm-url').value.trim().replace(/\/+$/, ''), token: $('gm-token').value.trim() });
-    const valid = (c) => GARMIN_URL_RE.test(c.url) && c.token.length >= 16;
+    const valid = (c) => GARMIN_URL_RE.test(c.url) && c.token.length >= MIN_TOKEN;
     const invalid = 'The address must be http://127.0.0.1:<port> or http://localhost:<port>, and the token is the long one `make garmin` prints.';
 
     $('gm-close').addEventListener('click', closePanel);
@@ -5971,16 +5972,32 @@
     openGarminSetupPanel('Training load settings saved.', 'ok');
   }
 
-  /* `?garmin=setup` opens the pairing panel once and leaves the address bar
-     clean, so a reload or a bookmark does not reopen it. It waits behind the
-     first-run notice rather than covering it. */
+  /* `?garmin=setup` is how the bridge's printed link lands here. With a good
+     `#garmin=<address>&token=<token>` after it the browser is paired on the
+     spot, and both leave the address bar at once (so they are not in this
+     history entry, a bookmark or a screenshot). Without one it opens the pairing
+     panel for pasting by hand, as before. It waits behind the first-run notice
+     rather than covering it. */
   function maybeOpenGarminSetup() {
     const params = new URLSearchParams(location.search);
     if (params.get('garmin') !== 'setup') return;
+    const pairing = parsePairing(location.hash);
+    const fragmentGiven = location.hash.startsWith('#garmin=');
     params.delete('garmin');
     const rest = params.toString();
-    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
-    if (ackSeen()) openGarminSetupPanel();
+    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + (fragmentGiven ? '#/' + state.page.replace(/^calendar$/, 'week') : location.hash));
+    if (pairing) {
+      if (save(GARMIN_CONFIG_KEY, pairing)) {
+        renderToolbar();
+        setStatus('Paired with the Garmin bridge');
+      } else if (ackSeen()) {
+        openGarminSetupPanel('This browser would not store the pairing.');
+      }
+      return;
+    }
+    if (ackSeen()) {
+      openGarminSetupPanel(fragmentGiven ? 'That pairing link could not be used. Run `make garmin-pair` again, or paste the address and token here.' : undefined);
+    }
   }
 
   let garminBusy = false;
