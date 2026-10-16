@@ -525,3 +525,39 @@ test('Plan setup and race changes keep the weeks already trained', () => {
   assert.match(fnBody('previewRefit'), /refit\(plan, \{ profile, keepBefore: trainedWeeks\(\) \}\)/);
   assert.match(fnBody('applyEvents'), /keepBefore: trainedWeeks\(\)/);
 });
+
+/* ---- The redesign's tokens, icons and theme ---- */
+
+const SHELL_CSS = readFileSync(new URL('assets/app-shell.css', ROOT), 'utf8');
+
+test('icons are CSS masks: no icon font is loaded and no Phosphor class is left', () => {
+  assert.ok(!/phosphor/i.test(HTML), 'index.html still loads or names Phosphor');
+  assert.ok(!/\bclass="[^"]*\bph\b/.test(HTML) && !/class="ph /.test(HTML), 'a Phosphor `ph` class is still used');
+  assert.ok(!/\bph-[a-z]/.test(HTML), 'a `ph-*` icon name is still used');
+});
+
+test('every icon the page names is drawn in app-shell.css', () => {
+  const drawn = new Set([...SHELL_CSS.matchAll(/^\.(i-[a-z0-9-]+)\s*\{/gm)].map((m) => m[1]));
+  // Literal uses ("ic i-x") and the names the page passes around ('i-x').
+  const used = new Set([...HTML.matchAll(/\bi-[a-z][a-z0-9-]*/g)].map((m) => m[0]));
+  const missing = [...used].filter((n) => !drawn.has(n));
+  assert.deepEqual(missing, [], `icons used by index.html but not drawn: ${missing.join(', ')}`);
+});
+
+test('the theme is set before first paint and has two palettes', () => {
+  const headEnd = HTML.indexOf('</head>');
+  const early = HTML.slice(0, headEnd);
+  assert.match(early, /<script>[\s\S]*data-theme[\s\S]*<\/script>/, 'no pre-paint theme script in <head>');
+  assert.match(early, /app-shell\.css/, 'app-shell.css is not linked in <head>');
+  assert.match(SHELL_CSS, /:root\s*\{[\s\S]*?--color-accent:/);
+  assert.match(SHELL_CSS, /:root\[data-theme="light"\]\s*\{[\s\S]*?--color-accent:/);
+});
+
+test('the page paints with tokens, not colour literals, so both themes follow', () => {
+  const css = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'));
+  const literals = css.match(/#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b(?!-)/g) || [];
+  // The only literals allowed are the fallbacks after a token in `.pnl`.
+  // Anything else belongs in app-shell.css.
+  assert.deepEqual(literals.filter((l) => !/^#1b1e2b$|^#e8e9f0$/i.test(l)), [], 'a colour literal crept into the page styles');
+  assert.ok(!/DISC\s*=\s*\{[^}]*#[0-9a-f]{6}/i.test(HTML), 'discipline colours are hard-coded again');
+});

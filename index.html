@@ -11,18 +11,30 @@
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
 <meta name="theme-color" content="#161826" />
+<script>
+  /* Set the theme before first paint so a light-theme reader never sees a dark flash.
+     The Dark/Light switch writes the same key; see setTheme in the page script. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('yootri_theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', t === 'light' ? '#f5f6fa' : '#161826');
+  })();
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
 <link rel="stylesheet" href="assets/nocturne.css" />
+<link rel="stylesheet" href="assets/app-shell.css" />
 
 <style>
   body {
     background:
       radial-gradient(1200px 720px at 88% -180px, color-mix(in srgb, var(--color-accent-900) 70%, transparent), transparent 60%),
-      radial-gradient(1000px 820px at -12% 108%, color-mix(in srgb, black 28%, transparent), transparent 55%),
+      radial-gradient(1000px 820px at -12% 108%, var(--page-shade), transparent 55%),
       var(--color-bg);
   }
 
@@ -40,6 +52,8 @@
     margin-bottom: 12px;
   }
   .hdr-top #account { display: inline-flex; align-items: center; gap: 8px; }
+  .hdr-actions { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .seg-opt .ic { margin-right: 6px; font-size: 14px; }
   .im-h1 {
     font-size: 36px;
     letter-spacing: -0.02em;
@@ -72,15 +86,15 @@
     border-radius: var(--radius-sm);
     transition: color 0.12s ease;
   }
-  .plan-title .ph {
+  .plan-title .ic {
     flex: none;
     font-size: 0.55em;
     color: color-mix(in srgb, var(--color-text) 34%, transparent);
     transition: color 0.12s ease, transform 0.12s ease;
   }
-  .plan-title:hover .ph,
-  .plan-title:focus-visible .ph { color: var(--color-accent); }
-  .plan-title[aria-expanded="true"] .ph {
+  .plan-title:hover .ic,
+  .plan-title:focus-visible .ic { color: var(--color-accent); }
+  .plan-title[aria-expanded="true"] .ic {
     color: var(--color-accent);
     transform: rotate(180deg);
   }
@@ -132,7 +146,7 @@
     cursor: pointer;
     transition: background 0.12s ease, color 0.12s ease;
   }
-  .pmenu-item .ph {
+  .pmenu-item .ic {
     flex: none;
     width: 15px;
     font-size: 15px;
@@ -147,14 +161,14 @@
     background: color-mix(in srgb, var(--color-accent) 12%, transparent);
     color: var(--color-text);
   }
-  .pmenu-item:hover .ph, .pmenu-item:focus-visible .ph { color: var(--color-accent); }
+  .pmenu-item:hover .ic, .pmenu-item:focus-visible .ic { color: var(--color-accent); }
   .pmenu-item[aria-checked="true"] { color: var(--color-text); }
-  .pmenu-item[aria-checked="true"] .ph { color: var(--color-accent); }
+  .pmenu-item[aria-checked="true"] .ic { color: var(--color-accent); }
   .pmenu-item.danger:hover, .pmenu-item.danger:focus-visible {
-    background: color-mix(in srgb, #e08a6c 14%, transparent);
-    color: #e08a6c;
+    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
+    color: var(--color-danger);
   }
-  .pmenu-item.danger:hover .ph, .pmenu-item.danger:focus-visible .ph { color: #e08a6c; }
+  .pmenu-item.danger:hover .ic, .pmenu-item.danger:focus-visible .ic { color: var(--color-danger); }
   .pmenu-item[aria-disabled="true"] {
     opacity: 0.38;
     cursor: default;
@@ -164,7 +178,7 @@
     background: transparent;
     color: color-mix(in srgb, var(--color-text) 82%, transparent);
   }
-  .pmenu-item[aria-disabled="true"]:hover .ph {
+  .pmenu-item[aria-disabled="true"]:hover .ic {
     color: color-mix(in srgb, var(--color-text) 45%, transparent);
   }
   .pmenu-sep {
@@ -205,7 +219,6 @@
     padding: 3px 8px;
     font-size: 12px;
     width: auto;
-    color-scheme: dark;
   }
   .ov-weeks {
     font-size: 12px;
@@ -324,10 +337,10 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinning { animation: spin 0.55s linear infinite; }
-  .sync-status.error { color: #e08a6c; }
+  .sync-status.error { color: var(--color-danger); }
   .sync-status.error::before {
-    background: #e08a6c;
-    box-shadow: 0 0 0 3px color-mix(in srgb, #e08a6c 25%, transparent);
+    background: var(--color-danger);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 25%, transparent);
   }
 
   /* ---- Account chip ---- */
@@ -658,7 +671,7 @@
   .cal-evt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-evt.primary {
     background: color-mix(in srgb, var(--color-accent) 26%, transparent);
-    color: color-mix(in srgb, var(--color-accent) 88%, white);
+    color: color-mix(in srgb, var(--color-accent) 88%, var(--color-text));
     font-weight: 600;
   }
   /* A tune-up race reads as a race without competing with the one the season is
@@ -666,7 +679,7 @@
   .cal-evt.secondary {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent);
-    color: color-mix(in srgb, var(--color-accent) 80%, white);
+    color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text));
   }
   .cal-evt:hover { background: color-mix(in srgb, var(--color-accent) 34%, transparent); }
 
@@ -681,7 +694,7 @@
   .cal-chip-main, .cal-chip-done {
     display: flex; align-items: center; gap: 3px;
     padding: 2px 4px; border: 0; background: none; cursor: pointer;
-    color: color-mix(in srgb, var(--disc-color) 88%, white);
+    color: color-mix(in srgb, var(--disc-color) 88%, var(--color-text));
     font: inherit; font-size: .7rem; line-height: 1.3;
   }
   .cal-chip-main { flex: 1; min-width: 0; overflow: hidden; }
@@ -998,7 +1011,7 @@
   .pnl-act { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1.15rem; flex-wrap: wrap; }
   .pnl-act .spacer { margin-right: auto; }
   .pnl-act .danger { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
-  .pnl-act .danger:hover, .pnl-act .danger:focus-visible { color: #e08a6c; }
+  .pnl-act .danger:hover, .pnl-act .danger:focus-visible { color: var(--color-danger); }
   .diff-sum { font-size: .86rem; margin: 0 0 .6rem; }
   .diff-list { max-height: 40vh; overflow: auto; margin: 0; padding: 0; list-style: none; }
   .diff-row { display: grid; grid-template-columns: 1fr auto auto; gap: .6rem; align-items: baseline;
@@ -1007,13 +1020,13 @@
   .diff-row .wk { color: color-mix(in srgb, var(--color-text) 72%, transparent); }
   .diff-row .vol { font-variant-numeric: tabular-nums; }
   .diff-row .delta { font-variant-numeric: tabular-nums; font-weight: 600; }
-  .diff-row .delta.up { color: #84c08f; }
-  .diff-row .delta.down { color: #e08a6c; }
+  .diff-row .delta.up { color: var(--color-success); }
+  .diff-row .delta.down { color: var(--color-danger); }
   .diff-issues { margin: .8rem 0 0; padding: .6rem .75rem; border-radius: 9px; font-size: .78rem;
     background: color-mix(in srgb, var(--color-text) 6%, transparent); }
   .diff-issues ul { margin: .3rem 0 0; padding-left: 1.1rem; }
-  .diff-issues .err { color: #e08a6c; }
-  .diff-issues .ok { color: #84c08f; }
+  .diff-issues .err { color: var(--color-danger); }
+  .diff-issues .ok { color: var(--color-success); }
   .diff-empty { font-size: .85rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
   .pnl-h3 { margin: 1.25rem 0 .45rem; font-size: .72rem; font-weight: 600;
     letter-spacing: .06em; text-transform: uppercase;
@@ -1036,7 +1049,7 @@
   .bm-list .btn { padding: .2rem .55rem; font-size: .74rem; min-height: 0; }
   .gm-list label { display: flex; align-items: center; gap: .55rem; width: 100%; cursor: pointer; }
   .gm-list .bm-what { margin-right: auto; }
-  .card-actual .ph-watch { font-size: .85em; vertical-align: -.05em; }
+  .card-actual .i-watch { font-size: .85em; vertical-align: -.05em; }
   .card-meta .pace { font-variant-numeric: tabular-nums; }
   .imp-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: .6rem 1rem; margin: 1rem 0 .8rem; }
@@ -1057,8 +1070,8 @@
     border-color: var(--color-accent); font-weight: 600; }
   .card-actual { display: block; margin-top: .2rem; font-size: .72rem; font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-text) 60%, transparent); }
-  .card-actual.short { color: #e08a6c; }
-  .card-actual.miss { color: #e08a6c; font-style: italic; }
+  .card-actual.short { color: var(--color-danger); }
+  .card-actual.miss { color: var(--color-danger); font-style: italic; }
   .sum-cell .sub.act { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 
   /* ---- Coach ---- */
@@ -1070,7 +1083,7 @@
     max-width: 85%; }
   .chat-msg.coach { background: color-mix(in srgb, var(--color-text) 7%, transparent); align-self: flex-start;
     max-width: 92%; }
-  .chat-msg.err { background: color-mix(in srgb, #e08a6c 20%, transparent); align-self: flex-start; }
+  .chat-msg.err { background: color-mix(in srgb, var(--color-danger) 20%, transparent); align-self: flex-start; }
   .chat-empty { font-size: .82rem; color: color-mix(in srgb, var(--color-text) 55%, transparent);
     padding: .4rem 0 .8rem; }
   .chat-empty ul { margin: .45rem 0 0; padding-left: 1.1rem; }
@@ -1110,8 +1123,8 @@
     border-radius: 10px; font-size: .82rem; line-height: 1.5;
     background: color-mix(in srgb, var(--color-text) 6%, transparent);
     border-left: 3px solid color-mix(in srgb, var(--color-text) 30%, transparent); }
-  .advice-card.warn { border-left-color: #e08a6c;
-    background: color-mix(in srgb, #e08a6c 10%, transparent); }
+  .advice-card.warn { border-left-color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
   .advice-card .grow { flex: 1; }
   .advice-card .btn { flex: none; }
   .chat-busy { font-size: .8rem; font-style: italic;
@@ -1219,13 +1232,19 @@
     <header>
       <div class="hdr-top">
         <span class="kicker">Season plan</span>
-        <span id="account"></span>
+        <span class="hdr-actions">
+          <span class="seg" role="radiogroup" aria-label="Theme" id="theme-seg">
+            <label class="seg-opt"><input type="radio" name="theme" value="dark" /><i class="ic i-moon" aria-hidden="true"></i>Dark</label>
+            <label class="seg-opt"><input type="radio" name="theme" value="light" /><i class="ic i-sun" aria-hidden="true"></i>Light</label>
+          </span>
+          <span id="account"></span>
+        </span>
       </div>
       <div class="plan-title-wrap">
         <h1 class="im-h1">
           <button type="button" class="plan-title" id="plan-title" aria-haspopup="menu" aria-expanded="false">
             <span id="plan-title-text"></span>
-            <i class="ph ph-caret-down" aria-hidden="true"></i>
+            <i class="ic i-chev-down" aria-hidden="true"></i>
           </button>
         </h1>
         <div id="menu-root"></div>
@@ -1254,30 +1273,30 @@
 
     <div class="toolbar">
       <button type="button" class="btn btn-secondary" id="setup-btn">
-        <i class="ph ph-sliders-horizontal" aria-hidden="true"></i> Plan setup
+        <i class="ic i-sliders" aria-hidden="true"></i> Plan setup
       </button>
       <button type="button" class="btn btn-secondary" id="coach-btn">
-        <i class="ph ph-chat-teardrop-text" aria-hidden="true"></i> Coach
+        <i class="ic i-chat" aria-hidden="true"></i> Coach
       </button>
       <!-- In the toolbar rather than in the calendar bar, so a race can be put
            on the calendar from either view. It used to live inside #calwrap,
            which meant it disappeared with the month grid — and a race is a thing
            you think of while looking at the week you are training. -->
       <button type="button" class="btn btn-secondary" id="add-event-btn">
-        <i class="ph ph-flag-pennant" aria-hidden="true"></i> Add event
+        <i class="ic i-flag" aria-hidden="true"></i> Add event
       </button>
       <!-- Reads activities from the Garmin bridge running on this computer
            (tools/garmin-bridge). Not the cloud Sync button further along: this
            one talks only to 127.0.0.1. Hidden until this browser is paired, so
            the published page offers nothing a visitor cannot use. -->
       <button type="button" class="btn btn-secondary hidden" id="garmin-btn">
-        <i class="ph ph-watch" aria-hidden="true"></i> Garmin
+        <i class="ic i-watch" aria-hidden="true"></i> Garmin
       </button>
       <!-- The other direction: puts upcoming bike sessions in the Garmin calendar
            as structured workouts. Same bridge, same pairing, and off on the
            bridge unless it was started with YOOTRI_GARMIN_WORKOUTS=1. -->
       <button type="button" class="btn btn-secondary hidden" id="garmin-send-btn">
-        <i class="ph ph-paper-plane-tilt" aria-hidden="true"></i> To Garmin
+        <i class="ic i-send" aria-hidden="true"></i> To Garmin
       </button>
 
       <span class="seg" role="group" aria-label="View" id="view-seg">
@@ -1286,16 +1305,16 @@
       </span>
 
       <div class="wk-nav">
-        <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ph ph-caret-left"></i></button>
+        <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ic i-left"></i></button>
         <span class="wk-pos"><span class="top" id="week-pos"></span><span class="range" id="week-range"></span></span>
-        <button type="button" class="btn btn-secondary btn-icon" id="next-week" aria-label="Next week"><i class="ph ph-caret-right"></i></button>
+        <button type="button" class="btn btn-secondary btn-icon" id="next-week" aria-label="Next week"><i class="ic i-right"></i></button>
       </div>
 
       <div class="im-actions">
         <span class="sync-status" id="status"></span>
-        <button type="button" class="btn btn-ghost hidden" id="undo-btn"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i> Undo</button>
-        <button type="button" class="btn btn-secondary" id="sync-btn"><i class="ph ph-arrow-clockwise" id="sync-icon"></i> Sync</button>
-        <button type="button" class="btn btn-ghost" id="reset-btn"><i class="ph ph-arrow-counter-clockwise"></i> Reset week</button>
+        <button type="button" class="btn btn-ghost hidden" id="undo-btn"><i class="ic i-undo" aria-hidden="true"></i> Undo</button>
+        <button type="button" class="btn btn-secondary" id="sync-btn"><i class="ic i-sync" id="sync-icon"></i> Sync</button>
+        <button type="button" class="btn btn-ghost" id="reset-btn"><i class="ic i-undo"></i> Reset week</button>
       </div>
     </div>
 
@@ -1416,19 +1435,19 @@
      ========================================================================= */
 
   const DISC = {
-    Swim: { icon: 'ph-person-simple-swim', color: '#5fb1cb' },
-    Bike: { icon: 'ph-bicycle', color: '#d8a75f' },
-    Run: { icon: 'ph-person-simple-run', color: '#e08a6c' },
-    Strength: { icon: 'ph-barbell', color: '#9aa0ba' },
-    Yoga: { icon: 'ph-flower-lotus', color: '#84c08f' },
-    Brick: { icon: 'ph-link-simple', color: '#b884d6' },
-    Rest: { icon: 'ph-bed', color: '#7b8299' },
+    Swim: { icon: 'i-swim', color: 'var(--disc-swim)' },
+    Bike: { icon: 'i-bike', color: 'var(--disc-bike)' },
+    Run: { icon: 'i-run', color: 'var(--disc-run)' },
+    Strength: { icon: 'i-barbell', color: 'var(--disc-strength)' },
+    Yoga: { icon: 'i-lotus', color: 'var(--disc-yoga)' },
+    Brick: { icon: 'i-link', color: 'var(--disc-brick)' },
+    Rest: { icon: 'i-bed', color: 'var(--disc-rest)' },
   };
 
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const STORE = 'im703_v2';
   const LEGACY = 'im703_v1';
-  const AXIS_GREY = '#b2b6ca';
+  const AXIS_GREY = 'var(--color-neutral-400)';
 
   /* ---- Storage: localStorage is the always-on working store. When signed in,
      each plan also syncs to Firestore (see the module script at the end). ---- */
@@ -1764,7 +1783,7 @@
       (opts.meter != null ? '<div class="sum-meter"><div style="width: ' + opts.meter + '%;"></div></div>' : '') +
       '</div>';
 
-    const icon = (name) => '<i class="ph ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
+    const icon = (name) => '<i class="ic ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
 
     // A week not released yet has no sessions to count: show only the hours
     // it is planned to hold, as the board does.
@@ -1805,7 +1824,7 @@
     const cls = did < planned ? ' short' : '';
     const from = syncedActivity(a.activityId);
     const watch = from
-      ? '<i class="ph ph-watch" aria-label="From Garmin" title="From Garmin' + (from.name ? ': ' + esc(from.name) : '') + '"></i> '
+      ? '<i class="ic i-watch" aria-label="From Garmin" title="From Garmin' + (from.name ? ': ' + esc(from.name) : '') + '"></i> '
       : '';
     return '<span class="card-actual' + cls + '">' + watch + 'did ' + esc(fmtTotal(did) || '0m') +
       esc(syncedDetail(from)) + rpe + '</span>';
@@ -1857,25 +1876,25 @@
     return (
       '<div class="im-card" draggable="true" data-id="' + esc(s.id) + '" style="--disc-color: ' + color + ';">' +
         '<div class="card-top">' +
-          '<span class="disc-tag" style="background: color-mix(in srgb, ' + color + ' 20%, transparent); color: color-mix(in srgb, ' + color + ' 82%, white);">' +
-            '<i class="ph ' + (meta.icon || 'ph-circle') + '"></i>' + esc(s.disc) + '</span>' +
+          '<span class="disc-tag" style="background: color-mix(in srgb, ' + color + ' 20%, transparent); color: color-mix(in srgb, ' + color + ' 82%, var(--color-text));">' +
+            '<i class="ic ' + (meta.icon || 'i-circle') + '"></i>' + esc(s.disc) + '</span>' +
           '<span class="card-acts">' +
-            '<button type="button" class="icon-btn" data-act="edit" data-id="' + esc(s.id) + '" title="Edit session"><i class="ph ph-pencil-simple"></i></button>' +
-            '<button type="button" class="icon-btn del" data-act="delete" data-id="' + esc(s.id) + '" title="Delete session"><i class="ph ph-trash"></i></button>' +
+            '<button type="button" class="icon-btn" data-act="edit" data-id="' + esc(s.id) + '" title="Edit session"><i class="ic i-pencil"></i></button>' +
+            '<button type="button" class="icon-btn del" data-act="delete" data-id="' + esc(s.id) + '" title="Delete session"><i class="ic i-trash"></i></button>' +
           '</span>' +
         '</div>' +
         '<div class="card-focus' + (hasTitle ? '' : ' untitled') + '">' + (hasTitle ? esc(s.focus) : 'Untitled session') + '</div>' +
         '<div class="card-meta">' +
-          '<span><i class="ph ph-clock"></i>' + esc(s.dur) + '</span>' +
-          (zone ? '<span><i class="ph ph-gauge"></i>' + esc(zone) + '</span>' : '') +
+          '<span><i class="ic i-clock"></i>' + esc(s.dur) + '</span>' +
+          (zone ? '<span><i class="ic i-gauge"></i>' + esc(zone) + '</span>' : '') +
           sessionPaceHTML(s) +
         '</div>' +
         actualLineHTML(s) +
         (s.desc && s.desc.trim() ? '<div class="card-desc">' + esc(s.desc) + '</div>' : '') +
         '<div class="card-foot">' +
           (isDone
-            ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ph ph-check-circle"></i>Done</button>'
-            : '<button type="button" class="done-toggle" data-act="done" data-id="' + esc(s.id) + '"><i class="ph ph-circle"></i>Mark done</button>') +
+            ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-check-circle"></i>Done</button>'
+            : '<button type="button" class="done-toggle" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-circle"></i>Mark done</button>') +
         '</div>' +
       '</div>'
     );
@@ -1926,7 +1945,7 @@
           '</div>' +
           dayItems.map(sessionCardHTML).join('') +
           (dayItems.length === 0 ? '<div class="rest-zone">Rest day — drag or add a session</div>' : '') +
-          '<button type="button" class="add-btn" data-day="' + day + '"><i class="ph ph-plus"></i>Add session</button>' +
+          '<button type="button" class="add-btn" data-day="' + day + '"><i class="ic i-plus"></i>Add session</button>' +
         '</div>'
       );
     }).join('');
@@ -1951,12 +1970,12 @@
         ' style="--disc-color: ' + color + ';">' +
         '<button type="button" class="cal-chip-main" data-act="edit" data-id="' + esc(s.id) + '"' +
           ' title="' + esc(label + ' · ' + s.dur) + '">' +
-          '<i class="ph ' + (meta.icon || 'ph-circle') + '" aria-hidden="true"></i>' +
+          '<i class="ic ' + (meta.icon || 'i-circle') + '" aria-hidden="true"></i>' +
           '<span class="cal-chip-dur">' + esc(s.dur) + '</span>' +
         '</button>' +
         '<button type="button" class="cal-chip-done" data-act="done" data-id="' + esc(s.id) + '"' +
           ' aria-label="' + (isDone ? 'Mark not done' : 'Mark done') + '">' +
-          '<i class="ph ' + (isDone ? 'ph-check-circle' : 'ph-circle') + '" aria-hidden="true"></i>' +
+          '<i class="ic ' + (isDone ? 'i-check-circle' : 'i-circle') + '" aria-hidden="true"></i>' +
         '</button>' +
       '</span>'
     );
@@ -1968,7 +1987,7 @@
     return (
       '<button type="button" class="cal-evt' + (ev.priority ? ' ' + ev.priority : '') + '" data-act="event"' +
         ' data-id="' + esc(ev.id) + '" title="' + esc(title) + '">' +
-        '<i class="ph ' + (ev.kind === 'race' ? 'ph-flag-checkered' : 'ph-bookmark-simple') + '" aria-hidden="true"></i>' +
+        '<i class="ic ' + (ev.kind === 'race' ? 'i-flag-checkered' : 'i-bookmark') + '" aria-hidden="true"></i>' +
         '<span>' + esc(label) + '</span>' +
       '</button>'
     );
@@ -2032,7 +2051,7 @@
             sessions.map(calChipHTML).join('') +
             (d.inPlan
               ? '<button type="button" class="cal-add" data-act="add" data-date="' + d.iso + '"' +
-                ' aria-label="Add a session"><i class="ph ph-plus" aria-hidden="true"></i></button>'
+                ' aria-label="Add a session"><i class="ic i-plus" aria-hidden="true"></i></button>'
               : '') +
           '</div>'
         );
@@ -2139,7 +2158,7 @@
       const y = yAt(v).toFixed(1);
       svg += '<line x1="54" x2="' + rightX + '" y1="' + y + '" y2="' + y + '" style="stroke: ' + faint + ';" stroke-width="1"/>';
       svg += '<line x1="49" x2="54" y1="' + y + '" y2="' + y + '" style="stroke: ' + tickCol + ';" stroke-width="1"/>';
-      svg += '<text x="45" y="' + y + '" text-anchor="end" dominant-baseline="middle" font-size="11" fill="' + AXIS_GREY + '">' + hourLabel(v) + '</text>';
+      svg += '<text x="45" y="' + y + '" text-anchor="end" dominant-baseline="middle" font-size="11" style="fill: ' + AXIS_GREY + '">' + hourLabel(v) + '</text>';
     }
 
     // Axes
@@ -2164,7 +2183,7 @@
     for (let i = 0; i < N; i++) {
       const x = xAt(i).toFixed(1);
       svg += '<line x1="' + x + '" x2="' + x + '" y1="' + baseY + '" y2="' + tickBot + '" style="stroke: color-mix(in srgb, var(--color-text) 45%, transparent);" stroke-width="1"/>';
-      svg += '<text x="' + x + '" y="203" text-anchor="middle" font-size="10.5" fill="' + AXIS_GREY + '">' + (i + 1) + '</text>';
+      svg += '<text x="' + x + '" y="203" text-anchor="middle" font-size="10.5" style="fill: ' + AXIS_GREY + '">' + (i + 1) + '</text>';
     }
     svg += '<text x="' + ((54 + rightX) / 2).toFixed(1) + '" y="217" text-anchor="middle" font-size="11" style="fill: color-mix(in srgb, var(--color-text) 55%, transparent);">Week</text>';
 
@@ -2278,7 +2297,7 @@
         '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">' +
           '<div class="dialog-head">' +
             '<h3 id="dialog-title">Edit session</h3>' +
-            '<button type="button" class="btn btn-icon btn-ghost" data-act="cancel" aria-label="Close"><i class="ph ph-x"></i></button>' +
+            '<button type="button" class="btn btn-icon btn-ghost" data-act="cancel" aria-label="Close"><i class="ic i-x"></i></button>' +
           '</div>' +
           '<div class="field"><label for="ed-disc">Discipline</label><select class="input" id="ed-disc">' + opts + '</select></div>' +
           '<div class="field"><label for="ed-focus">Title</label><input type="text" class="input" id="ed-focus" value="' + esc(s.focus || '') + '" placeholder="e.g. Endurance spin" /></div>' +
@@ -2289,9 +2308,9 @@
           '<div class="field"><label for="ed-desc">Description</label><textarea class="input" id="ed-desc" placeholder="Sets, cues, notes…">' + esc(s.desc || '') + '</textarea></div>' +
           logSectionHTML(s) +
           '<div class="dialog-foot">' +
-            '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ph ph-trash"></i> Delete</button>' +
+            '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ic i-trash"></i> Delete</button>' +
             (s.disc === 'Bike' && garminConfig()
-              ? '<button type="button" class="btn btn-ghost" data-act="send-garmin" title="Sends the saved session, not unsaved edits"><i class="ph ph-paper-plane-tilt"></i> Send to Garmin</button>'
+              ? '<button type="button" class="btn btn-ghost" data-act="send-garmin" title="Sends the saved session, not unsaved edits"><i class="ic i-send"></i> Send to Garmin</button>'
               : '') +
             '<span class="right">' +
               '<button type="button" class="btn btn-secondary" data-act="cancel">Cancel</button>' +
@@ -2966,7 +2985,7 @@
       '</div>' +
       '<p class="pnl-hint" id="ev-hint"></p>' +
       '<div class="pnl-act">' +
-        (existing ? '<button type="button" class="btn btn-ghost spacer danger" id="ev-del"><i class="ph ph-trash"></i> Delete</button>' : '') +
+        (existing ? '<button type="button" class="btn btn-ghost spacer danger" id="ev-del"><i class="ic i-trash"></i> Delete</button>' : '') +
         '<button type="button" class="btn btn-ghost" id="ev-cancel">Cancel</button>' +
         '<button type="button" class="btn btn-primary" id="ev-save">Save event</button>' +
       '</div>',
@@ -5067,7 +5086,7 @@
             ? '<span class="bm-tag">in use</span>'
             : '<button type="button" class="btn btn-ghost" data-bm-use="' + esc(b.id) + '">Use this</button>') +
           '<button type="button" class="icon-btn del" data-bm-del="' + esc(b.id) + '" ' +
-            'title="Remove this result" aria-label="Remove this result"><i class="ph ph-trash"></i></button>' +
+            'title="Remove this result" aria-label="Remove this result"><i class="ic i-trash"></i></button>' +
         '</li>').join('') + '</ul>';
   }
 
@@ -6326,7 +6345,7 @@
         '<div class="modal-backdrop" id="nd-backdrop">' +
           '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="nd-title" style="width: min(400px, 100%);">' +
             '<div class="dialog-head"><h3 id="nd-title">' + esc(title) + '</h3>' +
-              '<button type="button" class="btn btn-icon btn-ghost" data-nd="cancel" aria-label="Close"><i class="ph ph-x"></i></button></div>' +
+              '<button type="button" class="btn btn-icon btn-ghost" data-nd="cancel" aria-label="Close"><i class="ic i-x"></i></button></div>' +
             '<div class="field"><label for="nd-input">Name</label><input type="text" class="input" id="nd-input" value="' + esc(initial || '') + '" maxlength="60" /></div>' +
             '<div class="dialog-foot" style="justify-content: flex-end;">' +
               '<span class="right"><button type="button" class="btn btn-secondary" data-nd="cancel">Cancel</button>' +
@@ -6381,7 +6400,7 @@
       els.account.innerHTML =
         '<button type="button" class="account-note" id="local-only" ' +
         'title="Sign-in is unavailable here — your plans are saved in this browser">' +
-        '<i class="ph ph-hard-drives"></i> Local only</button>';
+        '<i class="ic i-drive"></i> Local only</button>';
       $('local-only').addEventListener('click', openLocalOnlyPanel);
     } else if (authUser && !hasSyncConsent()) {
       // Signed in, nothing agreed to, nothing sent. Dismissing the consent panel
@@ -6389,15 +6408,15 @@
       els.account.innerHTML =
         '<button type="button" class="account-note" id="sync-off" ' +
         'title="Signed in, but sync is off — your plans are saved in this browser">' +
-        '<i class="ph ph-cloud-slash"></i> Sync off</button>' +
+        '<i class="ic i-cloud-off"></i> Sync off</button>' +
         '<button type="button" class="btn btn-ghost" data-acct="signout">Sign out</button>';
       $('sync-off').addEventListener('click', openSyncConsentPanel);
     } else if (authUser) {
       els.account.innerHTML =
-        '<span class="account-email"><i class="ph ph-cloud-check"></i>' + esc(authUser.email || 'Signed in') + '</span>' +
+        '<span class="account-email"><i class="ic i-cloud-check"></i>' + esc(authUser.email || 'Signed in') + '</span>' +
         '<button type="button" class="btn btn-ghost" data-acct="signout">Sign out</button>';
     } else {
-      els.account.innerHTML = '<button type="button" class="btn btn-secondary" data-acct="signin"><i class="ph ph-google-logo"></i> Sign in to sync</button>';
+      els.account.innerHTML = '<button type="button" class="btn btn-secondary" data-acct="signin"><i class="ic i-google"></i> Sign in to sync</button>';
     }
   }
 
@@ -6411,7 +6430,7 @@
 
   function menuRow(act, icon, label) {
     return '<button type="button" role="menuitem" class="pmenu-item" data-pm="' + act + '">' +
-      '<i class="ph ph-' + icon + '" aria-hidden="true"></i><span class="pmenu-label">' + esc(label) + '</span></button>';
+      '<i class="ic ' + icon + '" aria-hidden="true"></i><span class="pmenu-label">' + esc(label) + '</span></button>';
   }
 
   function openPlanMenu() {
@@ -6423,25 +6442,25 @@
             const cur = plan && e.id === plan.id;
             return '<button type="button" role="menuitemradio" aria-checked="' + (cur ? 'true' : 'false') + '" ' +
               'class="pmenu-item" data-pm="switch" data-id="' + esc(e.id) + '">' +
-              '<i class="ph ph-check" aria-hidden="true"' + (cur ? '' : ' style="visibility: hidden;"') + '></i>' +
+              '<i class="ic i-check" aria-hidden="true"' + (cur ? '' : ' style="visibility: hidden;"') + '></i>' +
               '<span class="pmenu-label">' + esc(e.name) + '</span></button>';
           }).join('') +
         '</div>' +
         '<div class="pmenu-sep" role="separator"></div>' +
-        menuRow('rename', 'pencil-simple', 'Rename') +
-        menuRow('dup', 'copy', 'Duplicate') +
-        menuRow('export', 'download-simple', 'Export this plan') +
-        menuRow('paces', 'gauge', 'Training paces…') +
-        menuRow('athlete', 'user-circle', 'About you…') +
-        menuRow('release', 'calendar-check', plan.release ? 'Show the whole season' : 'Show one week at a time') +
+        menuRow('rename', 'i-pencil', 'Rename') +
+        menuRow('dup', 'i-copy', 'Duplicate') +
+        menuRow('export', 'i-download', 'Export this plan') +
+        menuRow('paces', 'i-gauge', 'Training paces…') +
+        menuRow('athlete', 'i-user', 'About you…') +
+        menuRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +
         '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="delete"' +
           (soleplan ? ' aria-disabled="true"' : '') + '>' +
-          '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
+          '<i class="ic i-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
         '<div class="pmenu-sep" role="separator"></div>' +
-        menuRow('new', 'plus', 'New season…') +
-        menuRow('blank', 'file-plus', 'Blank plan…') +
-        menuRow('import', 'upload-simple', 'Import plan…') +
-        menuRow('mydata', 'archive', 'Download my data') +
+        menuRow('new', 'i-plus', 'New season…') +
+        menuRow('blank', 'i-plus', 'Blank plan…') +
+        menuRow('import', 'i-upload', 'Import plan…') +
+        menuRow('mydata', 'i-download', 'Download my data') +
       '</div>';
     els.planTitle.setAttribute('aria-expanded', 'true');
     document.addEventListener('keydown', onMenuKey, true);
@@ -6542,6 +6561,20 @@
   /* =========================================================================
      Events
      ========================================================================= */
+
+  /* Theme: one attribute on <html>, set before first paint by the script in
+     <head>. The switch only keeps that attribute, the stored choice and the
+     browser chrome colour in step. */
+  const THEME_KEY = 'yootri_theme';
+  function setTheme(t) {
+    if (t !== 'light' && t !== 'dark') return;
+    document.documentElement.setAttribute('data-theme', t);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'light' ? '#f5f6fa' : '#161826');
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+    document.querySelectorAll('#theme-seg input').forEach((r) => { r.checked = r.value === t; });
+  }
+  document.querySelectorAll('#theme-seg input').forEach((r) => r.addEventListener('change', () => setTheme(r.value)));
+  setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 
   // Plan title + menu
   els.planTitle.addEventListener('click', () => { if (menuOpen()) closePlanMenu(); else openPlanMenu(); });
