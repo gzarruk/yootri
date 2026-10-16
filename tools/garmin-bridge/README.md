@@ -34,7 +34,7 @@ running.
 removes the address and token from the address bar. The token sits after the `#`,
 so it is never sent to any server; anything that can read the link can pair a
 browser, so treat it like the token (`python -m garmin_bridge pair --rotate`
-makes old ones useless). Pasting the token by hand still works. The pairing
+makes old ones useless). `make garmin-link` prints the link for every page (the published site too), which is how you pair the online page when the bridge runs quietly as the always-on agent. Pasting the token by hand still works. The pairing
 lives in that browser's own storage, so each address you use yootri from
 (`http://localhost:8000`, the published site) is paired once.
 

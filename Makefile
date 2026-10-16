@@ -12,6 +12,7 @@
 #   make garmin-login     sign in to Garmin once (personal use; see tools/garmin-bridge)
 #   make garmin           run the Garmin bridge while you sync from the page
 #   make garmin-pair      open the one-click link that pairs this browser with it
+#   make garmin-link      print the pairing links, one per page (the published site too)
 #   make garmin-install   macOS: start the bridge at login, no terminal (garmin-uninstall to remove)
 
 PORT ?= 8000
@@ -26,7 +27,7 @@ NEED_UV = command -v uv >/dev/null 2>&1 || { \
 	exit 1; }
 
 .DEFAULT_GOAL := dev
-.PHONY: dev stop test hygiene check help garmin garmin-pair garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test
+.PHONY: dev stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test
 
 ## dev: serve at http://localhost:8000/ (PORT=8001 to change)
 dev:
@@ -69,6 +70,11 @@ garmin:
 ## garmin-pair: open the one-click pairing link in your browser (same GARMIN_PORT / PORT as `make garmin`)
 garmin-pair:
 	@$(NEED_UV); $(BRIDGE) python -m garmin_bridge pair --open --port $(GARMIN_PORT) \
+		--allow-origin http://localhost:$(PORT)
+
+## garmin-link: print the pairing links for every page allowed to use the bridge (incl. the published site)
+garmin-link:
+	@$(NEED_UV); $(BRIDGE) python -m garmin_bridge pair --link --port $(GARMIN_PORT) \
 		--allow-origin http://localhost:$(PORT)
 
 ## garmin-install: macOS — start the bridge at login and keep it running (no terminal needed)
