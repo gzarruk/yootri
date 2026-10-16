@@ -32,7 +32,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. |
 | `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
-| `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. |
+| `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. `carryOver`/`upcomingEvents` say what survives a restart; `consolidatePlans` settles stored plans into the one active plan. |
 | `migrate.js` | Schema v2 → v3. `legacy-plan.js` is the frozen old template it needs. |
 | `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
 | `duration.js` | `"H:MM"` ↔ minutes, the format the app already stores. |
@@ -63,6 +63,19 @@ moving it re-fits the season through the same draft → diff → apply flow the 
 form uses, which is why Plan setup only *shows* the race date. `normalizeEvent`
 reads a legacy `goal: true` as `primary`, which is how that field changed with no
 schema bump — do not reintroduce `goal` as a stored field.
+
+**There is one plan.** The page holds a single active plan; there is no switcher,
+no duplicate and no blank plan. A new season is **Delete plan & start over…**: the
+athlete ticks which upcoming events (A = `primary`, B = `secondary`, markers) to
+keep, and the wizard opens with them answered (`carriedAnswers` in `onboarding.js`).
+Nothing is removed until the wizard finishes — `replaceCurrentPlan` then swaps the
+plan, with a ten-second Undo — so backing out changes nothing. What is true of the
+athlete (benchmarks, FTP/CSS, synced Garmin history, About you) comes along;
+weeks, logs and chat do not. Plans from the multi-plan era are **archived**, not
+deleted (`archivedAt`, a top-level field with no schema bump): `consolidatePlans`
+keeps the newest real plan, `settlePlans` applies it on load and after a cloud
+merge, and the rest sit under Past plans (download / delete only — nothing reads
+them). Import is plan creation too, so it replaces the plan rather than adding one.
 
 **A season can hold more than one race.** A race marked `secondary` is a tune-up
 inside the build: `planLandings` in `season.js` decides where it lands and

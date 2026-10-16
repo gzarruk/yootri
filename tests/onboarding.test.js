@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   STEPS, emptyAnswers, prefill, stepProblems, racePreview, athleteFromAnswers,
-  buildPlanFromAnswers, planReview, isReturning,
+  buildPlanFromAnswers, planReview, isReturning, carriedAnswers,
 } from '../assets/coach/onboarding.js';
 import { newPlan, weekCount, sessionsAt, loadPlan } from '../assets/coach/plan.js';
 import { normalizeEvents, goalEvent, secondaryRaces } from '../assets/coach/events.js';
@@ -262,4 +262,40 @@ test('the review shows week 1 and blocks nothing on a buildable plan', () => {
 test('a season built by the wizard is released one week at a time, from week 1', () => {
   const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
   assert.deepEqual(p.release, { through: 0 });
+});
+
+/* ---- Starting over keeps the races the athlete chose ---- */
+
+const carried = [
+  { id: 'a', name: 'Lisbon 70.3', date: '2027-05-16', kind: 'race', raceType: '70.3', priority: 'primary', note: '' },
+  { id: 'b', name: 'Half', date: '2027-03-07', kind: 'race', raceType: 'half-marathon', priority: 'secondary', note: '' },
+  { id: 'c', name: 'Club ride', date: '2027-02-01', kind: 'other', raceType: null, priority: null, note: '' },
+];
+
+test('carriedAnswers: A fills the race, B the tune-ups, C is a marker; the past is ignored', () => {
+  const c = carriedAnswers([...carried, { ...carried[1], id: 'old', date: '2026-01-01' }], { today: TODAY });
+  assert.deepEqual(c.race, { name: 'Lisbon 70.3', date: '2027-05-16', raceType: '70.3' });
+  assert.deepEqual(c.tuneUps, [{ name: 'Half', date: '2027-03-07', raceType: 'half-marathon' }]);
+  assert.deepEqual(c.markers.map((m) => m.name), ['Club ride']);
+});
+
+test('carriedAnswers with no primary leaves the race to be asked', () => {
+  assert.equal(carriedAnswers([carried[1]], { today: TODAY }).race, null);
+});
+
+test('prefill with carried events fills the races step; without them it still never carries the old race', () => {
+  const a = prefill({ athlete: {}, today: TODAY, carry: carried });
+  assert.equal(a.race.date, '2027-05-16');
+  assert.equal(a.tuneUps.length, 1);
+  assert.equal(prefill({ athlete: {}, today: TODAY }).race, null);
+});
+
+test('a plan built from carried answers has all three kinds on the calendar', () => {
+  const a = prefill({ athlete: {}, today: TODAY, carry: carried });
+  const p = buildPlanFromAnswers(filled({ race: a.race, tuneUps: a.tuneUps, markers: a.markers }), { today: TODAY, now: 1 });
+  const events = normalizeEvents(p.events);
+  assert.equal(goalEvent(events).date, '2027-05-16');
+  assert.equal(secondaryRaces(events).length, 1);
+  assert.ok(events.some((e) => e.name === 'Club ride' && e.priority === null));
+  assert.equal(new Set(events.map((e) => e.id)).size, events.length, 'ids are unique');
 });
