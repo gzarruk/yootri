@@ -1,0 +1,201 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+
+import { PLANNED, zoneIntensity, plannedLoad, formZone, fitnessSeries, minutesByDiscipline } from '../assets/coach/fitness.js';
+import { trainingLoad } from '../assets/coach/load.js';
+
+/* Fitness, fatigue and form: the 42-day and 7-day averages of training load as
+   of today, their difference, a line for what the plan asks, a line for what
+   was done, and a projection to race day.
+
+   Everything is derived when asked for and returned as plain numbers; nothing
+   here is stored. Actual load is load.js's, unchanged. Planned load has no
+   measurement behind it, so it is an estimate from each session's duration and
+   zone through PLANNED's table, and says so. */
+
+const bike = (dur, zone, day = 'Mon') => ({ id: `b-${day}-${dur}-${zone}`, disc: 'Bike', day, dur, zone });
+
+test('a zone is an intensity, a range is the mean of its ends, and no zone is none', () => {
+  assert.equal(zoneIntensity('Z2'), PLANNED.zoneIF[2]);
+  assert.equal(zoneIntensity('Z2–Z4'), PLANNED.zoneIF[3]);   // mean of Z2 and Z4 is Z3
+  assert.equal(zoneIntensity('Z1-Z2'), (PLANNED.zoneIF[1] + PLANNED.zoneIF[2]) / 2);
+  assert.equal(zoneIntensity('—'), null);
+  assert.equal(zoneIntensity(''), null);
+  assert.equal(zoneIntensity(undefined), null);
+  assert.equal(zoneIntensity('Z9'), null);
+});
+
+test('a planned session is scored with the same formulas as a real one', () => {
+  const IF2 = PLANNED.zoneIF[2];
+  assert.equal(plannedLoad(bike('1:00', 'Z2')), Math.round(IF2 * IF2 * 1000) / 10);        // hours × IF² × 100
+  assert.equal(plannedLoad({ disc: 'Run', dur: '0:30', zone: 'Z4' }), Math.round(0.5 * PLANNED.zoneIF[4] ** 2 * 1000) / 10);
+  assert.equal(plannedLoad({ disc: 'Swim', dur: '1:00', zone: 'Z3' }), Math.round(PLANNED.zoneIF[3] ** 3 * 1000) / 10); // swim is cubic
+  assert.equal(plannedLoad({ disc: 'Strength', dur: '1:00', zone: '—' }), Math.round((60 * PLANNED.strengthRpe) / 420 * 1000) / 10);
+});
+
+test('rest, yoga and a session with nothing to score it by add no load, and the last is counted', () => {
+  assert.equal(plannedLoad({ disc: 'Rest', dur: '—', zone: '—' }), 0);
+  assert.equal(plannedLoad({ disc: 'Yoga', dur: '0:30', zone: '—' }), 0);
+  assert.equal(plannedLoad({ disc: 'Bike', dur: '1:00', zone: '—' }), null);   // endurance with no zone: unknown, not zero
+  assert.equal(plannedLoad({ disc: 'Run', dur: '—', zone: 'Z2' }), 0);
+});
+
+test('form is where fitness sits against fatigue: low, neutral or high', () => {
+  assert.deepEqual(formZone(0), { index: 1, name: 'Neutral' });
+  assert.deepEqual(formZone(PLANNED.form.high), { index: 1, name: 'Neutral' });   // the edge belongs to the middle
+  assert.deepEqual(formZone(PLANNED.form.high + 0.1), { index: 2, name: 'High' });
+  assert.deepEqual(formZone(PLANNED.form.low - 0.1), { index: 0, name: 'Low' });
+});
+
+/* ---- a six-week plan with one hour of bike a day ---- */
+
+const START = '2026-09-07';                 // a Monday
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const plan = (extra = {}) => ({
+  start: START,
+  profile: { raceDate: '2026-10-17', raceType: '70.3' },
+  season: Array.from({ length: 6 }, () => ({ block: 'Base', hours: 7 })),
+  weeks: Object.fromEntries(Array.from({ length: 6 }, (_, w) => [`w${w}`, DAYS.map((d) => bike('1:00', 'Z2', d))])),
+  ...extra,
+});
+const T = { ftpW: 250 };
+const dayISO = (n) => new Date(Date.UTC(2026, 8, 7 + n)).toISOString().slice(0, 10);
+// An hour at 70% of FTP scores exactly what the planned Z2 hour does.
+const ride = (n, share = 1) => ({
+  id: `garmin:${n}`, date: dayISO(n), disc: 'Bike', durationS: 3600 * share, movingS: 3600 * share,
+  normPowerW: 250 * PLANNED.zoneIF[2],
+});
+const rides = (days, share) => Array.from({ length: days }, (_, n) => ride(n, share));
+const TODAY = dayISO(23);                   // Wednesday of week 4
+const history = (share = 1) => ({ activities: rides(24, share), sync: { source: 'garmin', from: START, through: TODAY } });
+
+test('with nothing synced there is no today and no projection, only the plan, and it says what is missing', () => {
+  const r = fitnessSeries(plan(), { today: TODAY, thresholds: T });
+  assert.equal(r.hasHistory, false);
+  assert.equal(r.today, null);
+  assert.equal(r.race, null);
+  assert.equal(r.trend, null);
+  assert.equal(r.weeks.length, 6);
+  assert.ok(r.weeks.every((w) => w.actual === null), 'no actual line without history');
+  assert.ok(r.weeks[5].planned > r.weeks[0].planned, 'the planned line still rises from zero');
+});
+
+test('activities that cannot be scored are not history, and what they lack is named', () => {
+  const unscorable = [{ id: 'garmin:1', date: START, disc: 'Bike', durationS: 3600, movingS: 3600 }];   // no power, no FTP
+  const r = fitnessSeries(plan({ activities: unscorable }), { today: TODAY, thresholds: {} });
+  assert.equal(r.hasHistory, false);
+  assert.equal(r.unscored, 1);
+  assert.ok(r.missing.includes('power') || r.missing.includes('ftp'));
+});
+
+test("today's fitness and fatigue are load.js's chronic and acute, unchanged", () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  const base = trainingLoad(activities, { today: TODAY, thresholds: T, sync });
+  assert.equal(r.hasHistory, true);
+  assert.equal(r.today.fit, base.chronic);
+  assert.equal(r.today.fat, base.acute);
+  assert.equal(r.today.form, Math.round((base.chronic - base.acute) * 10) / 10);
+  assert.ok(r.today.fat > r.today.fit, 'a new block: the fast average is ahead of the slow one');
+});
+
+test('the change over seven days is today against the same figure a week ago', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  const weekAgo = trainingLoad(activities, { today: dayISO(16), thresholds: T, sync });
+  assert.equal(r.today.dFit, Math.round((r.today.fit - weekAgo.chronic) * 10) / 10);
+  assert.equal(r.today.dFat, Math.round((r.today.fat - weekAgo.acute) * 10) / 10);
+});
+
+test('followed exactly, the planned and actual lines agree up to today', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  for (const w of r.weeks.filter((x) => x.actual !== null && x.date <= TODAY)) {
+    assert.ok(Math.abs(w.planned - w.actual) < 0.2, `week ${w.week + 1}: planned ${w.planned}, actual ${w.actual}`);
+  }
+  // The current week has an actual up to today and none after it.
+  assert.ok(r.weeks[3].actual !== null);
+  assert.equal(r.weeks[4].actual, null);
+});
+
+test('race day, followed exactly, is where the plan takes the averages from where they are now', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  assert.equal(r.race.date, '2026-10-17');
+  assert.equal(r.race.week, 5);
+  assert.ok(r.race.fit > r.today.fit, 'eleven more weeks of the same hour a day keep adding fitness');
+  assert.equal(r.race.form, Math.round((r.race.fit - r.race.fat) * 10) / 10);
+  assert.equal(r.race.dFit, Math.round((r.race.fit - r.today.fit) * 10) / 10);
+  assert.equal(r.adherence, 1);
+  assert.ok(Math.abs(r.trend - r.race.fit) < 0.2, 'doing it all is the trend');
+});
+
+test('doing half of what was planned lowers the trend, not the plan', () => {
+  const { activities, sync } = history(0.5);
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  assert.ok(Math.abs(r.adherence - 0.5) < 0.01);
+  assert.ok(r.trend < r.race.fit, 'the trend follows what was done');
+  const full = fitnessSeries(plan({ activities: history().activities, activitySync: history().sync }), { today: TODAY, thresholds: T });
+  assert.equal(r.race.fit < full.race.fit, true, 'and race day from a lower start is lower too');
+});
+
+test('adherence is capped, and absent when the plan asked for nothing', () => {
+  const over = fitnessSeries(plan({ activities: rides(24, 3), activitySync: history().sync }), { today: TODAY, thresholds: T });
+  assert.equal(over.adherence, PLANNED.maxAdherence);
+  const empty = plan({ weeks: Object.fromEntries(Array.from({ length: 6 }, (_, w) => [`w${w}`, []])) });
+  const none = fitnessSeries({ ...empty, ...history(), activitySync: history().sync }, { today: TODAY, thresholds: T });
+  assert.equal(none.adherence, null);
+  assert.equal(none.trend, null);
+});
+
+test('a plan with no race date projects to the end of the season', () => {
+  const p = plan({ ...history(), activitySync: history().sync });
+  p.profile = { raceType: '70.3' };
+  const r = fitnessSeries(p, { today: TODAY, thresholds: T });
+  assert.equal(r.race.date, '2026-10-18');   // the Sunday of the last week
+});
+
+test('after the race there is nothing to project', () => {
+  const r = fitnessSeries(plan({ ...history(), activitySync: history().sync }), { today: '2026-10-25', thresholds: T });
+  assert.equal(r.race, null);
+  assert.equal(r.trend, null);
+});
+
+test('it is derived and returned, never written into the plan it was given', () => {
+  const p = plan({ ...history(), activitySync: history().sync });
+  const before = JSON.stringify(p);
+  fitnessSeries(p, { today: TODAY, thresholds: T });
+  assert.equal(JSON.stringify(p), before);
+});
+
+test('garbage in is an empty answer, not a throw', () => {
+  for (const bad of [null, undefined, {}, { start: 'x' }, { start: START, season: 'no', weeks: null }]) {
+    const r = fitnessSeries(bad, { today: TODAY, thresholds: T });
+    assert.equal(r.hasHistory, false);
+    assert.deepEqual(r.weeks, []);
+  }
+  assert.equal(fitnessSeries(plan(), { today: 'not a date', thresholds: T }).today, null);
+});
+
+test('each week carries the fatigue as well as the fitness it ended on', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  const base = trainingLoad(activities, { today: dayISO(6), thresholds: T, sync });
+  assert.equal(r.weeks[0].actualFat, base.acute);
+  assert.equal(r.weeks[0].actual, base.chronic);
+  assert.equal(r.weeks[5].actualFat, null);
+});
+
+test('minutes by discipline over the last days, newest included, older left out', () => {
+  const acts = [
+    { id: 'a', date: '2026-09-30', disc: 'Run', durationS: 3000 },
+    { id: 'b', date: '2026-09-03', disc: 'Bike', durationS: 7200 },     // day 28 back: inside
+    { id: 'c', date: '2026-09-02', disc: 'Bike', durationS: 7200 },     // day 29 back: outside
+    { id: 'd', date: '2026-09-20', disc: 'Run', movingS: 600, durationS: 9999 },
+    { id: 'e', date: '2026-10-01', disc: 'Swim', durationS: 3600 },     // after today
+    { id: 'f', date: '2026-09-25', disc: 'Other', durationS: 600 },
+  ];
+  assert.deepEqual(minutesByDiscipline(acts, { today: '2026-09-30', days: 28 }), { Run: 60, Bike: 120, Other: 10 });
+  assert.deepEqual(minutesByDiscipline(null, { today: '2026-09-30' }), {});
+  assert.deepEqual(minutesByDiscipline(acts, { today: 'nope' }), {});
+});

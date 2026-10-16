@@ -27,3 +27,4 @@ __pycache__/
 .pytest_cache/
 garmin-tokens.json
 garmin-bridge-token
+docs/FINDINGS.md

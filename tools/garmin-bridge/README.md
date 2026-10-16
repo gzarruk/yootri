@@ -27,6 +27,35 @@ site with `?garmin=setup`), paste the token and save. From then on, that
 browser shows a **Garmin** button in the toolbar. Press it while the bridge is
 running.
 
+### One-click pairing
+
+`make garmin` prints a pairing **link** for each page allowed to use the bridge, and
+`make garmin-pair` opens the local one in your browser. The page pairs itself and
+removes the address and token from the address bar. The token sits after the `#`,
+so it is never sent to any server; anything that can read the link can pair a
+browser, so treat it like the token (`python -m garmin_bridge pair --rotate`
+makes old ones useless). `make garmin-link` prints the link for every page (the published site too), which is how you pair the online page when the bridge runs quietly as the always-on agent. Pasting the token by hand still works. The pairing
+lives in that browser's own storage, so each address you use yootri from
+(`http://localhost:8000`, the published site) is paired once.
+
+### Always on (macOS)
+
+```sh
+make garmin-install     # start the bridge at login and keep it running
+make garmin-pair        # pair a browser once (the token is the one already on disk)
+make garmin-agent-status
+make garmin-uninstall
+```
+
+This installs a per-user LaunchAgent (`~/Library/LaunchAgents/com.yootri.garmin-bridge.plist`).
+It is the same bridge on the same loopback address, started with `serve --quiet`
+so its log (`~/Library/Logs/yootri-garmin-bridge.log`) never holds the token or a
+link. Switch workout export or overnight figures on by setting
+`YOOTRI_GARMIN_WORKOUTS=1` / `YOOTRI_GARMIN_OVERNIGHT=1` when you run
+`make garmin-install`; they are carried into the agent only if set then. Sign in
+to Garmin once with `make garmin-login`; when Garmin ends that session the page
+says "Sign in to Garmin" under the Garmin item.
+
 | Command | What it does |
 | --- | --- |
 | `make garmin-login` | Signs in and saves the session. Your password is passed to the library and never saved. |

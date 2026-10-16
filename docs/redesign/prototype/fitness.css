@@ -1,9 +1,9 @@
 /* Season panel view switch and the fitness chart. Tokens only. Lines differ by
    dash pattern and marker as well as colour. */
-.season .v-fit { display: none; flex-direction: column; gap: 14px; }
-.season .v-load { display: flex; flex-direction: column; gap: 14px; }
-.season:has(input[name="view"][value="fit"]:checked) .v-fit { display: flex; }
-.season:has(input[name="view"][value="fit"]:checked) .v-load { display: none; }
+.season .v-fit { display: flex; flex-direction: column; gap: 14px; }
+.season .v-load { display: none; flex-direction: column; gap: 14px; }
+.season:has(input[name="view"][value="load"]:checked) .v-fit { display: none; }
+.season:has(input[name="view"][value="load"]:checked) .v-load { display: flex; }
 .season-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .sub-h { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
 .sub-h p { margin: 0; font-size: 13px; max-width: 640px; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
