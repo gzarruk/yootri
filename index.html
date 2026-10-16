@@ -53,6 +53,7 @@
   }
   .seg-opt .ic { margin-right: 6px; font-size: 14px; }
   .page:focus { outline: none; }
+  .tb-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
   .im-h1 {
     font-size: 36px;
     letter-spacing: -0.02em;
@@ -65,38 +66,11 @@
     color: color-mix(in srgb, var(--color-text) 62%, transparent);
   }
 
-  /* ---- Plan title (doubles as the plan menu trigger) ---- */
+  /* ---- Plan title: the name, renamed in place by a double click ---- */
 
   .plan-title-wrap { position: relative; }
-  .plan-title {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 10px;
-    max-width: 100%;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    font: inherit;
-    letter-spacing: inherit;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: color 0.12s ease;
-  }
-  .plan-title .ic {
-    flex: none;
-    font-size: 0.55em;
-    color: color-mix(in srgb, var(--color-text) 34%, transparent);
-    transition: color 0.12s ease, transform 0.12s ease;
-  }
-  .plan-title:hover .ic,
-  .plan-title:focus-visible .ic { color: var(--color-accent); }
-  .plan-title[aria-expanded="true"] .ic {
-    color: var(--color-accent);
-    transform: rotate(180deg);
-  }
+  .plan-title { display: inline-block; max-width: 100%; border-radius: var(--radius-sm); }
+  .plan-title:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
   .im-h1-input {
     display: block;
     width: 100%;
@@ -113,77 +87,6 @@
     line-height: 1.2;
     letter-spacing: -0.02em;
     color: var(--color-text);
-  }
-
-  /* ---- Plan menu ---- */
-
-  .pmenu {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    z-index: 50;
-    min-width: 244px;
-    max-width: min(320px, calc(100vw - 40px));
-    padding: 6px;
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-md);
-  }
-  .pmenu-list { max-height: 220px; overflow-y: auto; }
-  .pmenu-item {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    width: 100%;
-    padding: 8px 10px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    font-size: 13px;
-    color: color-mix(in srgb, var(--color-text) 82%, transparent);
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-  .pmenu-item .ic {
-    flex: none;
-    width: 15px;
-    font-size: 15px;
-    color: color-mix(in srgb, var(--color-text) 45%, transparent);
-    transition: color 0.12s ease;
-  }
-  .pmenu-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Ring drawn inside the box so the scrolling plan list can't clip it. */
-  .pmenu-item:focus-visible { outline-offset: -2px; }
-  .pmenu-item:hover,
-  .pmenu-item:focus-visible {
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    color: var(--color-text);
-  }
-  .pmenu-item:hover .ic, .pmenu-item:focus-visible .ic { color: var(--color-accent); }
-  .pmenu-item[aria-checked="true"] { color: var(--color-text); }
-  .pmenu-item[aria-checked="true"] .ic { color: var(--color-accent); }
-  .pmenu-item.danger:hover, .pmenu-item.danger:focus-visible {
-    background: color-mix(in srgb, var(--color-danger) 14%, transparent);
-    color: var(--color-danger);
-  }
-  .pmenu-item.danger:hover .ic, .pmenu-item.danger:focus-visible .ic { color: var(--color-danger); }
-  .pmenu-item[aria-disabled="true"] {
-    opacity: 0.38;
-    cursor: default;
-  }
-  .pmenu-item[aria-disabled="true"]:hover,
-  .pmenu-item[aria-disabled="true"]:focus-visible {
-    background: transparent;
-    color: color-mix(in srgb, var(--color-text) 82%, transparent);
-  }
-  .pmenu-item[aria-disabled="true"]:hover .ic {
-    color: color-mix(in srgb, var(--color-text) 45%, transparent);
-  }
-  .pmenu-sep {
-    height: 1px;
-    margin: 6px 10px;
-    background: var(--color-divider);
   }
 
   /* ---- Plan overview ---- */
@@ -1261,12 +1164,8 @@
         <div>
           <div class="plan-title-wrap">
             <h1 class="im-h1">
-              <button type="button" class="plan-title" id="plan-title" aria-haspopup="menu" aria-expanded="false">
-                <span id="plan-title-text"></span>
-                <i class="ic i-chev-down" aria-hidden="true"></i>
-              </button>
+              <span class="plan-title" id="plan-title" tabindex="-1" title="Double-click to rename"><span id="plan-title-text"></span></span>
             </h1>
-            <div id="menu-root"></div>
           </div>
           <p class="im-sub" id="subtitle"></p>
         </div>
@@ -1377,8 +1276,12 @@
     <header>
       <div class="hdr-top"><span class="kicker">Athlete</span></div>
       <h1 class="im-h1">Biometrics</h1>
-      <p class="im-sub">Coming soon.</p>
+      <p class="im-sub">About you and your training paces.</p>
     </header>
+    <div class="tb-row">
+      <button type="button" class="btn btn-secondary" id="bio-about"><i class="ic i-user" aria-hidden="true"></i> About you…</button>
+      <button type="button" class="btn btn-secondary" id="bio-paces"><i class="ic i-gauge" aria-hidden="true"></i> Training paces…</button>
+    </div>
   </div>
 
   <div class="page hidden" data-page="health" tabindex="-1">
@@ -1734,7 +1637,7 @@
     chartCompleted: $('chart-completed'), chartmodeSeg: $('chartmode-seg'),
     chartScroll: $('chart-scroll'), chartSvg: $('chart-svg'), chartTip: $('chart-tip'),
     chartLegend: $('chart-legend'), modalRoot: $('modal-root'), dialogRoot: $('dialog-root'),
-    planTitle: $('plan-title'), planTitleText: $('plan-title-text'), menuRoot: $('menu-root'),
+    planTitle: $('plan-title'), planTitleText: $('plan-title-text'),
     importFile: $('import-file'), activityFile: $('activity-file'), account: $('account'),
   };
 
@@ -2528,7 +2431,7 @@
 
      Plans are separate records, so this never touches the season you already
      have: its weeks, completions and logs stay exactly as they are, and the
-     plan menu switches back to it whenever you want. What is inherited is the
+     plan switcher goes back to it whenever you want. What is inherited is the
      *profile* — your availability, constraints and splits — because a new race
      does not mean a new life. The previous race date is deliberately not
      carried over.
@@ -2571,7 +2474,7 @@
         ? '<p class="pnl-sub">This takes the place of the starter plan yootri made on your first visit — ' +
           'nothing has been done with that one yet.</p>'
         : '<p class="pnl-sub">A separate season. "' + esc(plan.name || 'your current plan') +
-          '" keeps its weeks, its completed sessions and its logs — switch back any time from the plan menu.</p>') +
+          '" keeps its weeks, its completed sessions and its logs — switch back any time from the plan switcher.</p>') +
       '<div class="pnl-grid">' +
         field('Name', '<input type="text" class="input" id="np-name" value="' +
           esc(replacing ? 'My season' : 'My plan ' + (plans.length + 1)) + '" />') +
@@ -2640,7 +2543,7 @@
 
   /* The page is never without a plan, so a first visit makes a stand-in "My
      plan". Creating or importing a real season replaces it instead of leaving
-     an unused copy in the plan menu (and in the cloud). Only a plan nobody has
+     an unused copy in the plan list (and in the cloud). Only a plan nobody has
      touched qualifies — see isUntouchedPlan. Returns whether one was dropped. */
   function dropIfUntouched() {
     if (!currentPlanUntouched()) return false;
@@ -3304,7 +3207,7 @@
       '<p class="pnl-sub">Signing in is unavailable on this copy of yootri. Everything else works normally.</p>' +
       '<div class="legal">' +
         '<p><b>Your plans are safe.</b> They are stored in this browser and load again next time you open the page. Nothing has been lost, and nothing is waiting to be uploaded.</p>' +
-        '<p><b>What you do not get.</b> Syncing plans between devices, and signing in with Google. Use <b>Export</b> from the plan menu to move a plan to another browser or keep a backup.</p>' +
+        '<p><b>What you do not get.</b> Syncing plans between devices, and signing in with Google. Use <b>Export this plan</b> (the … button beside the plan’s name) to move a plan to another browser or keep a backup.</p>' +
         '<p><b>If this is your own copy.</b> Cloud sync needs a Firebase project, and its authorized-domain list has to include the domain you are serving from. The README covers setting that up, or skipping it — running local-only is a supported way to use yootri.</p>' +
         (why ? '<p class="muted">Reported by Firebase: ' + esc(why) + '</p>' : '') +
       '</div>' +
@@ -3434,8 +3337,8 @@
       '</div>' +
       '<div class="pnl-sec">' +
         '<p class="legal-about"><b>Your rights.</b> You can ask for a copy of your data, correct it, have it deleted, or withdraw your consent. ' +
-          'A copy needs no asking — <b>Plan menu → Download my data</b> writes out every plan and About you, and ' +
-          '<b>Export this plan</b> writes out one plan. ' +
+          'A copy needs no asking — <b>Download my data</b> (in the sidebar) writes out every plan and About you, and ' +
+          '<b>Export this plan</b> (the … button beside the plan’s name) writes out one plan. ' +
           'Corrections you make by editing the plan. Deletion is the button below. ' +
           'If you believe your data has been mishandled you can complain to ' +
           '<a href="https://www.datatilsynet.no/" target="_blank" rel="noopener">Datatilsynet</a>.</p>' +
@@ -4220,7 +4123,7 @@
         (error ? '<div class="diff-issues"><b class="err">' + esc(error) + '</b></div>' : '') +
         '<p class="pnl-hint">An imported plan arrives alongside the ones you already have — ' +
           '"' + esc(plan.name || 'your current plan') + '" is not touched, and you can switch ' +
-          'between them from the plan menu.</p>' +
+          'between them from the plan switcher.</p>' +
         '<div class="pnl-act">' +
           '<button type="button" class="btn btn-ghost spacer" id="imp-example">Try the example plan</button>' +
           '<button type="button" class="btn btn-ghost" id="imp-cancel">Cancel</button>' +
@@ -4436,7 +4339,7 @@
       (r.eased ? ' · the ' + r.eased.day + ' ' + r.eased.disc.toLowerCase() + ' made easy' : ''));
   }
 
-  /* Weekly release is a way of showing a plan, chosen from the plan menu. It
+  /* Weekly release is a way of showing a plan, chosen from the plan’s … menu. It
      changes no session, so it is written straight away rather than through a
      draft — the same exception a benchmark makes. Turning it on releases up
      to this week. */
@@ -4512,7 +4415,7 @@
     markOriented();
     closePanel();
     renderOrientation();
-    setStatus('Season setup saved — pick it up again from New season in the plan menu');
+    setStatus('Season setup saved — pick it up again from New season in the plan switcher');
   }
 
   const WIZ_TITLES = {
@@ -4662,7 +4565,7 @@
       const distOpts = STANDARD_DISTANCES.map((d) => [d.meters, d.label]);
       return '<h2>Your numbers</h2>' +
         '<p class="pnl-sub">Leave any of these empty if you do not know them yet — sessions show their zones by feel until you add one, ' +
-          'from Training paces in the plan menu.</p>' +
+          'from Training paces on the Biometrics page.</p>' +
         '<div class="pnl-grid">' +
           field('FTP (watts)', wnum('wz-ftp', a.ftpW, 'min="50" max="600"')) +
           field('Swim CSS (per 100 m)', '<input type="text" class="input" id="wz-css" placeholder="1:45" value="' + esc(cssText(a.cssSecPer100m)) + '" />') +
@@ -4879,7 +4782,7 @@
       '<p class="pnl-sub">' + esc(built.name) + ' runs ' + weekCount(built) + ' weeks to race week. Week 1 is on your calendar now: ' +
         week.length + ' session' + (week.length === 1 ? '' : 's') + ', ' + esc(fmtTotal(week.reduce((x, s) => x + durToMin(s.dur), 0)) || '0m') + '.</p>' +
       '<p class="pnl-hint">The rest of the season is released a week at a time: when a week is over, review how it went and the next one is set. ' +
-        'Log what you do as the week goes, or sync it from Garmin. Plan setup, Training paces and About you in the plan menu change anything you told the wizard.</p>' +
+        'Log what you do as the week goes, or sync it from Garmin. Plan setup in the sidebar, and Training paces and About you on the Biometrics page, change anything you told the wizard.</p>' +
       '<div class="pnl-act"><button type="button" class="btn btn-primary" id="wz-done">See week 1</button></div>',
       'Your plan is ready',
     );
@@ -6462,93 +6365,17 @@
   }
 
   /* =========================================================================
-     Plan menu — the <h1> is the trigger, so the plan's name and every action
-     on it live in one place.
+     Plan actions — what the sidebar's plan switcher and the header's "…"
+     button do. Rows that open a dialog close their popup first (see closePop):
+     #dialog-root and a popup must not be live at the same time.
      ========================================================================= */
 
-  const menuOpen = () => !!els.menuRoot.firstChild;
-  const menuItems = () => Array.from(els.menuRoot.querySelectorAll('.pmenu-item:not([aria-disabled="true"])'));
-
-  function menuRow(act, icon, label) {
-    return '<button type="button" role="menuitem" class="pmenu-item" data-pm="' + act + '">' +
-      '<i class="ic ' + icon + '" aria-hidden="true"></i><span class="pmenu-label">' + esc(label) + '</span></button>';
-  }
-
-  function openPlanMenu() {
-    const soleplan = plans.length <= 1;
-    els.menuRoot.innerHTML =
-      '<div class="pmenu" role="menu" aria-labelledby="plan-title">' +
-        '<div class="pmenu-list">' +
-          plans.map((e) => {
-            const cur = plan && e.id === plan.id;
-            return '<button type="button" role="menuitemradio" aria-checked="' + (cur ? 'true' : 'false') + '" ' +
-              'class="pmenu-item" data-pm="switch" data-id="' + esc(e.id) + '">' +
-              '<i class="ic i-check" aria-hidden="true"' + (cur ? '' : ' style="visibility: hidden;"') + '></i>' +
-              '<span class="pmenu-label">' + esc(e.name) + '</span></button>';
-          }).join('') +
-        '</div>' +
-        '<div class="pmenu-sep" role="separator"></div>' +
-        menuRow('rename', 'i-pencil', 'Rename') +
-        menuRow('dup', 'i-copy', 'Duplicate') +
-        menuRow('export', 'i-download', 'Export this plan') +
-        menuRow('paces', 'i-gauge', 'Training paces…') +
-        menuRow('athlete', 'i-user', 'About you…') +
-        menuRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +
-        '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="delete"' +
-          (soleplan ? ' aria-disabled="true"' : '') + '>' +
-          '<i class="ic i-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan</span></button>' +
-        '<div class="pmenu-sep" role="separator"></div>' +
-        menuRow('new', 'i-plus', 'New season…') +
-        menuRow('blank', 'i-plus', 'Blank plan…') +
-        menuRow('import', 'i-upload', 'Import plan…') +
-        menuRow('mydata', 'i-download', 'Download my data') +
-      '</div>';
-    els.planTitle.setAttribute('aria-expanded', 'true');
-    document.addEventListener('keydown', onMenuKey, true);
-    document.addEventListener('mousedown', onMenuOutside, true);
-    window.addEventListener('blur', closePlanMenu);
-    const first = els.menuRoot.querySelector('[aria-checked="true"]') || menuItems()[0];
-    if (first) first.focus();
-  }
-
-  function closePlanMenu(refocus) {
-    if (!menuOpen()) return;
-    els.menuRoot.innerHTML = '';
-    els.planTitle.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('keydown', onMenuKey, true);
-    document.removeEventListener('mousedown', onMenuOutside, true);
-    window.removeEventListener('blur', closePlanMenu);
-    if (refocus !== false) els.planTitle.focus();
-  }
-
-  function onMenuOutside(e) {
-    if (!els.menuRoot.contains(e.target) && !els.planTitle.contains(e.target)) closePlanMenu(false);
-  }
-
-  function onMenuKey(e) {
-    if (e.key === 'Escape') { e.preventDefault(); return closePlanMenu(); }
-    if (e.key === 'Tab') return closePlanMenu(false);
-    const items = menuItems();
-    if (!items.length) return;
-    const at = items.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
-    else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
-    else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
-  }
-
-  // Menu actions that open a dialog must close the menu first — #menu-root and
-  // #dialog-root are separate roots and must not be live at the same time.
-  async function runMenuAction(act, id) {
-    if (act === 'switch') { closePlanMenu(false); if (id !== plan.id) switchPlan(id); return; }
-    closePlanMenu(act !== 'rename');
+  async function runPlanAction(act, id) {
+    if (act === 'switch') { if (id !== plan.id) switchPlan(id); return; }
     if (act === 'rename') return startRename();
     if (act === 'export') return exportPlan();
     if (act === 'import') return openImportPanel(null);
-    if (act === 'paces') { pacesView = null; return openPacesPanel(); }
-    if (act === 'athlete') return openAthletePanel();
     if (act === 'release') return toggleRelease();
-    if (act === 'mydata') return downloadMyData();
     if (act === 'blank') return openNewPlanPanel();
     if (act === 'new') {
       return openWizard();
@@ -6569,7 +6396,6 @@
 
   function startRename() {
     if (renaming) return;
-    closePlanMenu(false);
     renaming = true;
     const before = (plan && plan.name) || '';
     els.planTitle.classList.add('hidden');
@@ -6619,8 +6445,7 @@
 
   /* =========================================================================
      Sidebar and pages — the plan switcher, the plan's own actions, and which
-     page is showing. The actions are runMenuAction's, so a row here does what
-     the same row in the old plan menu did.
+     page is showing.
      ========================================================================= */
 
   const POP_BTN = { 'plan-pop': $('plan-sw'), 'more-pop': $('plan-more') };
@@ -6638,6 +6463,7 @@
         popRow('rename', 'i-pencil', 'Rename') +
         popRow('dup', 'i-copy', 'Duplicate') +
         popRow('export', 'i-download', 'Export this plan') +
+        popRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +
         '<div class="pop-sep" role="separator"></div>' +
         popRow('delete', 'i-trash', 'Delete plan', { danger: true, disabled: plans.length <= 1 }) +
       '</div>';
@@ -6660,7 +6486,6 @@
   function openPop(id) {
     if (popOpen === id) return closePop();
     closePop(false);
-    closePlanMenu(false);
     $(id).innerHTML = popHtml(id);
     popOpen = id;
     POP_BTN[id].setAttribute('aria-expanded', 'true');
@@ -6703,10 +6528,12 @@
       const b = e.target.closest('.pop-item');
       if (!b || b.getAttribute('aria-disabled') === 'true') return;
       closePop(false);
-      runMenuAction(b.dataset.pm, b.dataset.id);
+      runPlanAction(b.dataset.pm, b.dataset.id);
     });
   }
   $('events-btn').addEventListener('click', () => openEventPanel(null));
+  $('bio-about').addEventListener('click', openAthletePanel);
+  $('bio-paces').addEventListener('click', () => { pacesView = null; openPacesPanel(); });
   $('mydata-btn').addEventListener('click', downloadMyData);
 
   /* Pages. The address bar says which one (#/week, #/calendar, #/status …) so
@@ -6778,17 +6605,8 @@
   });
   window.addEventListener('hashchange', () => applyRoute(routeFromHash()));
 
-  // Plan title + menu
-  els.planTitle.addEventListener('click', () => { if (menuOpen()) closePlanMenu(); else openPlanMenu(); });
+  // Plan title: a double click renames it in place
   els.planTitle.addEventListener('dblclick', startRename);
-  els.planTitle.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown' && !menuOpen()) { e.preventDefault(); openPlanMenu(); }
-  });
-  els.menuRoot.addEventListener('click', (e) => {
-    const b = e.target.closest('.pmenu-item');
-    if (!b || b.getAttribute('aria-disabled') === 'true') return;
-    runMenuAction(b.dataset.pm, b.dataset.id);
-  });
   els.undoBtn.addEventListener('click', undoDelete);
   els.importFile.addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];

@@ -489,10 +489,10 @@ test('the wizard saves through the same doors as everything else', () => {
   assert.ok(drop !== -1 && drop < body.indexOf('addPlan(built)'));
 });
 
-test('the wizard is reachable from first visit, first sign-in and the plan menu', () => {
+test('the wizard is reachable from first visit, first sign-in and the plan switcher', () => {
   assert.match(fnBody('maybeShowFirstRun'), /maybeStartWizard\(\)/);
   assert.match(fnBody('pullFromCloud'), /maybeStartWizard\(\)/);
-  assert.match(fnBody('runMenuAction'), /act === 'new'\) \{\s*return openWizard\(\)/);
+  assert.match(fnBody('runPlanAction'), /act === 'new'\) \{\s*return openWizard\(\)/);
   // It opens by itself only for somebody new, and never twice.
   assert.match(fnBody('maybeStartWizard'), /orientDone\(\)[\s\S]*planIsUntouched\(\)/);
 });
@@ -512,7 +512,7 @@ test('a week after the release horizon shows no sessions, on the board or in the
   assert.match(fnBody('renderCalendar'), /if \(!isReleased\(plan, w\.absWeek\)\) continue;/);
 });
 
-test('a release goes through applyDraft, with an undo, and nothing else writes it but the menu toggle', () => {
+test('a release goes through applyDraft, with an undo, and nothing else writes it but the toggle in the plan’s … menu', () => {
   const body = fnBody('applyRelease');
   assert.match(body, /applyDraft\(plan, r\.draft/);
   assert.match(body, /pendingUndo = \{ kind: 'refit'/);
