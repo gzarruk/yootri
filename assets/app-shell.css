@@ -390,3 +390,4 @@ table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transp
   .summary .sum-value { font-size: 17px; }
   .page[data-page="status"] .plot, .page[data-page="status"] .panel { min-width: 0; }
 }
+#status-root { display: flex; flex-direction: column; gap: 14px; }
