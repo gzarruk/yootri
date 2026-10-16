@@ -561,3 +561,54 @@ test('the page paints with tokens, not colour literals, so both themes follow', 
   assert.deepEqual(literals.filter((l) => !/^#1b1e2b$|^#e8e9f0$/i.test(l)), [], 'a colour literal crept into the page styles');
   assert.ok(!/DISC\s*=\s*\{[^}]*#[0-9a-f]{6}/i.test(HTML), 'discipline colours are hard-coded again');
 });
+
+/* ---- The shell: sidebar, pages and routes ---- */
+
+test('every id in the static markup is unique', () => {
+  // The markup only: the page script builds panels from templates that repeat
+  // ids on purpose, because only one of them is ever in the document.
+  const markup = HTML.slice(0, HTML.indexOf('<script type="module">'));
+  const seen = new Map();
+  for (const m of markup.matchAll(/\bid="([^"]+)"/g)) seen.set(m[1], (seen.get(m[1]) || 0) + 1);
+  const dupes = [...seen].filter(([, n]) => n > 1).map(([id]) => id);
+  assert.deepEqual(dupes, [], `duplicate ids: ${dupes.join(', ')}`);
+});
+
+test('every sidebar route has a page, and every page has a route', () => {
+  const routes = [...HTML.matchAll(/\bdata-route="([a-z]+)"/g)].map((m) => m[1]);
+  const pages = new Set([...HTML.matchAll(/\bdata-page="([a-z]+)"/g)].map((m) => m[1]));
+  assert.ok(routes.length >= 5, 'the sidebar lost its page links');
+  for (const r of routes) {
+    // Calendar is the week page in its Month view, not a page of its own.
+    const page = r === 'calendar' ? 'week' : r;
+    assert.ok(pages.has(page), `route "${r}" has no [data-page="${page}"]`);
+  }
+  for (const p of pages) assert.ok(routes.includes(p), `page "${p}" is not reachable from the sidebar`);
+  const known = HTML.match(/const ROUTES = \[([^\]]*)\]/);
+  assert.ok(known, 'the page script lost its ROUTES list');
+  for (const r of routes) assert.ok(known[1].includes(`'${r}'`), `ROUTES does not know "${r}"`);
+});
+
+test('the dialog roots sit outside every page, so a hidden page cannot hide a dialog', () => {
+  for (const id of ['modal-root', 'dialog-root', 'panel-root']) {
+    const at = HTML.indexOf(`id="${id}"`);
+    const mainEnd = HTML.indexOf('</main>');
+    assert.ok(at > mainEnd, `#${id} is inside <main>, where a hidden page would hide it`);
+  }
+});
+
+test('Plan setup, Coach and Garmin keep their ids in the sidebar, and the Garmin item starts hidden', () => {
+  const side = HTML.slice(HTML.indexOf('<nav class="side"'), HTML.indexOf('</nav>'));
+  for (const id of ['setup-btn', 'coach-btn', 'garmin-btn', 'theme-seg', 'account', 'mydata-btn']) {
+    assert.ok(side.includes(`id="${id}"`), `#${id} is not in the sidebar`);
+  }
+  assert.match(side, /class="nav hidden" id="garmin-btn"/);
+});
+
+test('the app opens on the current week without writing the plan', () => {
+  // applyRoute(…, true) is the boot call: it must return before persistPlan().
+  const fn = HTML.slice(HTML.indexOf('function applyRoute('), HTML.indexOf('function navigate('));
+  assert.ok(fn.indexOf('if (boot) return;') > -1 && fn.indexOf('if (boot) return;') < fn.indexOf('persistPlan()'),
+    'booting must not persist: a reload is not an edit, and a write is a cloud push');
+  assert.match(HTML, /applyRoute\(routeFromHash\(\), true\);\s*renderAll\(\);/);
+});

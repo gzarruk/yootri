@@ -51,9 +51,8 @@
     gap: 8px 14px;
     margin-bottom: 12px;
   }
-  .hdr-top #account { display: inline-flex; align-items: center; gap: 8px; }
-  .hdr-actions { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .seg-opt .ic { margin-right: 6px; font-size: 14px; }
+  .page:focus { outline: none; }
   .im-h1 {
     font-size: 36px;
     letter-spacing: -0.02em;
@@ -342,40 +341,6 @@
     background: var(--color-danger);
     box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 25%, transparent);
   }
-
-  /* ---- Account chip ---- */
-
-  .account-email {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: color-mix(in srgb, var(--color-text) 62%, transparent);
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .account-email i { color: var(--color-accent); font-size: 14px; }
-  .account-note {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font: inherit;
-    font-size: 12px;
-    padding: 4px 8px;
-    border: 1px solid var(--color-divider);
-    border-radius: var(--radius-md);
-    background: none;
-    cursor: pointer;
-    white-space: nowrap;
-    color: color-mix(in srgb, var(--color-text) 55%, transparent);
-  }
-  .account-note:hover {
-    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-    color: var(--color-text);
-  }
-  .account-note i { font-size: 13px; }
 
   /* ---- Summary bar ---- */
 
@@ -1227,33 +1192,90 @@
 </style>
 </head>
 <body>
-  <div class="page">
+  <div class="shell">
+    <div class="side-wrap">
+      <nav class="side" id="side" aria-label="yootri">
+        <a class="brand" href="#/week" aria-label="yootri, this week">
+          <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
+            <rect width="64" height="64" rx="14" style="fill: var(--color-surface)"></rect>
+            <rect width="64" height="64" rx="14" style="fill: var(--color-accent-900); opacity: 0.55"></rect>
+            <g fill="none" stroke-width="6.5" style="stroke: var(--color-accent-300)"><path d="M19 17 L33 40"></path><path d="M45 17 L24.5 55"></path></g>
+          </svg>
+          <span class="brand-name">yootri</span>
+        </a>
 
-    <header>
-      <div class="hdr-top">
-        <span class="kicker">Season plan</span>
-        <span class="hdr-actions">
+        <div class="plan-sw-wrap">
+          <button type="button" class="plan-sw" id="plan-sw" aria-haspopup="menu" aria-expanded="false" aria-controls="plan-pop">
+            <span class="plan-sw-txt"><span class="plan-sw-k">Plan</span><span class="plan-sw-n" id="plan-sw-name"></span></span>
+            <i class="ic i-updown" aria-hidden="true"></i>
+          </button>
+          <div id="plan-pop"></div>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Training</div>
+          <a class="nav" data-route="week" href="#/week"><i class="ic i-calendar" aria-hidden="true"></i><span class="nav-txt">This week</span></a>
+          <a class="nav" data-route="calendar" href="#/calendar"><i class="ic i-month" aria-hidden="true"></i><span class="nav-txt">Calendar</span></a>
+          <button type="button" class="nav" id="setup-btn"><i class="ic i-flag" aria-hidden="true"></i><span class="nav-txt">Plan setup</span></button>
+          <button type="button" class="nav" id="events-btn"><i class="ic i-flame" aria-hidden="true"></i><span class="nav-txt">Events</span></button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Athlete</div>
+          <a class="nav" data-route="status" href="#/status"><i class="ic i-trend" aria-hidden="true"></i><span class="nav-txt">Training status</span></a>
+          <a class="nav" data-route="biometrics" href="#/biometrics"><i class="ic i-user" aria-hidden="true"></i><span class="nav-txt">Biometrics</span></a>
+          <a class="nav" data-route="health" href="#/health"><i class="ic i-heart" aria-hidden="true"></i><span class="nav-txt">Health indicators</span><span class="tag tag-neutral">Soon</span></a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Tools</div>
+          <button type="button" class="nav" id="coach-btn"><i class="ic i-chat" aria-hidden="true"></i><span class="nav-txt">Coach</span></button>
+          <!-- Reads activities from the Garmin bridge running on this computer
+               (tools/garmin-bridge). Not the cloud Sync button in the toolbar:
+               this one talks only to 127.0.0.1. Hidden until this browser is
+               paired, so the published page offers nothing a visitor cannot use. -->
+          <button type="button" class="nav hidden" id="garmin-btn"><i class="ic i-watch" aria-hidden="true"></i><span class="nav-txt">Garmin</span><span class="dot" title="Paired"></span></button>
+        </div>
+
+        <div class="side-foot">
           <span class="seg" role="radiogroup" aria-label="Theme" id="theme-seg">
             <label class="seg-opt"><input type="radio" name="theme" value="dark" /><i class="ic i-moon" aria-hidden="true"></i>Dark</label>
             <label class="seg-opt"><input type="radio" name="theme" value="light" /><i class="ic i-sun" aria-hidden="true"></i>Light</label>
           </span>
-          <span id="account"></span>
-        </span>
-      </div>
-      <div class="plan-title-wrap">
-        <h1 class="im-h1">
-          <button type="button" class="plan-title" id="plan-title" aria-haspopup="menu" aria-expanded="false">
-            <span id="plan-title-text"></span>
-            <i class="ic i-chev-down" aria-hidden="true"></i>
-          </button>
-        </h1>
-        <div id="menu-root"></div>
-      </div>
-      <p class="im-sub" id="subtitle"></p>
-    </header>
+          <div class="nav-group">
+            <button type="button" class="nav" id="mydata-btn"><i class="ic i-download" aria-hidden="true"></i><span class="nav-txt">Download my data</span></button>
+            <div class="nav-group" id="account"></div>
+          </div>
+        </div>
+      </nav>
+    </div>
 
-    <input type="file" id="import-file" accept="application/json,.json" hidden />
-    <input type="file" id="activity-file" accept=".csv,.tcx,.gpx,text/csv" hidden />
+    <main class="main" id="main">
+  <div class="page" data-page="week" tabindex="-1">
+
+    <header>
+      <div class="hdr-top">
+        <span class="kicker">Season plan</span>
+      </div>
+      <div class="title-row">
+        <div>
+          <div class="plan-title-wrap">
+            <h1 class="im-h1">
+              <button type="button" class="plan-title" id="plan-title" aria-haspopup="menu" aria-expanded="false">
+                <span id="plan-title-text"></span>
+                <i class="ic i-chev-down" aria-hidden="true"></i>
+              </button>
+            </h1>
+            <div id="menu-root"></div>
+          </div>
+          <p class="im-sub" id="subtitle"></p>
+        </div>
+        <div class="more-wrap">
+          <button type="button" class="btn btn-secondary btn-icon" id="plan-more" aria-haspopup="menu" aria-expanded="false" aria-controls="more-pop" aria-label="Plan actions: rename, duplicate, export, delete"><i class="ic i-dots" aria-hidden="true"></i></button>
+          <div id="more-pop"></div>
+        </div>
+      </div>
+    </header>
 
     <div class="overview">
       <div class="ov-row">
@@ -1272,25 +1294,12 @@
     </div>
 
     <div class="toolbar">
-      <button type="button" class="btn btn-secondary" id="setup-btn">
-        <i class="ic i-sliders" aria-hidden="true"></i> Plan setup
-      </button>
-      <button type="button" class="btn btn-secondary" id="coach-btn">
-        <i class="ic i-chat" aria-hidden="true"></i> Coach
-      </button>
       <!-- In the toolbar rather than in the calendar bar, so a race can be put
            on the calendar from either view. It used to live inside #calwrap,
            which meant it disappeared with the month grid — and a race is a thing
            you think of while looking at the week you are training. -->
       <button type="button" class="btn btn-secondary" id="add-event-btn">
         <i class="ic i-flag" aria-hidden="true"></i> Add event
-      </button>
-      <!-- Reads activities from the Garmin bridge running on this computer
-           (tools/garmin-bridge). Not the cloud Sync button further along: this
-           one talks only to 127.0.0.1. Hidden until this browser is paired, so
-           the published page offers nothing a visitor cannot use. -->
-      <button type="button" class="btn btn-secondary hidden" id="garmin-btn">
-        <i class="ic i-watch" aria-hidden="true"></i> Garmin
       </button>
       <!-- The other direction: puts upcoming bike sessions in the Garmin calendar
            as structured workouts. Same bridge, same pairing, and off on the
@@ -1354,17 +1363,48 @@
       </div>
       <div class="chart-legend" id="chart-legend"></div>
     </div>
+  </div>
 
+  <div class="page hidden" data-page="status" tabindex="-1">
+    <header>
+      <div class="hdr-top"><span class="kicker">Athlete</span></div>
+      <h1 class="im-h1">Training status</h1>
+      <p class="im-sub">Coming soon.</p>
+    </header>
+  </div>
+
+  <div class="page hidden" data-page="biometrics" tabindex="-1">
+    <header>
+      <div class="hdr-top"><span class="kicker">Athlete</span></div>
+      <h1 class="im-h1">Biometrics</h1>
+      <p class="im-sub">Coming soon.</p>
+    </header>
+  </div>
+
+  <div class="page hidden" data-page="health" tabindex="-1">
+    <header>
+      <div class="hdr-top"><span class="kicker">Athlete</span></div>
+      <h1 class="im-h1">Health indicators</h1>
+      <p class="im-sub">Coming soon.</p>
+    </header>
+  </div>
+
+  <div class="page page-foot">
     <footer class="im-foot">
       <span>yootri is a training planner, not medical advice. Free and open source (MIT).</span>
       <button type="button" class="im-foot-link" id="about-btn">About &amp; disclaimer</button>
       <button type="button" class="im-foot-link" id="privacy-btn">Privacy notice</button>
     </footer>
-
-    <div id="modal-root"></div>
-    <div id="dialog-root"></div>
-    <div id="panel-root"></div>
   </div>
+    </main>
+  </div>
+
+  <input type="file" id="import-file" accept="application/json,.json" hidden />
+  <input type="file" id="activity-file" accept=".csv,.tcx,.gpx,text/csv" hidden />
+
+  <div id="modal-root"></div>
+  <div id="dialog-root"></div>
+  <div id="panel-root"></div>
 
   <script type="module">
   'use strict';
@@ -1598,7 +1638,7 @@
   const state = {
     week: 0, sessions: [],
     done: {}, start: defaultStart(),
-    view: 'week', month: null, events: [],
+    view: 'week', month: null, events: [], page: 'week',
     chartMode: 'weekly', chartHidden: {},
     dragId: null, editingId: null, hoverIdx: null,
     status: 'Saved on this device', statusError: false,
@@ -1706,6 +1746,7 @@
   function renderHeader() {
     const name = (plan && plan.name) || 'My plan';
     els.planTitleText.textContent = name;
+    $('plan-sw-name').textContent = name;
     document.title = 'yootri — ' + name;
     const info = weekInfo(state.week);
     els.subtitle.textContent = totalWeeks() + ' weeks · from ' + fmtDate(parseISO(state.start)) +
@@ -1737,6 +1778,7 @@
 
   function renderToolbar() {
     els.viewSeg.querySelectorAll('input[name="view"]').forEach((r) => { r.checked = r.value === state.view; });
+    syncNav();
     els.garminBtn.classList.toggle('hidden', !garminConfig());
     els.garminSendBtn.classList.toggle('hidden', !garminConfig());
 
@@ -6396,27 +6438,26 @@
   /* ---- Account chip rendering ---- */
 
   function renderAccount() {
+    const item = (attrs, icon, label, title) =>
+      '<button type="button" class="nav" ' + attrs + (title ? ' title="' + esc(title) + '"' : '') + '>' +
+      '<i class="ic ' + icon + '" aria-hidden="true"></i><span class="nav-txt">' + esc(label) + '</span></button>';
     if (!cloudReady()) {
-      els.account.innerHTML =
-        '<button type="button" class="account-note" id="local-only" ' +
-        'title="Sign-in is unavailable here — your plans are saved in this browser">' +
-        '<i class="ic i-drive"></i> Local only</button>';
+      els.account.innerHTML = item('id="local-only"', 'i-drive', 'Local only',
+        'Sign-in is unavailable here — your plans are saved in this browser');
       $('local-only').addEventListener('click', openLocalOnlyPanel);
     } else if (authUser && !hasSyncConsent()) {
       // Signed in, nothing agreed to, nothing sent. Dismissing the consent panel
       // lands here rather than in a state with no way back to the question.
       els.account.innerHTML =
-        '<button type="button" class="account-note" id="sync-off" ' +
-        'title="Signed in, but sync is off — your plans are saved in this browser">' +
-        '<i class="ic i-cloud-off"></i> Sync off</button>' +
-        '<button type="button" class="btn btn-ghost" data-acct="signout">Sign out</button>';
+        item('id="sync-off"', 'i-cloud-off', 'Sync off', 'Signed in, but sync is off — your plans are saved in this browser') +
+        item('data-acct="signout"', 'i-logout', 'Sign out');
       $('sync-off').addEventListener('click', openSyncConsentPanel);
     } else if (authUser) {
       els.account.innerHTML =
-        '<span class="account-email"><i class="ic i-cloud-check"></i>' + esc(authUser.email || 'Signed in') + '</span>' +
-        '<button type="button" class="btn btn-ghost" data-acct="signout">Sign out</button>';
+        item('data-acct="signout"', 'i-logout', 'Sign out') +
+        '<div class="who" title="' + esc(authUser.email || 'Signed in') + '"><i class="ic i-cloud-check" aria-hidden="true"></i>' + esc(authUser.email || 'Signed in') + '</div>';
     } else {
-      els.account.innerHTML = '<button type="button" class="btn btn-secondary" data-acct="signin"><i class="ic i-google"></i> Sign in to sync</button>';
+      els.account.innerHTML = item('data-acct="signin"', 'i-google', 'Sign in to sync');
     }
   }
 
@@ -6576,6 +6617,167 @@
   document.querySelectorAll('#theme-seg input').forEach((r) => r.addEventListener('change', () => setTheme(r.value)));
   setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 
+  /* =========================================================================
+     Sidebar and pages — the plan switcher, the plan's own actions, and which
+     page is showing. The actions are runMenuAction's, so a row here does what
+     the same row in the old plan menu did.
+     ========================================================================= */
+
+  const POP_BTN = { 'plan-pop': $('plan-sw'), 'more-pop': $('plan-more') };
+  let popOpen = null;
+
+  function popRow(act, icon, label, opts) {
+    const o = opts || {};
+    return '<button type="button" role="menuitem" class="pop-item' + (o.danger ? ' danger' : '') + '" data-pm="' + act + '"' +
+      (o.disabled ? ' aria-disabled="true"' : '') + '><i class="ic ' + icon + '" aria-hidden="true"></i><span>' + esc(label) + '</span></button>';
+  }
+
+  function popHtml(id) {
+    if (id === 'more-pop') {
+      return '<div class="pop" role="menu" aria-label="Plan actions">' +
+        popRow('rename', 'i-pencil', 'Rename') +
+        popRow('dup', 'i-copy', 'Duplicate') +
+        popRow('export', 'i-download', 'Export this plan') +
+        '<div class="pop-sep" role="separator"></div>' +
+        popRow('delete', 'i-trash', 'Delete plan', { danger: true, disabled: plans.length <= 1 }) +
+      '</div>';
+    }
+    return '<div class="pop" role="menu" aria-label="Plans"><div class="pop-list">' +
+      plans.map((e) => {
+        const cur = plan && e.id === plan.id;
+        return '<button type="button" role="menuitemradio" aria-checked="' + (cur ? 'true' : 'false') + '" class="pop-item" data-pm="switch" data-id="' + esc(e.id) + '">' +
+          '<i class="ic i-check" aria-hidden="true"' + (cur ? '' : ' style="visibility: hidden;"') + '></i><span>' + esc(e.name) + '</span></button>';
+      }).join('') + '</div>' +
+      '<div class="pop-sep" role="separator"></div>' +
+      popRow('new', 'i-plus', 'New season…') +
+      popRow('blank', 'i-plus', 'Blank plan…') +
+      popRow('import', 'i-upload', 'Import plan…') +
+    '</div>';
+  }
+
+  const popItems = () => (popOpen ? Array.from($(popOpen).querySelectorAll('.pop-item:not([aria-disabled="true"])')) : []);
+
+  function openPop(id) {
+    if (popOpen === id) return closePop();
+    closePop(false);
+    closePlanMenu(false);
+    $(id).innerHTML = popHtml(id);
+    popOpen = id;
+    POP_BTN[id].setAttribute('aria-expanded', 'true');
+    document.addEventListener('keydown', onPopKey, true);
+    document.addEventListener('mousedown', onPopOutside, true);
+    (($(id).querySelector('[aria-checked="true"]')) || popItems()[0])?.focus();
+  }
+
+  function closePop(refocus) {
+    if (!popOpen) return;
+    const id = popOpen;
+    popOpen = null;
+    $(id).innerHTML = '';
+    POP_BTN[id].setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', onPopKey, true);
+    document.removeEventListener('mousedown', onPopOutside, true);
+    if (refocus !== false) POP_BTN[id].focus();
+  }
+
+  function onPopOutside(e) {
+    if (!$(popOpen).contains(e.target) && !POP_BTN[popOpen].contains(e.target)) closePop(false);
+  }
+
+  function onPopKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); return closePop(); }
+    if (e.key === 'Tab') return closePop(false);
+    const items = popItems();
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+    else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+  }
+
+  $('plan-sw').addEventListener('click', () => openPop('plan-pop'));
+  $('plan-more').addEventListener('click', () => openPop('more-pop'));
+  for (const id of ['plan-pop', 'more-pop']) {
+    $(id).addEventListener('click', (e) => {
+      const b = e.target.closest('.pop-item');
+      if (!b || b.getAttribute('aria-disabled') === 'true') return;
+      closePop(false);
+      runMenuAction(b.dataset.pm, b.dataset.id);
+    });
+  }
+  $('events-btn').addEventListener('click', () => openEventPanel(null));
+  $('mydata-btn').addEventListener('click', downloadMyData);
+
+  /* Pages. The address bar says which one (#/week, #/calendar, #/status …) so
+     back, forward and a reload land where the athlete was. Calendar is the week
+     page in its Month view; This week is that page on the week today falls in. */
+
+  const ROUTES = ['week', 'calendar', 'status', 'biometrics', 'health'];
+  const routeFromHash = () => {
+    const m = /^#\/([a-z]+)/.exec(location.hash);
+    return m && ROUTES.includes(m[1]) ? m[1] : 'week';
+  };
+
+  function activeRoute() {
+    return state.page === 'week' ? (state.view === 'month' ? 'calendar' : 'week') : state.page;
+  }
+
+  function syncNav() {
+    const on = activeRoute();
+    document.querySelectorAll('#side [data-route]').forEach((n) => {
+      n.classList.toggle('on', n.dataset.route === on);
+      if (n.dataset.route === on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+    });
+  }
+
+  function setView(v) {
+    state.view = v === 'month' ? 'month' : 'week';
+    // Open the month the selected week is in, rather than wherever the athlete
+    // last browsed to.
+    if (state.view === 'month') state.month = monthOf(dateOf(state.start, state.week, 'Mon'));
+    if (state.page === 'week' && routeFromHash() !== (state.view === 'month' ? 'calendar' : 'week')) {
+      try { history.replaceState(null, '', '#/' + (state.view === 'month' ? 'calendar' : 'week')); } catch (e) {}
+    }
+  }
+
+  function applyRoute(r, boot) {
+    state.page = r === 'calendar' ? 'week' : r;
+    let changed = false;
+    if (state.page === 'week') {
+      if (r === 'week') {
+        const w = weekIndexOf(state.start, toISO(new Date()));
+        if (Number.isInteger(w) && w >= 0 && w < totalWeeks() && w !== state.week) {
+          state.week = w;
+          state.sessions = sessionsFor(w);
+          state.dragId = null;
+          changed = true;
+        }
+      }
+      const want = r === 'calendar' ? 'month' : 'week';
+      if (state.view !== want) { setView(want); changed = true; }
+    }
+    document.querySelectorAll('[data-page]').forEach((pg) => pg.classList.toggle('hidden', pg.dataset.page !== state.page));
+    if (boot) return;   // the first renderAll follows, and a reload is not an edit
+    if (changed) persistPlan();
+    renderAll();
+    window.scrollTo(0, 0);
+    document.querySelector('[data-page]:not(.hidden)')?.focus({ preventScroll: true });
+  }
+
+  function navigate(r) {
+    if (location.hash === '#/' + r) applyRoute(r);
+    else location.hash = '#/' + r;
+  }
+
+  $('side').addEventListener('click', (e) => {
+    const a = e.target.closest('a[data-route], a.brand');
+    if (!a) return;
+    e.preventDefault();
+    navigate(a.dataset.route || 'week');
+  });
+  window.addEventListener('hashchange', () => applyRoute(routeFromHash()));
+
   // Plan title + menu
   els.planTitle.addEventListener('click', () => { if (menuOpen()) closePlanMenu(); else openPlanMenu(); });
   els.planTitle.addEventListener('dblclick', startRename);
@@ -6638,10 +6840,7 @@
 
   els.viewSeg.addEventListener('change', (e) => {
     if (e.target.name !== 'view') return;
-    state.view = e.target.value === 'month' ? 'month' : 'week';
-    // Open the month the selected week is in, rather than wherever the athlete
-    // last browsed to.
-    if (state.view === 'month') state.month = monthOf(dateOf(state.start, state.week, 'Mon'));
+    setView(e.target.value);
     persistPlan();
     renderToolbar();
     renderViewBody();
@@ -6880,6 +7079,7 @@
 
   /* ---- Init ---- */
 
+  applyRoute(routeFromHash(), true);
   renderAll();
   renderAccount();
   maybeShowFirstRun();
