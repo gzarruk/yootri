@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>yootri — Triathlon training planner</title>
 
 <!-- Favicons: SVG for modern browsers, .ico for legacy + the implicit favicon.ico request.
@@ -1097,6 +1097,7 @@
   <div class="shell">
     <div class="side-wrap">
       <nav class="side" id="side" aria-label="yootri">
+        <button type="button" class="btn btn-ghost btn-icon sheet-close" id="sheet-close" aria-label="Close menu"><i class="ic i-x" aria-hidden="true"></i></button>
         <a class="brand" href="#/week" aria-label="yootri, this week">
           <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
             <rect width="64" height="64" rx="14" style="fill: var(--color-surface)"></rect>
@@ -1153,6 +1154,17 @@
     </div>
 
     <main class="main" id="main">
+  <div class="phone-top">
+    <a class="brand" href="#/week" aria-label="yootri, this week">
+      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="14" style="fill: var(--color-surface)"></rect>
+        <rect width="64" height="64" rx="14" style="fill: var(--color-accent-900); opacity: 0.55"></rect>
+        <g fill="none" stroke-width="6.5" style="stroke: var(--color-accent-300)"><path d="M19 17 L33 40"></path><path d="M45 17 L24.5 55"></path></g>
+      </svg>
+    </a>
+    <button type="button" class="plan-sw" id="m-plan" aria-label="Switch plan"><span class="plan-sw-txt"><span class="plan-sw-n" id="m-plan-name"></span></span><i class="ic i-updown" aria-hidden="true"></i></button>
+    <button type="button" class="btn btn-secondary btn-icon" id="m-sync" aria-label="Sync"><i class="ic i-sync" aria-hidden="true"></i></button>
+  </div>
   <div class="page" data-page="week" tabindex="-1">
 
     <header>
@@ -1237,6 +1249,8 @@
     <div id="advice-root"></div>
 
     <div class="summary" id="summary"></div>
+
+    <div class="dstrip" id="dstrip" role="group" aria-label="Day of this week"></div>
 
     <div class="im-boardwrap" id="boardwrap">
       <div class="im-board" id="board"></div>
@@ -1428,6 +1442,14 @@
   </div>
     </main>
   </div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Sections">
+    <a class="tab" data-route="week" href="#/week"><i class="ic i-calendar" aria-hidden="true"></i>Week</a>
+    <a class="tab" data-route="status" href="#/status"><i class="ic i-trend" aria-hidden="true"></i>Status</a>
+    <a class="tab" data-route="biometrics" href="#/biometrics"><i class="ic i-user" aria-hidden="true"></i>Biometrics</a>
+    <a class="tab" data-route="health" href="#/health"><i class="ic i-heart" aria-hidden="true"></i>Health</a>
+    <button type="button" class="tab" id="tab-more" aria-haspopup="dialog" aria-expanded="false"><i class="ic i-menu" aria-hidden="true"></i>More</button>
+  </nav>
 
   <input type="file" id="import-file" accept="application/json,.json" hidden />
   <input type="file" id="activity-file" accept=".csv,.tcx,.gpx,text/csv" hidden />
@@ -1668,7 +1690,7 @@
   const state = {
     week: 0, sessions: [],
     done: {}, start: defaultStart(),
-    view: 'week', month: null, events: [], page: 'week',
+    view: 'week', month: null, events: [], page: 'week', mDay: 'Mon', mDayWeek: null,
     chartMode: 'weekly', chartHidden: {},
     dragId: null, editingId: null, hoverIdx: null,
     status: 'Saved on this device', statusError: false,
@@ -1777,6 +1799,7 @@
     const name = (plan && plan.name) || 'My plan';
     els.planTitleText.textContent = name;
     $('plan-sw-name').textContent = name;
+    $('m-plan-name').textContent = name;
     document.title = 'yootri — ' + name;
     const info = weekInfo(state.week);
     els.subtitle.textContent = totalWeeks() + ' weeks · from ' + fmtDate(parseISO(state.start)) +
@@ -1986,6 +2009,7 @@
     // A plan released one week at a time shows a week after the horizon as what
     // it will be, not what is in it: the sessions are decided at the review.
     if (!isReleased(plan, state.week)) {
+      $('dstrip').innerHTML = '';
       const info = weekInfo(state.week);
       const rel = releaseState(plan, { today: todayISO });
       els.board.innerHTML =
@@ -2021,7 +2045,37 @@
         '</div>'
       );
     }).join('');
+
+    // On a phone the board shows one day: the strip picks it. Starts on today
+    // when it is in this week, else Monday, and starts over when the week changes.
+    if (state.mDayWeek !== state.week || !DAYS.includes(state.mDay)) {
+      state.mDay = DAYS.find((d) => dateOf(state.start, state.week, d) === todayISO) || 'Mon';
+      state.mDayWeek = state.week;
+    }
+    $('dstrip').innerHTML = DAYS.map((day) => {
+      const iso = dateOf(state.start, state.week, day);
+      const dots = state.sessions.filter((s) => s.day === day)
+        .map((s) => '<i style="--c: ' + ((DISC[s.disc] || {}).color || 'var(--color-neutral-500)') + '"></i>').join('');
+      return '<button type="button" class="dchip" data-mday="' + day + '" aria-label="' + day + ' ' + fmtDayISO(iso) + '">' +
+        '<span>' + day + '</span><b>' + Number(iso.slice(8, 10)) + '</b><span class="dots">' + dots + '</span></button>';
+    }).join('');
+    applyMobileDay();
   }
+
+  function applyMobileDay() {
+    document.querySelectorAll('#dstrip .dchip').forEach((b) => {
+      const on = b.dataset.mday === state.mDay;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    els.board.querySelectorAll('.im-col').forEach((c) => c.classList.toggle('m-on', c.dataset.day === state.mDay));
+  }
+  $('dstrip').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mday]');
+    if (!b) return;
+    state.mDay = b.dataset.mday;
+    applyMobileDay();
+  });
 
   /* ---- Month calendar ----------------------------------------------------
      The same sessions the board shows, laid out on real dates, one row per
@@ -6738,9 +6792,11 @@
 
   function syncNav() {
     const on = activeRoute();
-    document.querySelectorAll('#side [data-route]').forEach((n) => {
-      n.classList.toggle('on', n.dataset.route === on);
-      if (n.dataset.route === on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+    document.querySelectorAll('#side [data-route], #tabbar [data-route]').forEach((n) => {
+      // The tab bar has no Calendar tab, so the Month view lights the Week tab.
+      const here = n.classList.contains('tab') ? n.dataset.route === (on === 'calendar' ? 'week' : on) : n.dataset.route === on;
+      n.classList.toggle('on', here);
+      if (here) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
     });
   }
 
@@ -6783,12 +6839,41 @@
     else location.hash = '#/' + r;
   }
 
-  $('side').addEventListener('click', (e) => {
+  const onNavClick = (e) => {
     const a = e.target.closest('a[data-route], a.brand');
     if (!a) return;
     e.preventDefault();
     navigate(a.dataset.route || 'week');
+  };
+  $('side').addEventListener('click', onNavClick);
+  $('tabbar').addEventListener('click', onNavClick);
+  document.querySelector('.phone-top .brand').addEventListener('click', onNavClick);
+
+  /* On a phone the sidebar is a sheet that the tab bar's "More" opens. Choosing
+     anything in it, the scrim, the close button and Escape all put it away. */
+  const phone = matchMedia('(max-width: 760px)');
+  function openMore() {
+    document.body.classList.add('more-open');
+    $('tab-more').setAttribute('aria-expanded', 'true');
+    $('sheet-close').focus();
+  }
+  function closeMore(refocus) {
+    if (!document.body.classList.contains('more-open')) return;
+    closePop(false);
+    document.body.classList.remove('more-open');
+    $('tab-more').setAttribute('aria-expanded', 'false');
+    if (refocus) $('tab-more').focus();
+  }
+  $('tab-more').addEventListener('click', () => (document.body.classList.contains('more-open') ? closeMore(true) : openMore()));
+  $('sheet-close').addEventListener('click', () => closeMore(true));
+  document.querySelector('.side-wrap').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeMore(false); });
+  $('side').addEventListener('click', (e) => {
+    if (phone.matches && e.target.closest('a.nav, button.nav, a.brand, .pop-item')) closeMore(false);
   });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !popOpen) closeMore(true); });
+  phone.addEventListener('change', () => closeMore(false));
+  $('m-plan').addEventListener('click', () => { openMore(); openPop('plan-pop'); });
+  $('m-sync').addEventListener('click', () => els.syncBtn.click());
   window.addEventListener('hashchange', () => applyRoute(routeFromHash()));
 
   // Plan title: a double click renames it in place

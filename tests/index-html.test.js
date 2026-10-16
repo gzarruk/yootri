@@ -628,3 +628,20 @@ test('the app opens on the current week without writing the plan', () => {
     'booting must not persist: a reload is not an edit, and a write is a cloud push');
   assert.match(HTML, /applyRoute\(routeFromHash\(\), true\);\s*renderAll\(\);/);
 });
+
+/* ---- The phone layout ---- */
+
+test('the phone has a tab bar with the four pages and a More sheet, and a day strip for the board', () => {
+  const bar = HTML.slice(HTML.indexOf('<nav class="tabbar"'), HTML.indexOf('</nav>', HTML.indexOf('<nav class="tabbar"')));
+  for (const r of ['week', 'status', 'biometrics', 'health']) assert.ok(bar.includes(`data-route="${r}"`), `the tab bar has no ${r} tab`);
+  assert.ok(bar.includes('id="tab-more"'), 'the tab bar has no More button');
+  assert.match(HTML, /id="dstrip"/);
+  assert.match(HTML, /<meta name="viewport"[^>]*viewport-fit=cover/, 'the tab bar needs the safe-area inset');
+});
+
+test('the sidebar is the phone sheet, so nothing in it can be missing on a phone', () => {
+  // One nav, two presentations: if the sheet were a copy it could drift from the sidebar.
+  assert.equal((HTML.match(/<nav class="side"/g) || []).length, 1);
+  assert.match(SHELL_CSS, /body\.more-open \.side-wrap \{ display: flex; \}/);
+  assert.match(SHELL_CSS, /@media \(max-width: 760px\)[\s\S]*\.im-board \.im-col\.m-on \{ display: flex; \}/);
+});
