@@ -1,0 +1,37 @@
+/*
+  Fitness, fatigue and form indicators. Tokens only: surface, text, accent,
+  divider. Direction is always an arrow plus a signed number, never colour alone.
+*/
+
+.i-up { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 6l7 11H5z'/%3E%3C/svg%3E"); }
+.i-down { --m: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 18L5 7h14z'/%3E%3C/svg%3E"); }
+
+.ind-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 14px; }
+.ind { display: flex; flex-direction: column; gap: 16px; padding: 18px; border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.ind-h { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.ind-t { display: flex; flex-direction: column; gap: 2px; }
+.ind-t b { font-weight: 500; font-size: 14px; }
+.ind-t span { font-size: 12px; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
+.ind-body { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; align-items: center; }
+.ind-hero { display: flex; flex-direction: column; gap: 8px; }
+.ind-num { font-family: var(--font-heading); font-weight: 500; font-size: 60px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.ind-side { display: flex; flex-direction: column; }
+.ind-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 0; border-top: 1px solid var(--color-divider); }
+.ind-row:first-child { border-top: 0; padding-top: 0; }
+.ind-row:last-child { padding-bottom: 0; }
+.ind-lbl { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.ind-val { font-size: 24px; line-height: 1.1; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.delta { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; line-height: 1.3; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.delta .ic { font-size: 9px; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.scale-wrap { display: flex; flex-direction: column; gap: 8px; }
+.scale { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+.scale i { display: block; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+.scale i.on { background: color-mix(in srgb, var(--color-accent) 38%, transparent); }
+.pin { position: absolute; top: -4px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--color-accent); box-shadow: 0 0 0 3px var(--color-surface); }
+.scale-lbl { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; font-size: 11px; color: color-mix(in srgb, var(--color-text) 58%, transparent); }
+.scale-lbl span:nth-child(2) { text-align: center; }
+.scale-lbl span:nth-child(3) { text-align: right; }
+.scale-lbl .now { color: var(--color-accent-300); font-weight: 500; }
+.ind-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+
+@media (max-width: 520px) { .ind-body { grid-template-columns: minmax(0, 1fr); } }

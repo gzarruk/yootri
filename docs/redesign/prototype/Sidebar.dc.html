@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yootri sidebar</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yootri/components/bundle.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="yt" data-theme="{{theme}}" style="width: 248px; min-height: 900px; background: var(--side-bg)">
+<nav class="side" aria-label="Yootri">
+  <div class="brand">
+    <svg width="30" height="30" viewBox="0 0 64 64" role="img" aria-label="yootri">
+      <rect width="64" height="64" rx="14" style="fill: var(--color-surface)"></rect>
+      <rect width="64" height="64" rx="14" style="fill: var(--color-accent-900); opacity: 0.55"></rect>
+      <g fill="none" stroke-width="6.5" style="stroke: var(--color-accent-300)">
+        <path d="M19 17 L33 40"></path>
+        <path d="M45 17 L24.5 55"></path>
+      </g>
+    </svg>
+    <span class="brand-name">yootri</span>
+  </div>
+
+  <div style="display: flex; flex-direction: column; gap: 8px">
+    <button class="plan-sw" aria-expanded="{{open}}" onClick="{{toggle}}">
+      <span class="plan-sw-txt">
+        <span class="plan-sw-k">Plan</span>
+        <span class="plan-sw-n">Ironman Training 2026-2027</span>
+      </span>
+      <i class="ic i-updown"></i>
+    </button>
+    <sc-if value="{{open}}" hint-placeholder-val="{{ false }}">
+      <div class="pop" role="menu">
+        <sc-for list="{{plans}}" as="p" hint-placeholder-count="3">
+          <button class="{{p.cls}}" role="menuitem"><i class="{{p.icon}}"></i>{{p.name}}</button>
+        </sc-for>
+        <div class="pop-sep"></div>
+        <button class="pop-item" role="menuitem"><i class="ic i-plus"></i>New season…</button>
+        <button class="pop-item" role="menuitem"><i class="ic i-plus"></i>Blank plan…</button>
+        <button class="pop-item" role="menuitem"><i class="ic i-upload"></i>Import plan…</button>
+      </div>
+    </sc-if>
+  </div>
+
+  <sc-for list="{{groups}}" as="g" hint-placeholder-count="3">
+    <div class="nav-group">
+      <div class="nav-label">{{g.label}}</div>
+      <sc-for list="{{g.items}}" as="it" hint-placeholder-count="3">
+        <a class="{{it.cls}}" href="{{it.href}}">
+          <i class="{{it.icon}}"></i>
+          <span class="nav-txt">{{it.label}}</span>
+          <sc-if value="{{it.soon}}" hint-placeholder-val="{{ false }}"><span class="tag tag-neutral">Soon</span></sc-if>
+          <sc-if value="{{it.paired}}" hint-placeholder-val="{{ false }}"><span class="dot" title="Paired"></span></sc-if>
+        </a>
+      </sc-for>
+    </div>
+  </sc-for>
+
+  <div class="side-foot">
+    <div class="seg" role="radiogroup" aria-label="Theme">
+      <label class="seg-opt"><input type="radio" name="theme" checked="{{isDark}}" onChange="{{setDark}}"><i class="ic i-moon"></i>Dark</label>
+      <label class="seg-opt"><input type="radio" name="theme" checked="{{isLight}}" onChange="{{setLight}}"><i class="ic i-sun"></i>Light</label>
+    </div>
+    <div class="nav-group">
+      <a class="nav" href="#"><i class="ic i-download"></i><span class="nav-txt">Download my data</span></a>
+      <a class="nav" href="#"><i class="ic i-logout"></i><span class="nav-txt">Sign out</span></a>
+    </div>
+    <div class="who">gzarruk@gmail.com</div>
+  </div>
+</nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"active":{"editor":"enum","default":"week","options":["week","calendar","season","events","status","bio","health","coach","garmin"],"section":"Sidebar"},"theme":{"editor":"enum","default":"dark","options":["dark","light"],"section":"Sidebar"},"onTheme":{"editor":null},"$preview":{"width":248,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const active = this.props.active || 'week';
+    const theme = this.props.onTheme ? (this.props.theme || 'dark') : ((this.state && this.state.theme) || this.props.theme || 'dark');
+    const open = !!(this.state && this.state.open);
+    const item = (id, label, icon, href, extra) => Object.assign({
+      id, label, href,
+      icon: 'ic ' + icon,
+      cls: id === active ? 'nav on' : 'nav',
+      soon: false, paired: false
+    }, extra || {});
+    const groups = [
+      { label: 'Training', items: [
+        item('week', 'This week', 'i-calendar', 'Main.dc.html'),
+        item('calendar', 'Calendar', 'i-month', '#'),
+        item('season', 'Season plan', 'i-flag', '#'),
+        item('events', 'Events', 'i-flame', '#')
+      ] },
+      { label: 'Athlete', items: [
+        item('status', 'Training status', 'i-trend', 'Status.dc.html'),
+        item('bio', 'Biometrics', 'i-user', 'Biometrics.dc.html'),
+        item('health', 'Health indicators', 'i-heart', 'Health.dc.html', { soon: true })
+      ] },
+      { label: 'Tools', items: [
+        item('coach', 'Coach', 'i-chat', '#'),
+        item('garmin', 'Garmin', 'i-watch', '#', { paired: true })
+      ] }
+    ];
+    const names = ['Ironman Training 2026-2027', 'Blank canvas', 'Legacy 70.3', 'My plan', 'Ironman 2027', 'Ironman Cascais 2027'];
+    const plans = names.map((name, i) => ({
+      name,
+      cls: i === 0 ? 'pop-item on' : 'pop-item',
+      icon: i === 0 ? 'ic i-check' : 'ic i-check blank'
+    }));
+    const set = (t) => () => {
+      this.setState({ theme: t });
+      if (this.props.onTheme) this.props.onTheme(t);
+    };
+    return {
+      theme, open, groups, plans,
+      toggle: () => this.setState({ open: !open }),
+      isDark: theme === 'dark',
+      isLight: theme === 'light',
+      setDark: set('dark'),
+      setLight: set('light')
+    };
+  }
+}
+</script>
+</body>
+</html>

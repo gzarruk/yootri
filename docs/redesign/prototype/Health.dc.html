@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yootri: health indicators</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yootri/components/bundle.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="yt shell" data-theme="{{theme}}">
+  <div class="side-wrap">
+    <dc-import name="Sidebar" active="health" theme="{{theme}}" on-theme="{{setTheme}}" hint-size="248px,1000px"></dc-import>
+  </div>
+
+  <main class="main">
+    <div class="main-in">
+
+      <header style="display: flex; flex-direction: column; gap: 10px">
+        <div class="hdr-top">
+          <span class="kicker">Athlete</span>
+          <span class="tag tag-neutral">Coming soon</span>
+        </div>
+        <div>
+          <h1 class="im-h1">Health indicators</h1>
+          <p class="im-sub">Resting heart rate, heart rate variability and sleep, next to your training load, so a hard week lands on a recovered body.</p>
+        </div>
+      </header>
+
+      <div class="grid-3">
+        <section class="panel" aria-label="Resting heart rate">
+          <div class="panel-h"><span class="card-kicker"><i class="ic i-pulse" style="margin-right: 6px"></i>Resting heart rate</span></div>
+          <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>bpm</small></span>
+          <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 36 C40 30 60 40 100 34 S170 24 210 32 S270 38 300 30"></path></svg>
+          <p class="note">A rising trend over several mornings is the earliest sign you are carrying too much fatigue.</p>
+        </section>
+        <section class="panel" aria-label="Heart rate variability">
+          <div class="panel-h"><span class="card-kicker"><i class="ic i-heart" style="margin-right: 6px"></i>Heart rate variability</span></div>
+          <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>ms</small></span>
+          <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 30 C30 40 60 24 100 32 S160 44 200 30 S260 22 300 34"></path></svg>
+          <p class="note">Read against your own seven-day baseline, never against anyone else's number.</p>
+        </section>
+        <section class="panel" aria-label="Sleep">
+          <div class="panel-h"><span class="card-kicker"><i class="ic i-moon" style="margin-right: 6px"></i>Sleep</span></div>
+          <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>h per night</small></span>
+          <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 28 C40 34 70 22 110 30 S180 42 220 28 S270 24 300 32"></path></svg>
+          <p class="note">Hours slept, with the hard sessions of the same week marked so you can see the cost.</p>
+        </section>
+      </div>
+
+      <section class="panel" aria-label="How it will work">
+        <div class="panel-h"><span class="card-kicker">How it will work</span></div>
+        <div class="rows">
+          <div class="row"><span>Source</span><b>Your Garmin bridge, the same one that syncs activities</b></div>
+          <div class="row"><span>Where it is stored</span><b>On this device only, like heart rate today</b></div>
+          <div class="row"><span>On the week view</span><b>A recovery marker beside each day, once there is data</b></div>
+          <div class="row"><span>On the plan</span><b>Suggestions to ease a week; always a draft you accept or decline</b></div>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap">
+          <button class="btn btn-secondary"><i class="ic i-watch"></i>Check the Garmin bridge</button>
+          <button class="btn btn-ghost">Tell me when it is ready</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"],"section":"Theme"},"$preview":{"width":1440,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = (this.state && this.state.theme) || this.props.theme || 'dark';
+    return {
+      theme,
+      setTheme: (t) => this.setState({ theme: t })
+    };
+  }
+}
+</script>
+</body>
+</html>

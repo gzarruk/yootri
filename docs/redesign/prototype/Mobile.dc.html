@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yootri: this week on a phone</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yootri/components/bundle.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="yt phone" data-theme="{{theme}}">
+  <div class="phone-top">
+    <span class="brand">
+      <svg width="28" height="28" viewBox="0 0 64 64" role="img" aria-label="yootri">
+        <rect width="64" height="64" rx="14" style="fill: var(--color-surface)"></rect>
+        <rect width="64" height="64" rx="14" style="fill: var(--color-accent-900); opacity: 0.55"></rect>
+        <g fill="none" stroke-width="6.5" style="stroke: var(--color-accent-300)"><path d="M19 17 L33 40"></path><path d="M45 17 L24.5 55"></path></g>
+      </svg>
+      <button class="plan-sw" style="width: auto; padding: 6px 10px" aria-label="Switch plan">
+        <span class="plan-sw-txt"><span class="plan-sw-n" style="max-width: 190px">Ironman Training 2026-2027</span></span>
+        <i class="ic i-updown"></i>
+      </button>
+    </span>
+    <button class="btn btn-secondary btn-icon" aria-label="Sync with Garmin"><i class="ic i-sync"></i></button>
+  </div>
+
+  <div class="phone-body">
+    <div class="toolbar" style="flex-wrap: nowrap">
+      <button class="btn btn-secondary btn-icon" aria-label="Previous week" style="min-height: 44px; width: 44px"><i class="ic i-left"></i></button>
+      <span class="wk-lbl"><b>Week 2 of 16 · Base 3</b>27 Jul – 2 Aug</span>
+      <button class="btn btn-secondary btn-icon" aria-label="Next week" style="min-height: 44px; width: 44px"><i class="ic i-right"></i></button>
+    </div>
+
+    <div class="stats" style="grid-template-columns: repeat(3, minmax(0, 1fr))">
+      <div class="stat" style="padding: 10px 12px"><span class="stat-k">Volume</span><span class="stat-v" style="font-size: 17px">11h 5m</span></div>
+      <div class="stat" style="padding: 10px 12px"><span class="stat-k">Sessions</span><span class="stat-v" style="font-size: 17px">7</span></div>
+      <div class="stat" style="padding: 10px 12px"><span class="stat-k">Done</span><span class="stat-v" style="font-size: 17px">0 / 7</span></div>
+    </div>
+
+    <div class="dstrip" role="tablist" aria-label="Days">
+      <button class="dchip" role="tab"><span>Mon</span><b>27</b><span class="dots" style="--c: var(--disc-rest)"><i></i></span></button>
+      <button class="dchip" role="tab"><span>Tue</span><b>28</b><span class="dots" style="--c: var(--disc-swim)"><i></i></span></button>
+      <button class="dchip" role="tab"><span>Wed</span><b>29</b><span class="dots" style="--c: var(--disc-bike)"><i></i></span></button>
+      <button class="dchip" role="tab"><span>Thu</span><b>30</b><span class="dots" style="--c: var(--disc-swim)"><i></i></span></button>
+      <button class="dchip" role="tab"><span>Fri</span><b>31</b><span class="dots" style="--c: var(--disc-strength)"><i></i></span></button>
+      <button class="dchip on" role="tab" aria-selected="true"><span>Sat</span><b>1</b><span class="dots"><i style="--c: var(--disc-bike)"></i><i style="--c: var(--disc-run)"></i></span></button>
+      <button class="dchip" role="tab"><span>Sun</span><b>2</b><span class="dots" style="--c: var(--disc-run)"><i></i></span></button>
+    </div>
+
+    <div class="day-h" style="padding: 2px 2px 0"><b style="font-size: 14px">Saturday <span>1 Aug</span></b><span>4h</span></div>
+
+    <div class="im-card" style="--disc-color: var(--disc-bike)">
+      <div class="card-top"><span class="disc-tag"><i class="ic i-bike"></i>Bike</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button></span></div>
+      <div class="card-focus" style="font-size: 14px">Long ride</div>
+      <div class="card-meta" style="font-size: 12px"><span><i class="ic i-clock"></i>2:45</span><span><i class="ic i-gauge"></i>Z2</span></div>
+      <div class="card-foot"><button class="done-toggle" style="min-height: 28px"><i class="ic i-circle"></i>Mark done</button></div>
+    </div>
+    <div class="im-card" style="--disc-color: var(--disc-run)">
+      <div class="card-top"><span class="disc-tag"><i class="ic i-run"></i>Run</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button></span></div>
+      <div class="card-focus" style="font-size: 14px">Long run</div>
+      <div class="card-meta" style="font-size: 12px"><span><i class="ic i-clock"></i>1:15</span><span><i class="ic i-gauge"></i>Z2</span></div>
+      <div class="card-foot"><button class="done-toggle" style="min-height: 28px"><i class="ic i-circle"></i>Mark done</button></div>
+    </div>
+  </div>
+
+  <nav class="tabbar" aria-label="Sections">
+    <a class="tab on" href="Mobile.dc.html" aria-current="page"><i class="ic i-calendar"></i>Week</a>
+    <a class="tab" href="Status.dc.html"><i class="ic i-trend"></i>Status</a>
+    <a class="tab" href="Biometrics.dc.html"><i class="ic i-user"></i>Biometrics</a>
+    <a class="tab" href="Health.dc.html"><i class="ic i-heart"></i>Health</a>
+    <a class="tab" href="#"><i class="ic i-menu"></i>More</a>
+  </nav>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"],"section":"Theme"},"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme || 'dark' };
+  }
+}
+</script>
+</body>
+</html>
