@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { PLANNED, zoneIntensity, plannedLoad, formZone, fitnessSeries, minutesByDiscipline } from '../assets/coach/fitness.js';
+import { PLANNED, FITNESS_BANDS, zoneIntensity, plannedLoad, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline } from '../assets/coach/fitness.js';
 import { trainingLoad } from '../assets/coach/load.js';
 
 /* Fitness, fatigue and form: the 42-day and 7-day averages of training load as
@@ -198,4 +198,40 @@ test('minutes by discipline over the last days, newest included, older left out'
   assert.deepEqual(minutesByDiscipline(acts, { today: '2026-09-30', days: 28 }), { Run: 60, Bike: 120, Other: 10 });
   assert.deepEqual(minutesByDiscipline(null, { today: '2026-09-30' }), {});
   assert.deepEqual(minutesByDiscipline(acts, { today: 'nope' }), {});
+});
+
+test('the plan followed from today is a line to race day that ends where the race-day figure does', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  assert.ok(r.weeks.slice(0, 4).every((w) => w.followed === null), 'nothing before the week today falls in');
+  assert.ok(r.weeks[4].followed !== null, 'the weeks still to come carry it');
+  assert.equal(r.weeks[5].followed, r.race.fit, 'the race week reads the race-day figure, even for a Saturday race');
+  assert.ok(r.weeks[4].followed > r.today.fit, 'and it rises from where fitness stands now');
+});
+
+test('there is no followed line without a projection', () => {
+  const none = fitnessSeries(plan(), { today: TODAY, thresholds: T });
+  assert.ok(none.weeks.every((w) => w.followed === null));
+  const after = fitnessSeries(plan({ ...history(), activitySync: history().sync }), { today: '2026-10-25', thresholds: T });
+  assert.ok(after.weeks.every((w) => w.followed === null));
+});
+
+test('a followed line does not depend on how much was done, only on where it starts', () => {
+  const a = fitnessSeries(plan({ ...history(), activitySync: history().sync }), { today: TODAY, thresholds: T });
+  const b = fitnessSeries(plan({ ...history(0.5), activitySync: history().sync }), { today: TODAY, thresholds: T });
+  assert.ok(b.weeks[4].followed < a.weeks[4].followed, 'a lower start gives a lower line');
+  assert.ok(b.weeks[4].followed !== b.weeks[4].trend, 'and it is not the trend');
+});
+
+test('race-day form sits below, within or above a range often used on the day', () => {
+  assert.equal(raceFormPosition(PLANNED.raceForm.low - 0.1), 'below');
+  assert.equal(raceFormPosition(PLANNED.raceForm.low), 'within');
+  assert.equal(raceFormPosition(PLANNED.raceForm.high), 'within');
+  assert.equal(raceFormPosition(PLANNED.raceForm.high + 0.1), 'above');
+  assert.deepEqual(PLANNED.raceForm, { low: 5, high: 25 });
+});
+
+test('the illustrative fitness bands live in the engine, one per race distance', () => {
+  assert.deepEqual(FITNESS_BANDS.map((b) => b.key), ['olympic', '70.3', 'ironman']);
+  assert.ok(FITNESS_BANDS.every((b) => b.lo < b.hi && b.name));
 });

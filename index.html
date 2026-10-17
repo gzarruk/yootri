@@ -1401,7 +1401,8 @@
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
     landingsOf, freshWeek, isUntouchedPlan,
   } from './assets/coach/plan.js';
-  import { PLANNED, formZone, fitnessSeries, minutesByDiscipline } from './assets/coach/fitness.js';
+  import { PLANNED, FITNESS_BANDS, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline } from './assets/coach/fitness.js';
+  import { racePreparation } from './assets/coach/preparation.js';
   import { releaseState, isReleased, reviewWeek, proposeNextWeek, hardestSession } from './assets/coach/review.js';
   import { normalizeNight, mergeOvernight, overnightNights, overnightSyncWindow, compareNights } from './assets/coach/overnight.js';
   import {
@@ -7170,11 +7171,12 @@
      the planned line and the race-day figures rest on an estimate of each
      planned session; the three bands are illustrative, not findings. */
 
-  const BANDS = [
-    { key: 'olympic', name: 'Olympic', lo: 40, hi: 70, color: 'var(--disc-swim)' },
-    { key: '70.3', name: '70.3', lo: 60, hi: 90, color: 'var(--disc-bike)' },
-    { key: 'ironman', name: 'Ironman', lo: 80, hi: 115, color: 'var(--disc-brick)' },
-  ];
+  /* The chart's dash patterns, in one place so the legend swatches are drawn from the same ones. */
+  const LINE_DASH = { planned: '7 5', trend: '1 5', followed: '12 4 2 4' };
+  const swatch = (color, width, dash, opacity) => '<svg class="lg-sw" width="28" height="8" viewBox="0 0 28 8" aria-hidden="true"><line x1="2" y1="4" x2="26" y2="4" stroke="' + color +
+    '" stroke-width="' + width + '" stroke-linecap="round"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + (opacity ? ' opacity="' + opacity + '"' : '') + '></line></svg>';
+  const BAND_COLORS = { olympic: 'var(--disc-swim)', '70.3': 'var(--disc-bike)', ironman: 'var(--disc-brick)' };
+  const BANDS = FITNESS_BANDS.map((b) => ({ ...b, color: BAND_COLORS[b.key] }));
 
   const MISSING_WORDS = {
     power: 'power on rides', ftp: 'your FTP', distance: 'distance on runs and swims',
@@ -7243,33 +7245,44 @@
     const peak = Math.max(120, ...fs.weeks.flatMap((w) => [w.planned, w.actual ?? 0, w.trend ?? 0]));
     const top = Math.ceil(peak / 40) * 40;
     const X = (i) => (N > 1 ? 20 + (i * 940) / (N - 1) : 500);
-    const Y = (v) => 150 - (v / top) * 150;
+    const H = 360;
+    const Y = (v) => H - (v / top) * H;
     const f1 = (n) => n.toFixed(1);
     const last = N - 1;
+    /* The chart is stretched to its box, so a <circle> would come out an ellipse. A zero-length
+       line with a round cap and a non-scaling stroke stays round at any size: ring, then fill. */
+    const dot = (x, y, ring, fill) => {
+      const d = 'x1="' + f1(x) + '" y1="' + f1(y) + '" x2="' + f1(x) + '" y2="' + f1(y) + '" stroke-linecap="round" style="vector-effect: non-scaling-stroke; ';
+      return '<line ' + d + 'stroke: ' + ring + '; stroke-width: 11"></line><line ' + d + 'stroke: ' + fill + '; stroke-width: 5.5"></line>';
+    };
     const pts = (rows) => rows.map(([i, v]) => f1(X(i)) + ',' + f1(Y(v))).join(' ');
     const actual = fs.weeks.filter((w) => w.actual !== null).map((w) => [w.week, w.actual]);
 
-    let svg = [0, 1, 2, 3].map((k) => { const y = k * 50 || 0.5; return '<line class="grid-l" x1="0" y1="' + y + '" x2="1000" y2="' + y + '"></line>'; }).join('');
+    let svg = [0, 1, 2, 3].map((k) => { const y = k * (H / 3) || 0.5; return '<line class="grid-l" x1="0" y1="' + y + '" x2="1000" y2="' + y + '"></line>'; }).join('');
     for (const b of BANDS) {
       svg += '<rect class="band" style="--bc: ' + b.color + '" x="0" y="' + f1(Y(b.hi)) + '" width="1000" height="' + f1(Y(b.lo) - Y(b.hi)) + '"></rect>' +
         '<line class="band-lo" style="--bc: ' + b.color + '" x1="0" y1="' + f1(Y(b.lo)) + '" x2="1000" y2="' + f1(Y(b.lo)) + '"></line>' +
         '<line class="band-hi" style="--bc: ' + b.color + '" x1="0" y1="' + f1(Y(b.hi)) + '" x2="1000" y2="' + f1(Y(b.hi)) + '"></line>';
     }
-    svg += '<line x1="' + f1(X(nowWeek)) + '" y1="0" x2="' + f1(X(nowWeek)) + '" y2="150" stroke-dasharray="3 4" style="stroke: var(--color-accent); stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
-      '<line x1="' + f1(X(last)) + '" y1="0" x2="' + f1(X(last)) + '" y2="150" style="stroke: var(--color-text); opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
-      '<polyline class="ln" style="stroke: var(--color-accent-300); stroke-dasharray: 7 5" points="' + pts(fs.weeks.map((w) => [w.week, w.planned])) + '"></polyline>';
+    svg += '<line x1="' + f1(X(nowWeek)) + '" y1="0" x2="' + f1(X(nowWeek)) + '" y2="' + H + '" stroke-dasharray="3 4" style="stroke: var(--color-accent); stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
+      '<line x1="' + f1(X(last)) + '" y1="0" x2="' + f1(X(last)) + '" y2="' + H + '" style="stroke: var(--color-text); opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
+      '<polyline class="ln" style="stroke: var(--color-accent-300); stroke-width: 2; stroke-dasharray: ' + LINE_DASH.planned + '" points="' + pts(fs.weeks.map((w) => [w.week, w.planned])) + '"></polyline>';
     const trend = fs.weeks.filter((w) => w.trend !== null).map((w) => [w.week, w.trend]);
+    const followed = fs.weeks.filter((w) => w.followed !== null).map((w) => [w.week, w.followed]);
+    if (fs.today && followed.length) {
+      svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5; stroke-dasharray: ' + LINE_DASH.followed + '" points="' + pts([[nowWeek, fs.today.fit], ...followed]) + '"></polyline>';
+    }
     if (fs.today && trend.length) {
-      svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-dasharray: 1 5; stroke-width: 2.5" points="' + pts([[nowWeek, fs.today.fit], ...trend]) + '"></polyline>';
+      svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-dasharray: ' + LINE_DASH.trend + '; stroke-width: 2.5" points="' + pts([[nowWeek, fs.today.fit], ...trend]) + '"></polyline>';
     }
     if (actual.length) {
       svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 3" points="' + pts(actual) + '"></polyline>' +
-        '<circle cx="' + f1(X(actual[actual.length - 1][0])) + '" cy="' + f1(Y(actual[actual.length - 1][1])) + '" r="5" style="fill: var(--color-accent); stroke: var(--color-surface); stroke-width: 2"></circle>';
+        dot(X(actual[actual.length - 1][0]), Y(actual[actual.length - 1][1]), 'var(--color-accent)', 'var(--color-accent)');
     }
     const raceW = fs.race ? Math.min(last, fs.race.week) : last;
     const raceV = fs.race ? fs.race.fit : fs.weeks[last].planned;
-    svg += '<circle cx="' + f1(X(raceW)) + '" cy="' + f1(Y(raceV)) + '" r="4" style="fill: var(--color-surface); stroke: var(--color-accent-300); stroke-width: 2"></circle>';
-    if (fs.trend !== null) svg += '<circle cx="' + f1(X(raceW)) + '" cy="' + f1(Y(fs.trend)) + '" r="4" style="fill: var(--color-surface); stroke: var(--color-accent); stroke-width: 2"></circle>';
+    svg += dot(X(raceW), Y(raceV), 'var(--color-accent-300)', 'var(--color-surface)');
+    if (fs.trend !== null) svg += dot(X(raceW), Y(fs.trend), 'var(--color-accent)', 'var(--color-surface)');
 
     const step = Math.max(1, Math.ceil(N / 16));
     return {
@@ -7280,6 +7293,26 @@
       key: BANDS.map((b) => '<span style="--bc: ' + b.color + '"><u></u>' + b.name + ' ' + b.lo + ' to ' + b.hi + '</span>').join(''),
     };
   }
+
+  /* Race preparation: facts set beside the chart. No score and no verdict; the page
+     says where a figure sits and nothing about what it means for the athlete. */
+  const AGAINST_WORDS = { below: 'below the range', within: 'within the range', above: 'above the range' };
+  function preparationHTML(fs) {
+    const prep = racePreparation(plan, { today: toISO(new Date()), fitness: fs });
+    if (!prep.available) return '';
+    const range = (r) => (r ? signedRange(r) : '');
+    const row = (i) => {
+      const isRange = i.reference && typeof i.reference === 'object';
+      const value = i.key === 'form' ? signed(i.value) : whole(i.value);
+      const ref = isRange ? range(i.reference) : i.key === 'steady' ? 'of ' + i.reference : 'often ' + i.reference;
+      return '<div class="prep-row"><span class="prep-lbl">' + esc(i.label) + '<small>' + esc(i.detail) + '</small></span>' +
+        '<span class="prep-val"><b>' + value + '</b><small>' + (i.against ? esc(AGAINST_WORDS[i.against]) + ' · ' : '') + esc(ref) + '</small></span></div>';
+    };
+    return '<div class="prep"><div class="prep-h"><b>Race preparation</b>' +
+      '<span>Worked out from your synced sessions. The references are illustrative, not findings.</span></div>' +
+      prep.items.map(row).join('') + '</div>';
+  }
+  const signedRange = (r) => (r.lo > 0 ? '+' : '') + r.lo + ' to ' + (r.hi > 0 ? '+' : '') + r.hi;
 
   function renderFitness() {
     const N = totalWeeks();
@@ -7294,30 +7327,18 @@
           fs.today.form > PLANNED.form.high ? 'Fitness is well above fatigue.' : fs.today.form < PLANNED.form.low ? 'Fatigue is well above fitness.' : 'Fitness and fatigue are close.', false) +
         (fs.race
           ? ffmCardHTML('Race day · ' + fmtLongDate(fs.race.date), 'The plan followed from today', fs.race, 'vs today',
-              fs.race.form > PLANNED.form.high ? 'Fitness is well above fatigue on the day.' : fs.race.form < PLANNED.form.low ? 'Fatigue is well above fitness on the day.' : 'Fitness and fatigue are close on the day.', true)
+              (fs.race.form > PLANNED.form.high ? 'Fitness is well above fatigue on the day.' : fs.race.form < PLANNED.form.low ? 'Fatigue is well above fitness on the day.' : 'Fitness and fatigue are close on the day.') +
+              ' A range often used on race day (illustrative): +' + PLANNED.raceForm.low + ' to +' + PLANNED.raceForm.high + '.', true)
           : ffmEmptyHTML('Race day', 'The plan followed from today', { ...fs, missing: [] }).replace(whyEmptyHTML({ ...fs, missing: [] }), '<p class="note">The race date has passed, or the plan has none.</p>'))
       : ffmEmptyHTML('Today', 'Where your training stands right now', fs) + ffmEmptyHTML('Race day', 'The plan followed from today', fs);
 
     const c = fitnessChart(fs, N, nowWeek);
-    const band = BANDS.find((b) => b.key === (plan.profile && plan.profile.raceType));
-    const R = fs.race;
-    const bandNote = (v) => (band ? (v >= band.lo ? 'At or above' : 'Below') + ' the lower edge of the ' + esc(band.name) + ' band' : '');
-    const goal = fs.hasHistory && R
-      ? '<div class="fgoal">' +
-          '<div><small>Planned race-day fitness</small><b>' + whole(R.fit) + '</b><em>' + bandNote(R.fit) + '. An estimate from the plan’s zones.</em></div>' +
-          (fs.trend !== null ? '<div><small>On current trend</small><b>' + whole(fs.trend) + '</b><em>' + bandNote(fs.trend) + '. If the rest of the plan is done at the rate of the last four weeks.</em></div>' : '') +
-          (fs.adherence !== null ? '<div><small>Planned load done, last 4 weeks</small><b>' + Math.round(fs.adherence * 100) + '%</b><em>Synced load against the plan’s estimate</em></div>' : '') +
-        '</div>'
-      : '';
-
     $('v-fit').innerHTML =
-      '<div class="sub-h"><p>Fitness is the 42-day average of training load. The planned line scores each planned session from its length and zone, so it is an estimate. The bands are illustrative ranges for each race distance, not findings.</p>' +
-        '<span class="chip-sample"><i class="ic i-info" aria-hidden="true"></i>' + (fs.hasHistory ? 'Actual from your synced sessions' : 'Plan only: no synced sessions yet') + '</span></div>' +
       (fs.hasHistory ? '' : whyEmptyHTML(fs)) +
       '<div class="fplot">' +
         '<div class="plot-y"><span>' + c.top + '</span><span>' + Math.round(c.top * 2 / 3) + '</span><span>' + Math.round(c.top / 3) + '</span><span>0</span></div>' +
-        '<svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Fitness by week. Planned fitness (an estimate) goes from ' + fs.weeks[0].planned + ' in week 1 to ' + fs.weeks[N - 1].planned + ' in week ' + N + '.' +
-          (fs.today ? ' Actual fitness is ' + Math.round(fs.today.fit) + ' now.' : ' There is no actual line yet.') +
+        '<svg viewBox="0 0 1000 380" preserveAspectRatio="none" role="img" aria-label="Fitness by week. Planned fitness (an estimate) goes from ' + fs.weeks[0].planned + ' in week 1 to ' + fs.weeks[N - 1].planned + ' in week ' + N + '.' +
+          (fs.today ? ' Actual fitness is ' + Math.round(fs.today.fit) + ' now.' + (fs.race ? ' The plan followed from today reaches ' + Math.round(fs.race.fit) + ' on race day.' : '') : ' There is no actual line yet.') +
           (fs.trend !== null ? ' On the current trend it reaches ' + Math.round(fs.trend) + ' on race day.' : '') + ' ' +
           BANDS.map((b) => b.name + ' band, illustrative, runs ' + b.lo + ' to ' + b.hi).join(', ') + '.">' + c.svg + '</svg>' +
         '<div class="bands" aria-hidden="true">' + c.bands + '</div>' +
@@ -7325,11 +7346,12 @@
       '</div>' +
       '<div class="fplot-key" aria-hidden="true">' + c.key + '</div>' +
       '<div class="legend">' +
-        (fs.today ? '<span class="lg" style="--c: var(--color-accent)"><i></i>Actual, synced from Garmin <span>' + whole(fs.today.fit) + ' now</span></span>' : '') +
-        '<span class="lg" style="--c: var(--color-accent-300)"><i class="dash"></i>Planned, estimated <span>' + whole(fs.weeks[N - 1].planned) + ' in week ' + N + '</span></span>' +
-        (fs.trend !== null ? '<span class="lg" style="--c: var(--color-accent)"><i class="dot"></i>On current trend <span>' + whole(fs.trend) + ' on race day</span></span>' : '') +
-        '<span class="lg" style="--c: var(--color-text)"><i style="opacity:.5"></i>Race day, week ' + N + '</span>' +
-      '</div>' + goal;
+        (fs.today ? '<span class="lg">' + swatch('var(--color-accent)', 3) + 'Actual, synced from Garmin <span>' + whole(fs.today.fit) + ' now</span></span>' : '') +
+        '<span class="lg">' + swatch('var(--color-accent-300)', 2, LINE_DASH.planned) + 'Planned, estimated <span>' + whole(fs.weeks[N - 1].planned) + ' in week ' + N + '</span></span>' +
+        (fs.race ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.followed) + 'Plan from today <span>' + whole(fs.race.fit) + ' on race day</span></span>' : '') +
+        (fs.trend !== null ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.trend) + 'On current trend <span>' + whole(fs.trend) + ' on race day</span></span>' : '') +
+        '<span class="lg">' + swatch('var(--color-text)', 1.5, null, 0.5) + 'Race day, week ' + N + '</span>' +
+      '</div>' + preparationHTML(fs);
 
     renderStatusPage(fs);
   }
