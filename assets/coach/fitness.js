@@ -10,7 +10,8 @@
      trend    the actual average carried to race day, with the rest of the plan
               done at the rate the last four weeks were
 
-   and one projection: the plan followed exactly from today to race day.
+   and one projection: the plan followed exactly from today to race day, which
+   is also returned week by week as `followed` so the chart can draw it.
 
    **Nothing here is stored.** It is worked out when it is read, from the plan,
    its synced activities and the references load.js already uses, and returned
@@ -44,7 +45,16 @@ export const PLANNED = Object.freeze({
   adherenceDays: 28,
   maxAdherence: 1.5,        // doing three times the plan does not project three times the fitness
   form: Object.freeze({ low: -10, high: 10 }),
+  // A range of form often used on race day. Illustrative like the bands, not a target.
+  raceForm: Object.freeze({ low: 5, high: 25 }),
 });
+
+/** Illustrative fitness ranges for each race distance: a guide to the eye, not a finding. */
+export const FITNESS_BANDS = Object.freeze([
+  Object.freeze({ key: 'olympic', name: 'Olympic', lo: 40, hi: 70 }),
+  Object.freeze({ key: '70.3', name: '70.3', lo: 60, hi: 90 }),
+  Object.freeze({ key: 'ironman', name: 'Ironman', lo: 80, hi: 115 }),
+]);
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const ENDURANCE = new Set(['Bike', 'Run', 'Swim', 'Brick']);
@@ -78,6 +88,13 @@ export function formZone(form) {
   if (form < PLANNED.form.low) return { index: 0, name: 'Low' };
   if (form > PLANNED.form.high) return { index: 2, name: 'High' };
   return { index: 1, name: 'Neutral' };
+}
+
+/** Where race-day form sits against PLANNED.raceForm: 'below', 'within' or 'above'. */
+export function raceFormPosition(form) {
+  if (form < PLANNED.raceForm.low) return 'below';
+  if (form > PLANNED.raceForm.high) return 'above';
+  return 'within';
 }
 
 const EMPTY = Object.freeze({
@@ -187,8 +204,10 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
   let race = null;
   let trend = null;
   const trendByDate = new Map();
+  const followedByDate = new Map();
   if (covers && today < raceDate) {
-    const end = carry(state, today, raceDate, (iso) => planned.byDate[iso] ?? 0);
+    const end = carry(state, today, raceDate, (iso) => planned.byDate[iso] ?? 0,
+      (iso, s) => followedByDate.set(iso, s.fit));
     const fit = round1(end.fit);
     const fat = round1(end.fat);
     race = {
@@ -213,6 +232,10 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
       actual: covers && w <= todayWeek && reading >= from ? round1(chronic.get(reading)) : null,
       actualFat: covers && w <= todayWeek && reading >= from ? round1(acute.get(reading)) : null,
       trend: trend !== null && w > todayWeek && trendByDate.has(date) ? round1(trendByDate.get(date)) : null,
+      // The plan followed from today. A race before the week's Sunday ends the line on the race.
+      followed: race !== null && w > todayWeek
+        ? (followedByDate.has(date) ? round1(followedByDate.get(date)) : w === race.week ? race.fit : null)
+        : null,
     };
   });
 

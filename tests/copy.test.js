@@ -101,6 +101,7 @@ const fitnessSurfaces = () => {
       'fitness script': html.slice(scriptFrom, scriptTo),
       'fitness cards markup': html.slice(cardsFrom, cardsFrom + 600),
       'fitness.js': read('../assets/coach/fitness.js'),
+      'preparation.js': read('../assets/coach/preparation.js'),
     },
   };
 };
@@ -128,4 +129,18 @@ test('the fitness section only draws what fitness.js worked out, and stores noth
   assert.match(section, /fitnessSeries\(plan,/, 'the page asks the engine');
   assert.doesNotMatch(section, /SAMPLE|sampleChart/, 'a hand-written set of numbers is back');
   assert.doesNotMatch(section, /persistPlan|savePlanLocal|save\(|localStorage|plan\.[a-zA-Z]+\s*=[^=]/, 'the fitness section writes something');
+});
+
+test('race preparation says where a figure sits and never scores or judges it', () => {
+  const { surfaces } = fitnessSurfaces();
+  const text = surfaces['preparation.js'];
+  // The word list above already bars readiness, recovery and risk. These bar the shape of a verdict.
+  for (const re of [/\bscore/i, /\bready\b/i, /\bpass(ed)?\b/i, /on track/i, /good to go/i, /\bgrade/i]) {
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '');   // the header comment explains what is left out
+    const hit = code.match(re);
+    assert.equal(hit, null, `preparation.js says "${hit && hit[0]}"`);
+  }
+  const { section } = fitnessSurfaces();
+  assert.match(section, /Race preparation/, 'the block is on the page');
+  assert.match(section, /illustrative, not findings/, 'its references say they are illustrative');
 });
