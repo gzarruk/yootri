@@ -244,6 +244,14 @@ weeks before it keep their sessions *and* their planned hours. Plan setup, race
 changes and every coach tool pass the week today falls in; with no date (a coach
 session without `today`) the whole season refits as before.
 
+**The page shows one plan.** There is no plan list: the switcher button names the
+current plan and its menu starts a new season or imports one. Doing either
+replaces what is stored — `clearPlans` in `index.html` removes every stored plan,
+locally and from the cloud, but only once the wizard or import is finished.
+Deleting the plan starts over from the untouched stand-in, which the page shows
+as "Not set up yet". Storage still holds a list of plan records; the page just
+never offers more than the current one.
+
 Plans are schema v3: absolute week keys (`w0`…`w15`), materialized sessions, and
 a stored `season`. A plan is self-contained, so changing the engine never
 reshapes a season somebody is midway through. `adoptPlan` migrates older records
