@@ -261,7 +261,7 @@ function writeEvents(s, base, next, lead) {
 
 /** Guards shared by every tool that writes an event. Each returns a sentence
     the model can act on, or null when there is nothing wrong. */
-function eventProblem(base, { date, kind, raceType, priority, expectedMinutes }) {
+function eventProblem(base, { date, kind, raceType, priority, expectedMinutes, eventId }) {
   if (date !== undefined) {
     if (!toISO(parseISO(date))) {
       return `"${date}" is not a date. Use YYYY-MM-DD.`;
@@ -296,8 +296,15 @@ function eventProblem(base, { date, kind, raceType, priority, expectedMinutes })
     }
     if (raceType && !KNOWN_RACE_TYPES.includes(raceType)) {
       return `A ${raceTypeLabel(raceType)} cannot be the race a season is built around: the volume ` +
-        `model is sized by race distance and only knows ${RACE_TYPES.map(raceTypeLabel).join(' and ')}. ` +
-        'Make it secondary instead — the season will still build a taper week and a race week for it.';
+        `model is sized by race distance and only knows ${RACE_TYPES.map(raceTypeLabel).join(', ')}. ` +
+        'Make it secondary instead — it still goes on the calendar as a B race.';
+    }
+    // A distance retired from the pickers is still understood, so a season already
+    // built for one goes on being edited — but it is not a new season's race.
+    if (raceType && !RACE_TYPES.includes(raceType) && goalEvent(eventsOf(base))?.id !== eventId) {
+      return `A ${raceTypeLabel(raceType)} is no longer a race a season is built around: yootri builds ` +
+        `seasons for ${RACE_TYPES.map(raceTypeLabel).join(', ')}. Make it secondary instead — ` +
+        'it still goes on the calendar as a B race.';
     }
   }
   return null;
@@ -1081,7 +1088,7 @@ const HANDLERS = {
     const ev = findEvent(base, input.event_id);
     if (!ev) return fail(`No event "${input.event_id}" on this calendar. Call get_events first.`);
 
-    const wrong = eventProblem(base, { kind: ev.kind, raceType: ev.raceType, priority: input.priority });
+    const wrong = eventProblem(base, { kind: ev.kind, raceType: ev.raceType, priority: input.priority, eventId: ev.id });
     if (wrong) return fail(wrong);
 
     const stood = input.priority === 'primary' ? goalEvent(eventsOf(base)) : null;

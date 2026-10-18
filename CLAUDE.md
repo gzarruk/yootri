@@ -126,7 +126,9 @@ lists because of it.** Each answers a different question:
 not in `KNOWN_RACE_TYPES` is **demoted to secondary**, never dropped. Without that
 a marathon would reach `profile.raceType`, `demandFor` would fall back to a 70.3,
 and the season would be sized for a race nobody entered. `eventProblem` in
-`tools.js` refuses the same thing with a sentence the coach can act on.
+`tools.js` refuses the same thing with a sentence the coach can act on. It also
+refuses a retired distance (`sprint`) as a *new* A race, while a season already
+built for one goes on being edited.
 
 In the page, `raceTypeOptions()` builds every distance picker from one rule: a
 record that already carries a retired distance is handed its own value back, so
