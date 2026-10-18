@@ -13,15 +13,15 @@
    ever reaches the second. */
 
 import { DAYS, DEFAULT_PROFILE, normalizeProfile } from './profile.js';
-import { newPlan, refit, weekCount, sessionsAt, landingsOf, isUntouchedPlan } from './plan.js';
+import { newPlan, refit, weekCount, sessionsAt, landingsDetail, isUntouchedPlan } from './plan.js';
 import { planLandings, LONG_RUNWAY_WEEKS } from './season.js';
-import { mondayOf, weeksUntil, parseISO } from './dates.js';
+import { nextMonday, snapToMonday, weeksUntil, parseISO } from './dates.js';
 import {
   RACE_TYPES, SECONDARY_RACE_TYPES, normalizeEvent, normalizeEvents, goalEvent, secondaryRaces, raceTypeLabel,
 } from './events.js';
 import { normalizeBenchmarks, currentBenchmark, upsertBenchmark, vdotFrom } from './paces.js';
 import { normalizeLoadRefs } from './load.js';
-import { normalizeAthlete, isEmptyAthlete, estimateAnnualHours } from './athlete.js';
+import { normalizeAthlete, isEmptyAthlete } from './athlete.js';
 import { trainingHistory } from './history.js';
 import { HISTORY_THRESHOLDS } from './adapt.js';
 import { validateSeason } from './validate.js';
@@ -40,6 +40,26 @@ const ATHLETE_KEYS = [
 const EQUIPMENT_KEYS = ['pool', 'openWater', 'indoorTrainer', 'powerMeter'];
 
 const yearOf = (iso) => parseISO(iso)?.getUTCFullYear() ?? null;
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+/* "19 Oct 2026", for a sentence the athlete reads. Fixed English month names,
+   not the locale's: the engine has no locale, and the message is text. */
+const sayDate = (iso) => {
+  const d = parseISO(iso);
+  return d ? `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : String(iso);
+};
+
+/**
+ * The Monday the plan these answers describe starts on: the one the athlete
+ * picked, moved forward to a Monday if it was not one and never into the past,
+ * or — with none picked — the first Monday after today.
+ *
+ * This is not `mondayOf(today)`. That is the Monday *before* today, and a plan
+ * built from it starts in a week that is already over (dates.js `nextMonday`).
+ */
+export function startOf(a, { today } = {}) {
+  return a?.startDate ? snapToMonday(a.startDate, { today }) : nextMonday(today);
+}
 
 /** A wizard with nothing answered: a defensible week, and no assumptions. */
 export function emptyAnswers() {
@@ -145,9 +165,9 @@ export function stepProblems(step, a, { today } = {}) {
       break;
     }
     case 'background': {
-      if (!given(a.recentWeeklyHours) || !(Number(a.recentWeeklyHours) > 0) || !keeps('recentWeeklyHours', a.recentWeeklyHours)) {
-        out.push(problem('recentWeeklyHours',
-          'Say roughly how many hours a week you have trained lately, between 0.5 and 40. It is what the first weeks are sized on.'));
+      // Optional: the season is sized by the week on the next step, not by this.
+      if (given(a.recentWeeklyHours) && (!(Number(a.recentWeeklyHours) > 0) || !keeps('recentWeeklyHours', a.recentWeeklyHours))) {
+        out.push(problem('recentWeeklyHours', 'Hours a week is between 0.5 and 40.'));
       }
       if (given(a.yearsInSport) && !keeps('yearsInSport', a.yearsInSport)) out.push(problem('yearsInSport', 'Years in triathlon is a whole number.'));
       if (given(a.longestRideMin) && !keeps('longestRideMin', a.longestRideMin)) out.push(problem('longestRideMin', 'That longest ride could not be used.'));
@@ -186,15 +206,28 @@ export function stepProblems(step, a, { today } = {}) {
     }
     case 'races': {
       const r = a.race;
+      const start = today ? startOf(a, { today }) : null;
+      const chosen = given(a.startDate);
+      if (chosen && !parseISO(a.startDate)) {
+        out.push(problem('startDate', 'That start date could not be used.'));
+      }
       if (!r || !parseISO(r.date) || !RACE_TYPES.includes(r.raceType) || (today && r.date <= today)) {
         out.push(problem('race', `Choose the race this season is for: ${RACE_TYPES.map(raceTypeLabel).join(' or ')}, on a date after today.`));
+      } else if (start && r.date < start) {
+        // A chosen start that lands after the race is the start's fault; with
+        // none chosen, the race is simply sooner than the first Monday there is.
+        if (chosen && parseISO(a.startDate)) {
+          out.push(problem('startDate', `The plan would start on ${sayDate(start)}, after your race. Start on or before the week of the race.`));
+        } else {
+          out.push(problem('race', `The plan starts on Monday ${sayDate(start)}, so the race needs to be on or after that date.`));
+        }
       }
       (a.tuneUps ?? []).forEach((t, i) => {
         const ok = t && parseISO(t.date) && SECONDARY_RACE_TYPES.includes(t.raceType)
-          && (!today || t.date > today) && (!r?.date || t.date < r.date);
+          && (!today || t.date > today) && (!start || t.date >= start) && (!r?.date || t.date < r.date);
         if (!ok) {
           out.push(problem(`tuneUps.${i}`,
-            'A tune-up race needs a distance and a date after today and before your main race.'));
+            `A tune-up race needs a distance and a date on or after ${start ? sayDate(start) : 'today'}, when the plan starts, and before your main race.`));
         }
       });
       break;
@@ -228,10 +261,10 @@ function tuneUpEvents(a, now) {
  * answer, so a refused taper reads the same here as it will in the review.
  */
 export function racePreview(a, { today, now = 0 } = {}) {
-  const startISO = mondayOf(today);
+  const startISO = startOf(a, { today });
   const weeks = a.race?.date ? weeksUntil(startISO, a.race.date) : null;
   if (!weeks) return { startISO, weeks: null, landings: { applied: [], refused: [] }, longRunway: false };
-  const landings = planLandings({ weeks, landings: landingsOf({ start: startISO, events: tuneUpEvents(a, now) }) });
+  const landings = planLandings({ weeks, landings: landingsDetail({ start: startISO, events: tuneUpEvents(a, now) }) });
   return { startISO, weeks, landings, longRunway: weeks > LONG_RUNWAY_WEEKS };
 }
 
@@ -251,10 +284,9 @@ const sameResult = (bm, r) => bm && r
 /**
  * The season these answers describe, as a new plan — not saved, not adopted.
  *
- * It starts this Monday and ends on the main race. Its annual hours are the
- * figure that opens the season near the athlete's recent weekly hours
- * (athlete.js), and tune-ups are landed through the same refit the calendar
- * uses. With `base` — the plan a returning athlete is leaving — the history and
+ * It starts on the Monday `startOf` gives and ends on the main race. Its biggest week is the
+ * time the athlete said they have (profile.js `peakHoursFor`), and tune-ups are
+ * landed through the same refit the calendar uses. With `base` — the plan a returning athlete is leaving — the history and
  * the settings the wizard does not ask about come along: synced activities,
  * earlier running results, discipline splits, the week shape and any other
  * constraints.
@@ -263,15 +295,10 @@ const sameResult = (bm, r) => bm && r
  * goes to the other sports rather than to sessions that cannot happen.
  */
 export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, id } = {}) {
-  const startISO = mondayOf(today);
+  const startISO = startOf(a, { today });
   const raceType = a.race.raceType;
   const tune = tuneUpEvents(a, now);
-  const weeks = weeksUntil(startISO, a.race.date);
   const baseProfile = base ? normalizeProfile(base.profile) : null;
-
-  const annualHours = estimateAnnualHours({
-    recentWeeklyHours: a.recentWeeklyHours, weeks, landings: landingsOf({ start: startISO, events: tune }),
-  }) ?? baseProfile?.annualHours ?? DEFAULT_PROFILE.annualHours;
 
   const constraints = (baseProfile?.constraints ?? [])
     .filter((c) => !(c.disc === 'Swim' && c.rule === 'maxPerWeek'));
@@ -282,7 +309,6 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
   const profile = {
     ...(baseProfile?.splits ? { splits: baseProfile.splits } : {}),
     ...(baseProfile?.weekShape ? { weekShape: baseProfile.weekShape } : {}),
-    annualHours,
     availability: a.availability,
     constraints,
     longDays: { Bike: a.longRideDay, Run: a.longRunDay },
@@ -339,7 +365,7 @@ export function planReview(plan) {
   const weeks = plan.season.map((w) => ({ ...w, sessions: sessionsAt(plan, w.absWeek) }));
   const issues = validateSeason(weeks, {
     profile: plan.profile,
-    refusedLandings: planLandings({ weeks: weekCount(plan), landings: landingsOf(plan) }).refused,
+    refusedLandings: planLandings({ weeks: weekCount(plan), landings: landingsDetail(plan) }).refused,
   });
   const firstWeek = sessionsAt(plan, 0);
   return {

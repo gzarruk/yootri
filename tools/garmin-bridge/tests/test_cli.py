@@ -3,7 +3,7 @@ import json
 
 from garminconnect import GarminConnectAuthenticationError
 
-from garmin_bridge.cli import default_origins, main
+from garmin_bridge.cli import default_origins, main, pairing_links
 from garmin_bridge.store import Store
 from tests.fakes import FakeGarmin
 
@@ -11,7 +11,7 @@ PASSWORD = "correct horse battery staple"
 EMAIL = "jane@example.com"
 
 
-def run(argv, tmp_path, *, inputs=(EMAIL,), api_factory=None, run_server=None):
+def run(argv, tmp_path, *, inputs=(EMAIL,), api_factory=None, run_server=None, open_url=None):
     out = io.StringIO()
     answers = iter(inputs)
     asked = {"getpass": 0}
@@ -28,6 +28,7 @@ def run(argv, tmp_path, *, inputs=(EMAIL,), api_factory=None, run_server=None):
         getpass_fn=fake_getpass,
         out=out,
         run_server=run_server or (lambda server: None),
+        open_url=open_url,
     )
     return code, out.getvalue(), asked
 
@@ -118,3 +119,54 @@ def test_overnight_figures_are_off_unless_the_flag_is_set():
     assert overnight_enabled({"YOOTRI_GARMIN_OVERNIGHT": "0"}) is False
     assert overnight_enabled({"YOOTRI_GARMIN_WORKOUTS": "1"}) is False
     assert overnight_enabled({"YOOTRI_GARMIN_OVERNIGHT": "1"}) is True
+
+
+# ---- the pairing link -------------------------------------------------------
+
+TOKEN = "a" * 43   # what secrets.token_urlsafe(32) makes
+
+
+def test_a_pairing_link_carries_the_bridge_address_and_token_after_the_hash():
+    links = pairing_links(("http://localhost:8000", "https://yootri.example"), 8765, TOKEN)
+    assert links == [
+        f"http://localhost:8000/?garmin=setup#garmin=http%3A%2F%2F127.0.0.1%3A8765&token={TOKEN}",
+        f"https://yootri.example/?garmin=setup#garmin=http%3A%2F%2F127.0.0.1%3A8765&token={TOKEN}",
+    ]
+    # After the #, so no server the page is loaded from ever receives it.
+    assert all(link.index("#") < link.index(TOKEN) for link in links)
+
+
+def test_the_link_follows_the_port_the_bridge_listens_on():
+    (link,) = pairing_links(("http://localhost:8000",), 9001, TOKEN)
+    assert "127.0.0.1%3A9001" in link
+
+
+def test_serve_prints_a_link_for_every_page_allowed_to_use_it(tmp_path):
+    _, text, _ = run(["serve", "--port", "0", "--allow-origin", "https://other.example"], tmp_path)
+    token = Store(tmp_path).pairing_token(create=False)
+    assert f"http://localhost:8000/?garmin=setup#garmin=" in text
+    assert f"https://other.example/?garmin=setup#garmin=" in text
+    assert f"token={token}" in text
+    assert f"Pairing token: {token}" in text   # still there, for pasting by hand
+
+
+def test_pair_link_prints_the_links_and_nothing_else_secret(tmp_path):
+    code, text, _ = run(["pair", "--link"], tmp_path)
+    token = Store(tmp_path).pairing_token(create=False)
+    assert code == 0
+    assert f"token={token}" in text
+    assert text.count("?garmin=setup") >= 1
+
+
+def test_pair_open_opens_the_first_link_once_and_does_not_launch_a_browser_in_tests(tmp_path):
+    opened = []
+    code, text, _ = run(["pair", "--open"], tmp_path, open_url=opened.append)
+    assert code == 0
+    assert len(opened) == 1
+    assert opened[0].startswith("http://localhost:8000/?garmin=setup#garmin=")
+    assert "Opening" in text
+
+
+def test_a_plain_pair_still_prints_just_the_token(tmp_path):
+    _, text, _ = run(["pair"], tmp_path)
+    assert text.strip() == Store(tmp_path).pairing_token(create=False)

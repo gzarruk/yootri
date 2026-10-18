@@ -17,7 +17,7 @@ const fullPlan = () => {
     startISO: '2026-01-05',
     raceDate: '2026-07-05',
     raceType: 'ironman',
-    profile: { annualHours: 800 },
+    profile: { availability: { Sat: 400 } },
     now: 1737000000000,
   });
   const first = p.weeks.w0[0].id;
@@ -87,7 +87,7 @@ test('the profile survives the round trip', () => {
   const p = fullPlan();
   const back = readPlanFile(wrote(p)).plan;
   assert.deepEqual(back.profile, p.profile);
-  assert.equal(back.profile.annualHours, 800, 'not reset to the 500h default');
+  assert.equal(back.profile.availability.Sat, 400, 'not reset to the default week');
   assert.equal(back.profile.raceType, 'ironman');
   assert.equal(back.profile.raceDate, '2026-07-05');
 });
@@ -227,7 +227,7 @@ test('summarizePlan reports what the athlete is about to adopt', () => {
   assert.equal(s.weeks, weekCount(p));
   assert.equal(s.raceType, 'ironman');
   assert.equal(s.raceDate, '2026-07-05');
-  assert.equal(s.annualHours, 800);
+  assert.equal(s.peakHours, Math.max(...p.season.map((w) => w.hours)));
   assert.equal(s.plannedMinutes, weekTotals(p).reduce((a, b) => a + b, 0));
   assert.equal(s.doneCount, 1);
   assert.equal(s.actualCount, 1);

@@ -298,7 +298,7 @@ const MISMATCH = 'This page and the Garmin bridge disagree about how to talk to 
 const BRIDGE_MESSAGES = {
   unreachable: 'The Garmin bridge did not answer. Start it with `make garmin` in a terminal on this computer, then sync again.',
   not_configured: 'This browser is not paired with a Garmin bridge yet. Start the bridge with `make garmin` and open the setup link it prints.',
-  unauthorized: 'The bridge did not accept this browser’s pairing token. Paste the token `make garmin` prints into the Garmin setup panel again.',
+  unauthorized: 'The bridge did not accept this browser’s pairing token. Run `make garmin-pair` to pair this browser again, or paste the token `make garmin` prints into the Garmin setup panel.',
   forbidden_origin: 'The bridge does not allow this page. Use yootri from http://localhost:8000, or start the bridge with `--allow-origin` set to this page’s address.',
   bad_host: 'The bridge only answers at 127.0.0.1 or localhost. Check the address in the Garmin setup panel.',
   not_found: MISMATCH,
@@ -327,4 +327,60 @@ export function bridgeErrorMessage(code, { secure = false } = {}) {
   return base + ' If it is running: Safari does not let a secure page reach this computer, so use yootri '
     + 'from http://localhost:8000 (`make dev`) there. Chrome and Edge ask once whether this page may reach '
     + 'devices on your local network — allow it.';
+}
+
+/* ---- pairing a browser with the bridge ---------------------------------- */
+
+/** The only addresses the page will send the pairing token to: this computer. */
+export const BRIDGE_URL_RE = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
+export const MIN_TOKEN = 16;
+
+/**
+ * The address and token a pairing link carries, or null.
+ *
+ * The bridge prints a link whose fragment is `#garmin=<address>&token=<token>`
+ * (the fragment is never sent to a server). Both halves are held to the rules
+ * the page applies to a hand-typed pairing: the address must be a loopback one,
+ * so a link cannot point the token anywhere but this computer, and the token
+ * must be long enough to be the bridge's. Anything else — a page route such as
+ * `#/week`, a half-formed link, a non-string — is null, never an error.
+ */
+export function parsePairing(hash) {
+  if (typeof hash !== 'string' || !hash.startsWith('#garmin=')) return null;
+  let params;
+  try { params = new URLSearchParams(hash.slice(1)); } catch (e) { return null; }
+  const url = (params.get('garmin') ?? '').trim();
+  const token = (params.get('token') ?? '').trim();
+  if (!BRIDGE_URL_RE.test(url) || token.length < MIN_TOKEN) return null;
+  return { url, token };
+}
+
+/**
+ * What state the bridge is in, in words for the athlete, from the answer to
+ * `/v1/status` (`{ status }`) or from the error code a failed call came back
+ * with (`{ error }`). `state` is for the page to switch on; `label` is short
+ * enough to sit under a menu item; `hint` says what to do, with the command.
+ * Nothing is asked of the bridge here — this only reads an answer already had.
+ */
+export function bridgeState({ status, error } = {}) {
+  if (status && status.ok === true) {
+    return status.connected === true
+      ? { state: 'ready', label: 'Ready', hint: 'The bridge is running and signed in to Garmin.' }
+      : { state: 'not-signed-in', label: 'Sign in to Garmin', hint: BRIDGE_MESSAGES.auth_required };
+  }
+  switch (error) {
+    case undefined:
+    case null:
+      return { state: 'unknown', label: 'Not checked yet', hint: '' };
+    case 'unreachable':
+      return { state: 'unreachable', label: 'Bridge not running', hint: BRIDGE_MESSAGES.unreachable };
+    case 'auth_required':
+    case 'mfa_required':
+      return { state: 'not-signed-in', label: 'Sign in to Garmin', hint: BRIDGE_MESSAGES[error] };
+    case 'unauthorized':
+    case 'forbidden_origin':
+      return { state: 'wrong-token', label: error === 'unauthorized' ? 'Pair again' : 'Page not allowed', hint: BRIDGE_MESSAGES[error] };
+    default:
+      return { state: 'problem', label: 'Bridge problem', hint: bridgeErrorMessage(error) };
+  }
 }

@@ -10,7 +10,7 @@
    the previous plan object is still intact. */
 
 import { migratePlan } from './migrate.js';
-import { normalizeProfile } from './profile.js';
+import { normalizeProfile, peakHoursFor } from './profile.js';
 import { fitToRace, planLandings } from './season.js';
 import { generateWeek } from './generate.js';
 import { validateSeason } from './validate.js';
@@ -18,7 +18,7 @@ import { durToMin, REST_DUR } from './duration.js';
 import { DAYS } from './profile.js';
 import { weeksUntil } from './dates.js';
 import { weekIndexOf, weekdayOf } from './calendar.js';
-import { normalizeEvents, secondaryRaces, seedEventsFromProfile } from './events.js';
+import { normalizeEvents, secondaryRaces, seedEventsFromProfile, hasTaper } from './events.js';
 import { normalizeBenchmarks } from './paces.js';
 import { normalizeActivities, normalizeActivitySync } from './synced.js';
 import { normalizeLoadRefs } from './load.js';
@@ -200,6 +200,19 @@ export function landingsOf(plan) {
 }
 
 /**
+ * The same landings with what each one needs: `{ absWeek, taper }`, where
+ * `taper` is false for a race short enough to be a hard day in the build
+ * (events.js `hasTaper`) and so gets neither a taper week nor a race week. This
+ * is what `planLandings` and the planner are given; `landingsOf` is the weeks
+ * alone, for a caller that only wants to know where the races are.
+ */
+export function landingsDetail(plan) {
+  return secondaryRaces(normalizeEvents(plan?.events))
+    .map((ev) => ({ absWeek: weekIndexOf(plan?.start, ev.date), taper: hasTaper(ev) }))
+    .filter((l) => Number.isInteger(l.absWeek));
+}
+
+/**
  * The weekday a race falls on in a given week, or null when none does.
  *
  * Every race the athlete marked counts here, including one the season model
@@ -218,6 +231,23 @@ export function raceDayFor(plan, absWeek) {
 }
 
 /**
+ * What a week's races close, in the terms `generateWeek` takes: `raceDay`, the
+ * earliest race day in the week (or null), and `raceOnly`, true when every race
+ * that week is short enough to need no taper, so only its own day is cleared.
+ * The race the season is built for, and any race with a taper, clears the rest
+ * of its week as well. Two races of different kinds in one week clear from the
+ * earlier day on: the conservative answer, as `raceDayFor` gives.
+ */
+export function raceClosure(plan, absWeek) {
+  const raceDay = raceDayFor(plan, absWeek);
+  if (!raceDay) return { raceDay: null, raceOnly: false };
+  const races = normalizeEvents(plan?.events)
+    .filter((ev) => ev.kind === 'race' && ev.priority && weekIndexOf(plan?.start, ev.date) === absWeek);
+  const raceOnly = races.length > 0 && races.every((ev) => ev.priority === 'secondary' && !hasTaper(ev));
+  return { raceDay, raceOnly };
+}
+
+/**
  * One week's sessions, built afresh from the season the plan already stores.
  *
  * This is "Reset week": the same generator and the same race day a re-fit uses
@@ -232,7 +262,7 @@ export function freshWeek(plan, absWeek) {
     block: w.block,
     profile: plan.profile,
     idPrefix: weekKey(w.absWeek),
-    raceDay: raceDayFor(plan, w.absWeek),
+    ...raceClosure(plan, w.absWeek),
   }).sessions;
 }
 
@@ -241,7 +271,7 @@ export function freshWeek(plan, absWeek) {
  *
  * @param {object} plan
  * @param {object} [opts]
- * @param {object} [opts.profile] replacement profile (annual hours, availability, splits…)
+ * @param {object} [opts.profile] replacement profile (availability, splits…)
  * @param {number} [opts.from]    first week to regenerate (default: all)
  * @param {number} [opts.to]      last week to regenerate, inclusive
  * @param {number} [opts.keepBefore] weeks before this one are kept exactly as
@@ -257,11 +287,11 @@ export function refit(plan, { profile, from = 0, to = Infinity, weeks, keepBefor
   // a caller passes one: the race date has not moved just because the hours did,
   // but when it *has* moved the runway genuinely changes.
   draft.season = fitToRace({
-    annualHours: draft.profile.annualHours,
+    peakHours: peakHoursFor(draft.profile),
     weeks: Number.isFinite(weeks) && weeks > 0 ? Math.round(weeks) : weekCount(plan),
     // Tune-up races come out of the block they fall in. Read off the draft, so
     // a caller that changed the events and the profile in one go gets both.
-    landings: landingsOf(draft),
+    landings: landingsDetail(draft),
   });
 
   // Reapply any pinned per-week budgets on top. Without this, "make next week
@@ -289,7 +319,7 @@ export function refit(plan, { profile, from = 0, to = Infinity, weeks, keepBefor
       block: w.block,
       profile: draft.profile,
       idPrefix: weekKey(w.absWeek),
-      raceDay: raceDayFor(draft, w.absWeek),
+      ...raceClosure(draft, w.absWeek),
     }).sessions;
   }
   return draft;
@@ -347,7 +377,7 @@ export function diffPlans(before, after) {
       // noticed as a missing taper weeks later.
       refusedLandings: planLandings({
         weeks: weekCount(after),
-        landings: landingsOf(after),
+        landings: landingsDetail(after),
       }).refused,
     },
   );
@@ -487,7 +517,7 @@ export function newPlan({
   const dated = { start: startISO, events };
 
   const weeks = weeksUntil(startISO, raceDate) ?? FALLBACK_WEEKS;
-  const season = fitToRace({ annualHours: base.annualHours, weeks, landings: landingsOf(dated) });
+  const season = fitToRace({ peakHours: peakHoursFor(base), weeks, landings: landingsDetail(dated) });
 
   const built = {};
   for (const w of season) {
@@ -499,7 +529,7 @@ export function newPlan({
         block: w.block,
         profile: base,
         idPrefix: key,
-        raceDay: raceDayFor(dated, w.absWeek),
+        ...raceClosure(dated, w.absWeek),
       }).sessions;
   }
 
@@ -594,31 +624,4 @@ export function carryOver(plan, today, keepIds = []) {
   const refs = normalizeLoadRefs(plan.loadRefs);
   if (refs) out.loadRefs = refs;
   return out;
-}
-
-/**
- * Settle a set of stored plans into the one active plan. Plans from the
- * multi-plan era are archived, not deleted: `archived` comes back with
- * `archivedAt` set. An untouched stand-in never counts as a season — it is
- * `dropped` unless it is all there is. Already-archived plans are left out of
- * the choice, so running this twice changes nothing.
- */
-export function consolidatePlans(records, { now = Date.now(), isStandIn = isUntouchedPlan } = {}) {
-  const live = (records ?? []).filter((p) => p && !p.archivedAt);
-  const newest = (list) => [...list].sort(
-    (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0) || String(a.id).localeCompare(String(b.id)),
-  )[0] ?? null;
-  const real = live.filter((p) => !isStandIn(p));
-  if (!real.length) {
-    const active = newest(live);
-    return { active, archived: [], dropped: live.filter((p) => p !== active).map((p) => p.id) };
-  }
-  const active = newest(real);
-  return {
-    active,
-    // updatedAt moves too: a cloud copy with the same stamp wins a merge tie,
-    // and would take the archive flag back off.
-    archived: real.filter((p) => p !== active).map((p) => ({ ...p, archivedAt: now, updatedAt: now })),
-    dropped: live.filter((p) => isStandIn(p)).map((p) => p.id),
-  };
 }

@@ -28,25 +28,27 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 
 | Module | Responsibility |
 | --- | --- |
-| `season.js` | Annual hours → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands the block model on a runway of N weeks. |
+| `season.js` | The block model → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands it on a runway of N weeks, sized by `peakHours` — the athlete's own biggest week (`peakHoursFor` in `profile.js`, from their availability). The reference model's `annualHours` form survives only for the golden tests and the legacy migration. |
 | `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. |
 | `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
-| `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. `carryOver`/`upcomingEvents` say what survives a restart; `consolidatePlans` settles stored plans into the one active plan. |
+| `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. `carryOver`/`upcomingEvents` say what survives a start-over. |
 | `migrate.js` | Schema v2 → v3. `legacy-plan.js` is the frozen old template it needs. |
 | `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
 | `duration.js` | `"H:MM"` ↔ minutes, the format the app already stores. |
 | `calendar.js` | Week-and-weekday ↔ real date, and the Monday-start month grid the calendar view draws. |
-| `events.js` | The athlete's events. Races carry a *priority*: one is `primary` and is the only source of the plan's race date and distance, any number are `secondary` and get a taper landed on them. Also holds the lists of distances a race may be, and what each one is called on screen. |
+| `events.js` | The athlete's events. Races carry a *priority*: one is `primary` (shown as the **A race**) and is the only source of the plan's race date and distance, any number are `secondary` (**B races**) and get a taper landed on them — if they take more than two hours (`hasTaper`). The primary also carries an `ambition` (`finish`, `intermediate`, `competitive`), and any race may carry the athlete's own `expectedMinutes`. Holds the lists of distances a race may be, what each one is called on screen, and `RACE_NOMINAL`, the typical duration and intensity of each distance (unfitted). |
 | `paces.js` | Running paces. Daniels' VDOT model over one benchmark result, and the benchmark list that holds it — the one-is-flagged shape `events.js` used before races needed three states. |
 | `activities.js` | Reading an activity export. Garmin's activity CSV, plus the arithmetic the page's TCX/GPX readers need. Total, like `portable.js`. |
 | `synced.js` | Activities synced from the Garmin bridge: the one boundary heart rate crosses (`splitSynced`), the allowlist a stored activity is held to, merging, sync windows and coverage, and the device-only heart-rate store's shape. Pure — the page fetches and stores. |
 | `match.js` | Which synced activity was which planned session: same date, same discipline, closest duration. Proposes actuals; never writes one, never over the athlete's own log. |
 | `load.js` | Training load: one number per session where an hour at threshold is 100 (power, pace, swim pace, session RPE, heart rate as the fallback), and its chronic (42-day) and acute (7-day) averages. Ported from GARMIN-CLAUDE. Never stored — worked out when read. |
 | `workout.js` | A planned bike session as warm-up / main set / cool-down steps with %FTP targets (watts when `loadRefs.ftpW` is set), plus `planSyncSet`, which says what one "send to Garmin" run would do. Worked out when asked for, never stored on a session. |
-| `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; `estimateAnnualHours` sizes a season so it opens near recent weekly hours. Never on a plan — see below. |
-| `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by `estimateAnnualHours`, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
+| `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; recent weekly hours are kept as the athlete's own record and size nothing. Never on a plan — see below. |
+| `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by the week the athlete gave, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
 | `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules, plus — only when the athlete ticks it — `ease`, which makes `hardestSession` easy). No coaching constant of its own, and it never reads the overnight figures. |
+| `fitness.js` | Fitness (42-day) and fatigue (7-day) training load as of today, form as their difference, and the lines the Fitness chart draws: actual (load.js), planned (an *estimate* of each planned session from its length and zone — `PLANNED.zoneIF`, unfitted) and a trend carried to race day. Derived on read, never stored. Lifts the 28 Sep exclusion of form (FINDINGS, 16 Oct); ACWR, monotony and strain stay out. Also the plan followed from today as a line (`followed`), `FITNESS_BANDS` and the illustrative race-day form range (`PLANNED.raceForm`). |
+| `preparation.js` | Race preparation: a checklist of facts — fitness on race day against the distance's band, long sessions per discipline over 42 days, steady weeks among those the sync covered, race-day form. **No score and no verdict** (FINDINGS, 17 Oct); silent under three covered weeks. Derived on read, never stored; every number in `PREP` is unfitted. |
 | `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
 | `overnight.js` | Sleep and overnight heart rate from the bridge: the device-only store's shape (`normalizeNight` is an allowlist), its sync window, and `compareNights` — the last seven nights against the athlete's own four weeks before them. Describes nights, decides nothing. See below. |
 
@@ -62,23 +64,23 @@ race flagged `priority: 'primary'` owns `profile.raceDate` and `profile.raceType
 moving it re-fits the season through the same draft → diff → apply flow the setup
 form uses, which is why Plan setup only *shows* the race date. `normalizeEvent`
 reads a legacy `goal: true` as `primary`, which is how that field changed with no
-schema bump — do not reintroduce `goal` as a stored field.
+schema bump — do not reintroduce `goal` as a stored field. The two names the
+athlete reads, **A race (target)** and **B race (fitness test)**, are display text
+only: the stored values stay `primary` and `secondary`. `ambition` is kept on the
+primary race alone (it goes with the priority if the race is stood down, and a new
+primary inherits the old one's), and `expectedMinutes` on any race.
 
-**There is one plan.** The page holds a single active plan; there is no switcher,
-no duplicate and no blank plan. A new season is **Delete plan & start over…**: the
-athlete ticks which upcoming events (A = `primary`, B = `secondary`, markers) to
-keep, and the wizard opens with them answered (`carriedAnswers` in `onboarding.js`).
-Nothing is removed until the wizard finishes — `replaceCurrentPlan` then swaps the
-plan, with a ten-second Undo — so backing out changes nothing. What is true of the
-athlete (benchmarks, FTP/CSS, synced Garmin history, About you) comes along;
-weeks, logs and chat do not. Plans from the multi-plan era are **archived**, not
-deleted (`archivedAt`, a top-level field with no schema bump): `consolidatePlans`
-keeps the newest real plan, `settlePlans` applies it on load and after a cloud
-merge, and the rest sit under Past plans (download / delete only — nothing reads
-them). Import is plan creation too, so it replaces the plan rather than adding one.
+**Starting a new season keeps the races the athlete chooses.** **Delete plan & start
+over…** (`openStartOverDialog`) lists the upcoming events (A = `primary`, B =
+`secondary`, markers); the ticked ones are carried into the wizard as answers
+(`carriedAnswers` in `onboarding.js`, `carryOver` in `plan.js`). Nothing is removed
+until the wizard finishes — `replaceCurrentPlan` then swaps the plan, with a
+ten-second Undo — so backing out changes nothing. What is true of the athlete
+(benchmarks, FTP/CSS, synced Garmin history, About you) comes along; weeks, logs
+and chat do not.
 
-**A season can hold more than one race.** A race marked `secondary` is a tune-up
-inside the build: `planLandings` in `season.js` decides where it lands and
+**A season can hold more than one race.** A race marked `secondary` is a B race, a
+tune-up inside the build: `planLandings` in `season.js` decides where it lands and
 `fitToRace` splices in one **taper week** and one **race week**, taken out of
 whatever block those weeks were in. The season never gets longer for it — the
 primary's date is what decides the length. The secondary taper week is not a new
@@ -88,21 +90,38 @@ the first peak week removed. `planLandings` is the only place the rule lives —
 page, the validator and the coach tools all ask it rather than re-deriving it, so
 the refusal the athlete is shown is the same refusal the model honoured.
 
-**Nothing is scheduled on a race day or on the days after it.** `generateWeek`
-takes a `raceDay`, and `raceDayFor` in `plan.js` supplies it for any week a
-prioritised race falls in — including one the model refused a taper for, because
-the athlete is racing that day either way. A race early in the week therefore
-leaves the rest of that week clear; `tests/plan.test.js` pins the Monday case so
-it reads as a decision rather than a bug. See `../yootri-rnd/FINDINGS.md`
-(25 Aug) for the latent bug this fixed in the *primary* race week.
+**A B race of two hours or less gets no taper.** `hasTaper` (`events.js`) is the
+rule: a race longer than `TAPER_MIN_MINUTES` (120) — by the athlete's own
+`expectedMinutes` if given, else the typical time for the distance in
+`RACE_NOMINAL` — gets the taper and race week above; a shorter one (10 km, half
+marathon, sprint) is a hard day in the build. `landingsDetail` in `plan.js` hands
+`planLandings` each landing as `{ absWeek, taper }`, and a landing with
+`taper: false` changes no week of the season. A race of unknown length is
+tapered, as every tune-up always was. The Ironman row of `RACE_NOMINAL` in
+particular is a mid-pack guess; finishing times depend on the athlete.
 
-**yootri plans long-course endurance racing only, and the distance list is three
+**Nothing is scheduled on a race day or on the days after it — except after a
+short B race.** `generateWeek` takes a `raceDay`, and `raceClosure` in `plan.js`
+supplies it for any week a prioritised race falls in — including one the model
+refused a taper for, because the athlete is racing that day either way. A race
+early in the week therefore leaves the rest of that week clear; `tests/plan.test.js`
+pins the Monday case so it reads as a decision rather than a bug. The exception
+is a B race that gets no taper (above): `raceClosure` returns `raceOnly`, and
+`generateWeek` clears just that day, since the days after a 10 km are not part of
+any taper. A week with a race that needs a taper in it clears from its earliest
+race day on. See `docs/FINDINGS.md` (25 Aug) for the latent bug this fixed in the
+*primary* race week.
+
+**yootri plans endurance racing from the Olympic up, and the distance list is three
 lists because of it.** Each answers a different question:
 
-- `RACE_TYPES` — what the race a season is *built for* may be: `70.3` and
-  `ironman`. This is what a picker offers for a primary race.
+- `RACE_TYPES` — what the race a season is *built for* may be: `olympic`, `70.3`
+  and `ironman`, shortest first. This is what a picker offers for an A race.
+  Olympic came back on 18 Oct 2026 (an owner decision): the fitness bands and
+  `RACE_DEMAND` already described it, and the season is built to arrive at a
+  target. It is not the default anywhere — the wizard opens on `70.3`.
 - `KNOWN_RACE_TYPES` — what may reach `profile.raceType`, and so what a season may
-  be *sized by*: the above plus the retired `sprint` and `olympic`. Every name
+  be *sized by*: the above plus the retired `sprint`. Every name
   here has a `RACE_DEMAND` row in `generate.js`. A plan is self-contained, so a
   season already built for a sprint has to go on being sized and validated as one
   rather than falling back to the default and quietly becoming a 70.3.
@@ -121,8 +140,8 @@ and the season would be sized for a race nobody entered. `eventProblem` in
 In the page, `raceTypeOptions()` builds every distance picker from one rule: a
 record that already carries a retired distance is handed its own value back, so
 opening a panel can never silently re-aim a season, while a race being chosen now
-may only pick from the pool its priority allows. **Do not put a short distance
-back in `RACE_TYPES` or `KNOWN_RACE_TYPES`, and do not delete the retired rows
+may only pick from the pool its priority allows. **Do not put `sprint` (or a
+distance shorter than it) back in `RACE_TYPES`, and do not delete the retired row
 from `RACE_DEMAND`.**
 
 **What a distance is stored as and what it is called are two things.** The
@@ -198,6 +217,18 @@ suggestion's action speaks the engine's 0-based week; `adviceCall` in
 `tools.js` is the one translation to the tools' 1-based weeks, for the model
 and for the page's Preview button alike.
 
+**Pairing is one click and the bridge's state is shown, never assumed.** `make garmin`
+prints (and `make garmin-pair` opens) a link whose *fragment* carries the bridge
+address and token; `parsePairing` in `synced.js` accepts it only for a loopback
+address and a full-length token, and the page saves it through the one existing
+path and removes it from the address bar first. A paired browser asks the bridge
+what state it is in (`bridgeState`: ready, sign in, not running, pair again) and
+says so under the Garmin item; an **unpaired browser makes no request to this
+computer at all**, which `tests/index-html.test.js` pins. On macOS
+`make garmin-install` keeps the bridge running as a LaunchAgent started with
+`serve --quiet` (no token in its log); it changes nothing about what the bridge
+reads or who may use it.
+
 **Workouts go to Garmin through the bridge, and nowhere else.** `POST /v1/workouts`,
 `/v1/workouts/remove` and `/v1/workouts/fit` exist only when the bridge is started
 with `YOOTRI_GARMIN_WORKOUTS=1`; every other method and path is still refused. They
@@ -242,6 +273,23 @@ until there is a season of real data.
 weeks before it keep their sessions *and* their planned hours. Plan setup, race
 changes and every coach tool pass the week today falls in; with no date (a coach
 session without `today`) the whole season refits as before.
+
+**A season is sized by the athlete's own week, never by an annual figure.** There
+is no annual-hours setting: the biggest week of a season is all the time the
+athlete said they have (`peakHoursFor`, rounded *down* to the half hour), and the
+block model shapes every other week from it, so a season cannot outrun the week
+it has to fit in and cannot flatten. `normalizeProfile` is an allowlist, so an old
+plan or file carrying `annualHours` loads cleanly and the stored `season` keeps
+its weeks until a refit re-sizes it. `volumeBeyondRace` is the one sanity check
+left: an empty diary against a short race. See `docs/FINDINGS.md` (18 Oct).
+
+**The page shows one plan.** There is no plan list: the switcher button names the
+current plan and its menu starts a new season or imports one. Doing either
+replaces what is stored — `clearPlans` in `index.html` removes every stored plan,
+locally and from the cloud, but only once the wizard or import is finished.
+Deleting the plan starts over from the untouched stand-in, which the page shows
+as "Not set up yet". Storage still holds a list of plan records; the page just
+never offers more than the current one.
 
 Plans are schema v3: absolute week keys (`w0`…`w15`), materialized sessions, and
 a stored `season`. A plan is self-contained, so changing the engine never

@@ -145,7 +145,7 @@ test('a tool call is executed and its result fed back', async () => {
 test('a write tool leaves a draft the athlete can review', async () => {
   const fetchImpl = fakeFetch([
     { stop_reason: 'tool_use', content: [
-      { type: 'tool_use', id: 'tu_1', name: 'set_annual_hours', input: { hours: 700 } },
+      { type: 'tool_use', id: 'tu_1', name: 'set_availability', input: { day: 'Sat', minutes: 360 } },
     ] },
     say('Done — I have refitted the season.'),
   ]);

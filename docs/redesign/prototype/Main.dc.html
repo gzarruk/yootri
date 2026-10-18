@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Yootri: this week</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="ds/yootri/components/bundle.css">
+<link rel="stylesheet" href="app.css">
+<link rel="stylesheet" href="indicators.css">
+<link rel="stylesheet" href="fitness.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&amp;display=swap">
+<style>
+body{margin:0}
+</style>
+</helmet>
+<div class="yt shell" data-theme="{{theme}}">
+  <div class="side-wrap">
+    <dc-import name="Sidebar" active="week" theme="{{theme}}" on-theme="{{setTheme}}" hint-size="248px,1380px"></dc-import>
+  </div>
+
+  <main class="main">
+    <div class="main-in">
+
+      <header style="display: flex; flex-direction: column; gap: 10px">
+        <div class="hdr-top">
+          <span class="kicker">Season plan</span>
+          <span class="hdr-actions">
+            <span class="sync-state"><span class="dot"></span>Paired with the Garmin bridge</span>
+            <button class="btn btn-secondary"><i class="ic i-sync"></i>Sync</button>
+          </span>
+        </div>
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+          <div>
+            <h1 class="im-h1">Ironman Training 2026-2027</h1>
+            <p class="im-sub">16 weeks · from 20 Jul · Base 3 · Week 2 · 12h 30m planned</p>
+          </div>
+          <span class="hdr-actions">
+            <button class="btn btn-secondary btn-icon" aria-label="Plan actions: rename, duplicate, export, delete"><i class="ic i-dots"></i></button>
+          </span>
+        </div>
+      </header>
+
+      <section style="display: flex; flex-direction: column; gap: 10px" aria-label="Fitness, fatigue and form">
+        <div class="k-row">
+          <span class="card-kicker">Fitness, fatigue and form</span>
+          <span class="chip-sample"><i class="ic i-info"></i>Sample numbers · calculations coming soon</span>
+        </div>
+        <div class="ind-grid">
+
+          <article class="ind" aria-label="Today">
+            <div class="ind-h">
+              <div class="ind-t"><b>Today</b><span>Where your training stands right now</span></div>
+              <button class="icon-btn" aria-label="How fitness, fatigue and form are worked out"><i class="ic i-info"></i></button>
+            </div>
+            <div class="ind-body">
+              <div class="ind-hero">
+                <span class="kicker kicker-sm">Fitness</span>
+                <span class="ind-num">26</span>
+                <span class="delta"><i class="ic i-down"></i>−1 in 7 days</span>
+              </div>
+              <div class="ind-side">
+                <div class="ind-row">
+                  <span class="ind-lbl">Fatigue<span class="delta"><i class="ic i-down"></i>−7 in 7 days</span></span>
+                  <span class="ind-val">25</span>
+                </div>
+                <div class="ind-row">
+                  <span class="ind-lbl">Form<span class="delta"><i class="ic i-up"></i>+8 in 7 days</span></span>
+                  <span class="ind-val">−3</span>
+                </div>
+              </div>
+            </div>
+            <div class="scale-wrap">
+              <div class="scale" role="img" aria-label="Form is neutral"><i></i><i class="on"></i><i></i><span class="pin" style="left: 42%"></span></div>
+              <div class="scale-lbl"><span>Tired</span><span class="now">Neutral</span><span>Fresh</span></div>
+            </div>
+            <div class="ind-foot"><span class="tag tag-accent">Form: Neutral</span>Neither worn down nor fresh.</div>
+          </article>
+
+          <article class="ind" aria-label="Race day">
+            <div class="ind-h">
+              <div class="ind-t"><b>Race day · Sun 8 Nov 2026</b><span>Projection if you follow the plan</span></div>
+              <button class="icon-btn" aria-label="How the race day projection is worked out"><i class="ic i-info"></i></button>
+            </div>
+            <div class="ind-body">
+              <div class="ind-hero">
+                <span class="kicker kicker-sm">Fitness</span>
+                <span class="ind-num">52</span>
+                <span class="delta"><i class="ic i-up"></i>+27 vs today</span>
+              </div>
+              <div class="ind-side">
+                <div class="ind-row">
+                  <span class="ind-lbl">Fatigue<span class="delta"><i class="ic i-up"></i>+20 vs today</span></span>
+                  <span class="ind-val">45</span>
+                </div>
+                <div class="ind-row">
+                  <span class="ind-lbl">Form<span class="delta"><i class="ic i-up"></i>+4 vs today</span></span>
+                  <span class="ind-val">+1</span>
+                </div>
+              </div>
+            </div>
+            <div class="scale-wrap">
+              <div class="scale" role="img" aria-label="Form is neutral"><i></i><i class="on"></i><i></i><span class="pin" style="left: 54%"></span></div>
+              <div class="scale-lbl"><span>Tired</span><span class="now">Neutral</span><span>Fresh</span></div>
+            </div>
+            <div class="ind-foot"><span class="tag tag-accent">Form: Neutral</span>Balanced on the day, with the taper still to land.</div>
+          </article>
+
+        </div>
+      </section>
+
+      <section style="display: flex; flex-direction: column; gap: 10px" aria-label="Plan overview">
+        <div class="k-row">
+          <span class="card-kicker">Plan overview</span>
+          <span class="meta-row" style="gap: 14px">Starts <b>20/07/2026</b><b>16 weeks</b></span>
+        </div>
+        <div class="phases">
+          <div class="phase" style="--wk: 1"><b>Base 2</b>1 wk</div>
+          <div class="phase on" style="--wk: 4"><b>Base 3</b>4 wk</div>
+          <div class="phase" style="--wk: 4"><b>Build 1</b>4 wk</div>
+          <div class="phase" style="--wk: 4"><b>Build 2</b>4 wk</div>
+          <div class="phase" style="--wk: 2"><b>Peak</b>2 wk</div>
+          <div class="phase" style="--wk: 1"><b>Race</b>1 wk</div>
+        </div>
+        <div class="bar" role="progressbar" aria-label="Season progress" aria-valuenow="13" aria-valuemin="0" aria-valuemax="100"><i style="width: 13%"></i></div>
+        <div class="meta-row"><span>Season progress</span><span>Week <b>2</b> of 16 · 13%</span></div>
+      </section>
+
+      <div class="toolbar">
+        <div class="tb-group">
+          <div class="seg" role="radiogroup" aria-label="View">
+            <label class="seg-opt"><input type="radio" name="view" checked="">Week</label>
+            <label class="seg-opt"><input type="radio" name="view">Month</label>
+          </div>
+          <span class="wk-nav">
+            <button class="btn btn-secondary btn-icon" aria-label="Previous week"><i class="ic i-left"></i></button>
+            <span class="wk-lbl"><b>Week 2 of 16</b>27 Jul – 2 Aug</span>
+            <button class="btn btn-secondary btn-icon" aria-label="Next week"><i class="ic i-right"></i></button>
+          </span>
+        </div>
+        <div class="tb-group">
+          <button class="btn btn-secondary"><i class="ic i-flag"></i>Add event</button>
+          <button class="btn btn-secondary"><i class="ic i-watch"></i>To Garmin</button>
+          <button class="btn btn-ghost"><i class="ic i-undo"></i>Reset week</button>
+        </div>
+      </div>
+
+      <div class="stats">
+        <div class="stat"><span class="stat-k">Total volume</span><span class="stat-v">11h 5m</span></div>
+        <div class="stat"><span class="stat-k">Sessions</span><span class="stat-v">7</span></div>
+        <div class="stat"><span class="stat-k"><i class="ic i-swim" style="color: var(--disc-swim)"></i>Swim</span><span class="stat-v">2h 15m</span></div>
+        <div class="stat"><span class="stat-k"><i class="ic i-bike" style="color: var(--disc-bike)"></i>Bike</span><span class="stat-v">4h 45m</span></div>
+        <div class="stat"><span class="stat-k"><i class="ic i-run" style="color: var(--disc-run)"></i>Run</span><span class="stat-v">3h</span></div>
+        <div class="stat">
+          <span class="stat-k">Completed</span>
+          <span class="stat-v">0 / 7<small>0%</small></span>
+          <div class="bar" style="margin-top: 4px"><i style="width: 0%"></i></div>
+        </div>
+      </div>
+
+      <div class="scrollx">
+        <div class="week">
+
+          <div class="day">
+            <div class="day-h"><b>Mon <span>27 Jul</span></b></div>
+            <div class="im-card" style="--disc-color: var(--disc-rest)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-bed"></i>Rest</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Recovery &amp; mobility</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>—</span><span><i class="ic i-gauge"></i>—</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <button class="add"><i class="ic i-plus"></i>Add session</button>
+          </div>
+
+          <div class="day">
+            <div class="day-h"><b>Tue <span>28 Jul</span></b><span>1h 10m</span></div>
+            <div class="im-card" style="--disc-color: var(--disc-swim)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-swim"></i>Swim</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Endurance sets</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>1:10</span><span><i class="ic i-gauge"></i>Z2</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <button class="add"><i class="ic i-plus"></i>Add session</button>
+          </div>
+
+          <div class="day">
+            <div class="day-h"><b>Wed <span>29 Jul</span></b><span>2h</span></div>
+            <div class="im-card" style="--disc-color: var(--disc-bike)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-bike"></i>Bike</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Long ride</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>2:00</span><span><i class="ic i-gauge"></i>Z2</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <button class="add"><i class="ic i-plus"></i>Add session</button>
+          </div>
+
+          <div class="day">
+            <div class="day-h"><b>Thu <span>30 Jul</span></b><span>1h 5m</span></div>
+            <div class="im-card" style="--disc-color: var(--disc-swim)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-swim"></i>Swim</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Endurance sets</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>1:05</span><span><i class="ic i-gauge"></i>Z2</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <button class="add"><i class="ic i-plus"></i>Add session</button>
+          </div>
+
+          <div class="day">
+            <div class="day-h"><b>Fri <span>31 Jul</span></b><span>1h 5m</span></div>
+            <div class="im-card" style="--disc-color: var(--disc-strength)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-barbell"></i>Strength</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Core &amp; stability</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>1:05</span><span><i class="ic i-gauge"></i>—</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <button class="add"><i class="ic i-plus"></i>Add session</button>
+          </div>
+
+          <div class="day">
+            <div class="day-h"><b>Sat <span>1 Aug</span></b><span>4h</span></div>
+            <div class="im-card" style="--disc-color: var(--disc-bike)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-bike"></i>Bike</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Long ride</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>2:45</span><span><i class="ic i-gauge"></i>Z2</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <div class="im-card" style="--disc-color: var(--disc-run)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-run"></i>Run</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Long run</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>1:15</span><span><i class="ic i-gauge"></i>Z2</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <button class="add"><i class="ic i-plus"></i>Add session</button>
+          </div>
+
+          <div class="day">
+            <div class="day-h"><b>Sun <span>2 Aug</span></b><span>1h 45m</span></div>
+            <div class="im-card" style="--disc-color: var(--disc-run)">
+              <div class="card-top"><span class="disc-tag"><i class="ic i-run"></i>Run</span><span class="card-acts"><button class="icon-btn" aria-label="Edit session"><i class="ic i-pencil"></i></button><button class="icon-btn" aria-label="Delete session"><i class="ic i-trash"></i></button></span></div>
+              <div class="card-focus">Long run</div>
+              <div class="card-meta"><span><i class="ic i-clock"></i>1:45</span><span><i class="ic i-gauge"></i>Z2</span></div>
+              <div class="card-foot"><button class="done-toggle"><i class="ic i-circle"></i>Mark done</button></div>
+            </div>
+            <button class="add"><i class="ic i-plus"></i>Add session</button>
+          </div>
+
+        </div>
+      </div>
+
+      <p class="hint">Drag a session card between days to reschedule it, or use the pencil to edit its details. Changes save to this device automatically; sign in to sync across devices. <b style="font-weight: 500; color: var(--color-text)">Plan setup</b> fits the whole season to the hours you have, and always shows you the changes before anything is written.</p>
+
+      <section class="panel season" aria-label="Season fitness and training load">
+        <div class="season-top">
+          <span class="card-kicker">Season</span>
+          <div class="seg" role="radiogroup" aria-label="Chart view">
+            <label class="seg-opt"><input type="radio" name="view" value="load" checked="">Training load</label>
+            <label class="seg-opt"><input type="radio" name="view" value="fit">Fitness</label>
+          </div>
+        </div>
+        <div class="v-load">
+        <div class="panel-h">
+          <span class="meta-row">Planned weekly hours, added up across the season</span>
+          <span style="display: inline-flex; align-items: center; gap: 14px; flex-wrap: wrap">
+            <span class="meta-row">Completed <b>0m</b> / 151h 15m · 0%</span>
+            <div class="seg" role="radiogroup" aria-label="Chart mode">
+              <label class="seg-opt"><input type="radio" name="mode">Weekly</label>
+              <label class="seg-opt"><input type="radio" name="mode" checked="">Cumulative</label>
+            </div>
+          </span>
+        </div>
+        <div class="plot">
+          <div class="plot-y"><span>180h</span><span>120h</span><span>60h</span><span>0</span></div>
+          <svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Cumulative planned hours by week. Total reaches 151h 15m in week 16; bike 64h 55m, run 47h 30m, swim 29h, strength 9h 50m.">
+            <line class="grid-l" x1="0" y1="0.5" x2="1000" y2="0.5"></line>
+            <line class="grid-l" x1="0" y1="50" x2="1000" y2="50"></line>
+            <line class="grid-l" x1="0" y1="100" x2="1000" y2="100"></line>
+            <line class="grid-l" x1="0" y1="150" x2="1000" y2="150"></line>
+            <line x1="82.7" y1="0" x2="82.7" y2="150" stroke-dasharray="3 4" style="stroke: var(--color-accent); stroke-width: 1; vector-effect: non-scaling-stroke"></line>
+            <polyline class="ln" style="stroke: var(--disc-strength)" points="20,149.6 82.7,149.2 145.3,148.8 208,148.3 270.7,147.9 333.3,147.5 396,147.1 458.7,146.7 521.3,146.3 584,145.8 646.7,145.4 709.3,145 772,144.6 834.7,144.2 897.3,143.8 960,141.8"></polyline>
+            <polyline class="ln" style="stroke: var(--disc-swim)" points="20,149.2 82.7,147.5 145.3,145.8 208,144.2 270.7,142.5 333.3,141.7 396,140 458.7,138.3 521.3,136.7 584,135 646.7,133.3 709.3,131.7 772,130 834.7,128.3 897.3,127.1 960,125.8"></polyline>
+            <polyline class="ln" style="stroke: var(--disc-run)" points="20,148.3 82.7,145 145.3,142.5 208,140 270.7,138.3 333.3,135.8 396,132.5 458.7,130 521.3,127.5 584,125 646.7,121.7 709.3,119.2 772,117.5 834.7,115 897.3,112.5 960,110.4"></polyline>
+            <polyline class="ln" style="stroke: var(--disc-bike)" points="20,147.5 82.7,143.3 145.3,139.2 208,135.8 270.7,133.3 333.3,130 396,125.8 458.7,122.5 521.3,119.2 584,115 646.7,111.7 709.3,107.5 772,105.8 834.7,101.7 897.3,99.2 960,95.8"></polyline>
+            <polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5" points="20,143.3 82.7,134.2 145.3,125 208,116.7 270.7,110.8 333.3,102.5 396,93.3 458.7,84.2 521.3,78.3 584,69.2 646.7,60 709.3,50.8 772,45.8 834.7,36.7 897.3,30 960,24.2"></polyline>
+          </svg>
+          <div class="plot-x"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span></div>
+        </div>
+        <div class="legend">
+          <span class="lg" style="--c: var(--color-accent)"><i></i>Total <span>151h 15m</span></span>
+          <span class="lg" style="--c: var(--disc-swim)"><i></i>Swim <span>29h</span></span>
+          <span class="lg" style="--c: var(--disc-bike)"><i></i>Bike <span>64h 55m</span></span>
+          <span class="lg" style="--c: var(--disc-run)"><i></i>Run <span>47h 30m</span></span>
+          <span class="lg" style="--c: var(--disc-strength)"><i></i>Strength <span>9h 50m</span></span>
+        </div>
+      
+        </div>
+        <div class="v-fit">
+          <div class="sub-h">
+            <p>Fitness is the 42-day average of your training stress. Each band runs from the level where you can finish comfortably and enjoy the race (lower edge) to a competitive level (upper edge, the kind of fitness a Kona qualifying contender carries).</p>
+            <span class="chip-sample"><i class="ic i-info"></i>Sample data. Fitness calculations are coming soon</span>
+          </div>
+          <div class="fplot">
+            <div class="plot-y"><span>120</span><span>80</span><span>40</span><span>0</span></div>
+            <svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Fitness by week. Planned fitness rises from 38 to 85 on race day in week 16. Actual fitness so far is 38 in week 1 and 40 this week, about 5 points under plan. On the current trend you reach 80 on race day, the lower edge of the Ironman band, which runs 80 to 115. The 70.3 band runs 60 to 90 and the Olympic band 40 to 70.">
+              <line class="grid-l" x1="0" y1="0.5" x2="1000" y2="0.5"></line>
+              <line class="grid-l" x1="0" y1="50" x2="1000" y2="50"></line>
+              <line class="grid-l" x1="0" y1="100" x2="1000" y2="100"></line>
+              <line class="grid-l" x1="0" y1="150" x2="1000" y2="150"></line>
+              <rect class="band" style="--bc: var(--disc-swim)" x="0" y="62.5" width="1000" height="37.5"></rect><line class="band-lo" style="--bc: var(--disc-swim)" x1="0" y1="100.0" x2="1000" y2="100.0"></line><line class="band-hi" style="--bc: var(--disc-swim)" x1="0" y1="62.5" x2="1000" y2="62.5"></line><rect class="band" style="--bc: var(--disc-bike)" x="0" y="37.5" width="1000" height="37.5"></rect><line class="band-lo" style="--bc: var(--disc-bike)" x1="0" y1="75.0" x2="1000" y2="75.0"></line><line class="band-hi" style="--bc: var(--disc-bike)" x1="0" y1="37.5" x2="1000" y2="37.5"></line><rect class="band" style="--bc: var(--disc-brick)" x="0" y="6.25" width="1000" height="43.75"></rect><line class="band-lo" style="--bc: var(--disc-brick)" x1="0" y1="50.0" x2="1000" y2="50.0"></line><line class="band-hi" style="--bc: var(--disc-brick)" x1="0" y1="6.25" x2="1000" y2="6.25"></line>
+              <line x1="82.7" y1="0" x2="82.7" y2="150" stroke-dasharray="3 4" style="stroke: var(--color-accent); stroke-width: 1; vector-effect: non-scaling-stroke"></line>
+              <line x1="960" y1="0" x2="960" y2="150" style="stroke: var(--color-text); opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke"></line>
+              <polyline class="ln" style="stroke: var(--color-accent-300); stroke-dasharray: 7 5" points="20.0,102.5 82.7,98.75 145.3,95.0 208.0,90.0 270.7,85.0 333.4,80.0 396.0,75.0 458.7,70.0 521.4,65.0 584.0,60.0 646.7,55.0 709.4,50.0 772.0,45.0 834.7,41.25 897.4,38.75 960.1,43.75"></polyline>
+              <polyline class="ln" style="stroke: var(--color-accent); stroke-dasharray: 1 5; stroke-width: 2.5" points="82.7,100.6 960,50"></polyline>
+              <polyline class="ln" style="stroke: var(--color-accent); stroke-width: 3" points="20,102.5 82.7,100"></polyline>
+              <circle cx="20" cy="102.5" r="4" style="fill: var(--color-accent)"></circle>
+              <circle cx="82.7" cy="100" r="5" style="fill: var(--color-accent); stroke: var(--color-surface); stroke-width: 2"></circle>
+              <circle cx="960" cy="43.75" r="4" style="fill: var(--color-surface); stroke: var(--color-accent-300); stroke-width: 2"></circle>
+              <circle cx="960" cy="50" r="4" style="fill: var(--color-surface); stroke: var(--color-accent); stroke-width: 2"></circle>
+            </svg>
+            <div class="bands" aria-hidden="true"><span style="top: 81.2px"><b><u style="--bc: var(--disc-swim)"></u>Olympic</b><i>40 to 70</i></span><span style="top: 56.2px"><b><u style="--bc: var(--disc-bike)"></u>70.3</b><i>60 to 90</i></span><span style="top: 28.1px"><b><u style="--bc: var(--disc-brick)"></u>Ironman</b><i>80 to 115</i></span></div>
+            <div class="plot-x"><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span><span>9</span><span>10</span><span>11</span><span>12</span><span>13</span><span>14</span><span>15</span><span>16</span></div>
+          </div>
+          <div class="legend">
+            <span class="lg" style="--c: var(--color-accent)"><i></i>Actual, synced from Garmin <span>40 now</span></span>
+            <span class="lg" style="--c: var(--color-accent-300)"><i class="dash"></i>Planned <span>85 on race day</span></span>
+            <span class="lg" style="--c: var(--color-accent)"><i class="dot"></i>On current trend <span>80 on race day</span></span>
+            <span class="lg" style="--c: var(--color-text)"><i style="opacity:.5"></i>Race day, week 16</span>
+          </div>
+          <div class="fgoal">
+            <div><small>Your goal</small><b>Ironman</b><em>Comfortable 80, competitive 115</em></div>
+            <div><small>Planned race-day fitness</small><b>85</b><em>5 above the comfortable level</em></div>
+            <div><small>On current trend</small><b>80</b><em>Right at the comfortable level. Stay on plan to keep a margin</em></div>
+            <div><small>Gap to competitive</small><b>30</b><em>Needs a bigger build than this plan, or a later race</em></div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","default":"dark","options":["dark","light"],"section":"Theme"},"$preview":{"width":1440,"height":1560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const theme = (this.state && this.state.theme) || this.props.theme || 'dark';
+    return {
+      theme,
+      setTheme: (t) => this.setState({ theme: t })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
   refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId, moveSession,
-  landingsOf, raceDayFor, freshWeek, isUntouchedPlan,
-  carryOver, upcomingEvents, consolidatePlans,
+  landingsOf, landingsDetail, raceDayFor, raceClosure, freshWeek, isUntouchedPlan,
+  carryOver, upcomingEvents,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -55,21 +55,28 @@ test('setSessionsAt writes without mutating the plan it was given', () => {
 
 /* Re-fitting produces a draft. Nothing is written until it is applied. */
 
+/** The plan's profile with every day's time scaled — a season is sized by the
+    week the athlete has, so this is how a test asks for a bigger one. */
+const roomier = (p, k) => ({
+  ...p.profile,
+  availability: Object.fromEntries(Object.entries(p.profile.availability).map(([d, m]) => [d, Math.round(m * k)])),
+});
+
 test('refit returns a new plan and leaves the original alone', () => {
   const p = loadPlan(v2());
   const before = JSON.parse(JSON.stringify(p));
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   assert.notDeepEqual(draft.weeks, p.weeks, 'the draft should differ');
   assert.deepEqual(p, before, 'the source plan must be untouched');
 });
 
 test('refit rebuilds the season from the new profile', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
-  assert.ok(draft.profile.annualHours === 800);
+  const draft = refit(p, { profile: roomier(p, 1.5) });
+  assert.ok(draft.profile.availability.Sat > p.profile.availability.Sat);
   assert.ok(
     weekTotals(draft).reduce((a, b) => a + b, 0) > weekTotals(p).reduce((a, b) => a + b, 0),
-    'a bigger budget should produce a bigger season',
+    'a bigger week should produce a bigger season',
   );
 });
 
@@ -83,7 +90,7 @@ test('refit honours availability, so a squeezed week cannot overflow', () => {
 
 test('refit can be scoped to a range, leaving other weeks alone', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 900 }, from: 2, to: 4 });
+  const draft = refit(p, { profile: roomier(p, 1.8), from: 2, to: 4 });
   assert.deepEqual(sessionsAt(draft, 0), sessionsAt(p, 0), 'week 0 untouched');
   assert.deepEqual(sessionsAt(draft, 7), sessionsAt(p, 7), 'week 7 untouched');
   assert.notDeepEqual(sessionsAt(draft, 3), sessionsAt(p, 3), 'week 3 refitted');
@@ -100,7 +107,7 @@ test('an unchanged draft produces an empty diff', () => {
 
 test('the diff reports per-week volume before and after', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   const d = diffPlans(p, draft);
   assert.ok(d.weeks.length > 0);
   for (const w of d.weeks) {
@@ -142,7 +149,7 @@ test('the diff carries validation issues so the UI can warn before applying', ()
 
 test('a merely questionable draft warns but does not block', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 2000 } });
+  const draft = refit(p, { profile: roomier(p, 4) });
   const d = diffPlans(p, draft);
   assert.equal(d.blocked, false);
 });
@@ -151,7 +158,7 @@ test('a merely questionable draft warns but does not block', () => {
 
 test('applyDraft returns the draft content with a fresh timestamp', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   const applied = applyDraft(p, draft, { now: 12345 });
   assert.deepEqual(applied.weeks, draft.weeks);
   assert.equal(applied.updatedAt, 12345);
@@ -160,7 +167,7 @@ test('applyDraft returns the draft content with a fresh timestamp', () => {
 
 test('applyDraft does not mutate either input', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   const snapP = JSON.parse(JSON.stringify(p));
   const snapD = JSON.parse(JSON.stringify(draft));
   applyDraft(p, draft, { now: 1 });
@@ -214,7 +221,7 @@ test('a per-week budget override survives a later refit', () => {
   // override recorded on the plan has to be reapplied on top of it.
   const p = loadPlan(v2());
   const pinned = { ...p, weekBudgets: { w3: 4 } };
-  const draft = refit(pinned, { profile: { ...p.profile, annualHours: 900 } });
+  const draft = refit(pinned, { profile: roomier(p, 1.8) });
   assert.equal(weekTotals(draft)[3], 240, 'week 3 should still be the pinned 4h');
   assert.notEqual(weekTotals(draft)[4], 240, 'other weeks follow the new budget');
 });
@@ -231,7 +238,7 @@ test('applying a draft keeps the conversation that happened while it was drafted
   // loses the coach's own answer. Chat is conversation state, like done and
   // actuals: it belongs to the plan being replaced, not to the proposal.
   const p = loadPlan(v2());
-  const mid = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const mid = refit(p, { profile: roomier(p, 1.5) });
   const withChat = {
     ...p,
     chat: [{ role: 'user', content: 'more hours' }, { role: 'coach', content: 'done' }],
@@ -263,18 +270,17 @@ test('a short runway keeps the race-specific end', () => {
 
 test('newPlan inherits a profile when given one', () => {
   const mine = normalizeProfile({
-    annualHours: 620,
     availability: { ...anyDay(120), Wed: 0 },
     constraints: [{ disc: 'Swim', rule: 'maxPerWeek', value: 2 }],
   });
   const p = newPlan({ name: 'Next', startISO: '2026-08-17', raceDate: '2027-01-04', profile: mine });
-  assert.equal(p.profile.annualHours, 620);
+  assert.equal(p.season.reduce((a, w) => Math.max(a, w.hours), 0), 12, 'sized by the inherited week: 6 days of 2h');
   assert.equal(p.profile.availability.Wed, 0);
   assert.equal(p.profile.constraints.length, 1);
 });
 
 test('an inherited profile does not drag the old race date along with it', () => {
-  const mine = normalizeProfile({ annualHours: 620, raceDate: '2026-09-01', raceType: 'olympic' });
+  const mine = normalizeProfile({ raceDate: '2026-09-01', raceType: 'olympic' });
   const p = newPlan({ name: 'Next', startISO: '2026-08-17', raceDate: '2027-01-04', raceType: 'ironman', profile: mine });
   assert.equal(p.profile.raceDate, '2027-01-04');
   assert.equal(p.profile.raceType, 'ironman');
@@ -336,7 +342,7 @@ test('refit can resize a season when the race date moves', () => {
 
 test('refit keeps the season length when not told otherwise', () => {
   const p = newPlan({ name: 'A', startISO: '2026-08-17', raceDate: '2026-12-07' });
-  assert.equal(weekCount(refit(p, { profile: { ...p.profile, annualHours: 700 } })), weekCount(p));
+  assert.equal(weekCount(refit(p, { profile: roomier(p, 1.4) })), weekCount(p));
 });
 
 /* ---- Moving a session ---------------------------------------------------- */
@@ -761,7 +767,7 @@ test('anything the athlete did makes a plan touched', () => {
     'an FTP': { loadRefs: { ftpW: 250 } },
     'a pinned week': { weekBudgets: { w3: 4 } },
     'a new name': { name: 'Roth 2027' },
-    'a profile change': { profile: { ...b.profile, annualHours: 600 } },
+    'a profile change': { profile: { ...b.profile, availability: { ...b.profile.availability, Sat: 400 } } },
     'an edited session': { weeks: { ...b.weeks, w0: b.weeks.w0.map((x) => (x.id === first.id ? { ...x, dur: '0:10' } : x)) } },
     'a removed session': { weeks: { ...b.weeks, w2: b.weeks.w2.slice(1) } },
   };
@@ -819,34 +825,94 @@ test('carryOver brings the athlete\'s facts and the chosen future events, never 
   assert.equal(c.benchmarks.length, 1);
   for (const k of ['done', 'actuals', 'chat', 'weekBudgets', 'weeks', 'season', 'release']) assert.ok(!(k in c), k);
 });
+/* ---- A race short enough not to need a taper ------------------------------
 
-test('consolidatePlans: the newest real plan is the plan, the rest are archived not deleted', () => {
-  const mk = (id, updatedAt, extra = {}) => ({ id, name: id, updatedAt, ...extra });
-  const out = consolidatePlans([mk('old', 1), mk('new', 3), mk('mid', 2)], { now: 99, isStandIn: () => false });
-  assert.equal(out.active.id, 'new');
-  assert.deepEqual(out.archived.map((p) => p.id).sort(), ['mid', 'old']);
-  assert.ok(out.archived.every((p) => p.archivedAt === 99));
-  assert.deepEqual(out.dropped, []);
+   A tune-up of two hours or less (a 10 km, a half marathon) is a hard day in
+   the build, not an event to arrive fresh for. It gets no taper week and no
+   race week; the plan clears its own day, counts its load, and trains on. */
+
+const tuneUpPlan = (raceType, tuneUp = '2027-01-26', extra = {}) => {      // a Tuesday, week 12
+  const base = newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 });
+  return {
+    ...base,
+    events: [...base.events, { id: 'ev-t', name: 'Test', date: tuneUp, kind: 'race', raceType, priority: 'secondary', ...extra }],
+  };
+};
+
+test('landingsDetail says, for each tune-up, whether it gets a taper', () => {
+  assert.deepEqual(landingsDetail(tuneUpPlan('10k')), [{ absWeek: 12, taper: false }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('half-marathon')), [{ absWeek: 12, taper: false }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('70.3')), [{ absWeek: 12, taper: true }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('olympic')), [{ absWeek: 12, taper: true }]);
+  assert.deepEqual(landingsDetail({ start: '2026-11-02', events: [] }), []);
+  assert.deepEqual(landingsDetail({}), []);
 });
 
-test('consolidatePlans: untouched stand-ins are dropped, and ties break by id', () => {
-  const mk = (id, updatedAt) => ({ id, name: id, updatedAt });
-  const out = consolidatePlans([mk('b', 5), mk('a', 5), mk('stand', 9)], { now: 1, isStandIn: (p) => p.id === 'stand' });
-  assert.equal(out.active.id, 'a');
-  assert.deepEqual(out.dropped, ['stand']);
-  assert.deepEqual(out.archived.map((p) => p.id), ['b']);
+test('landingsOf still gives the weeks alone', () => {
+  assert.deepEqual(landingsOf(tuneUpPlan('10k')), [12]);
 });
 
-test('consolidatePlans is idempotent and leaves already-archived plans out of the choice', () => {
-  const recs = [{ id: 'x', updatedAt: 1 }, { id: 'y', updatedAt: 2, archivedAt: 50 }];
-  const once = consolidatePlans(recs, { now: 1, isStandIn: () => false });
-  assert.equal(once.active.id, 'x');
-  assert.deepEqual(once.archived, []);
-  const twice = consolidatePlans([once.active, ...recs.slice(1)], { now: 2, isStandIn: () => false });
-  assert.equal(twice.active.id, 'x');
+test('the athlete\'s own expected time decides whether a race gets a taper', () => {
+  assert.deepEqual(landingsDetail(tuneUpPlan('70.3', '2027-01-26', { expectedMinutes: 110 })), [{ absWeek: 12, taper: false }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('10k', '2027-01-26', { expectedMinutes: 130 })), [{ absWeek: 12, taper: true }]);
 });
 
-test('consolidatePlans with only a stand-in keeps it; with nothing returns no active plan', () => {
-  assert.equal(consolidatePlans([{ id: 's', updatedAt: 1 }], { isStandIn: () => true }).active.id, 's');
-  assert.equal(consolidatePlans([], {}).active, null);
+test('raceClosure: which day a race closes and whether it closes what follows', () => {
+  assert.deepEqual(raceClosure(tuneUpPlan('10k'), 12), { raceDay: 'Tue', raceOnly: true });
+  assert.deepEqual(raceClosure(tuneUpPlan('70.3'), 12), { raceDay: 'Tue', raceOnly: false });
+  assert.deepEqual(raceClosure(tuneUpPlan('10k'), 4), { raceDay: null, raceOnly: false });
+  const p = tuneUpPlan('10k');
+  assert.deepEqual(raceClosure(p, weekCount(p) - 1), { raceDay: 'Sun', raceOnly: false }, 'the main race always clears what follows');
+});
+
+test('two races in one week: the earlier day, and the week is cleared after it if either needs a taper', () => {
+  const p = tuneUpPlan('10k');
+  const both = { ...p, events: [...p.events, { id: 'ev-u', date: '2027-01-30', kind: 'race', raceType: '70.3', priority: 'secondary' }] };
+  assert.deepEqual(raceClosure(both, 12), { raceDay: 'Tue', raceOnly: false });
+  const two10k = { ...p, events: [...p.events, { id: 'ev-u', date: '2027-01-30', kind: 'race', raceType: '10k', priority: 'secondary' }] };
+  assert.deepEqual(raceClosure(two10k, 12), { raceDay: 'Tue', raceOnly: true });
+});
+
+test('raceDayFor is unchanged: it still just names the day', () => {
+  assert.equal(raceDayFor(tuneUpPlan('10k'), 12), 'Tue');
+});
+
+test('a 10 km tune-up changes no block of the season and clears only its own day', () => {
+  const without = refit(newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 }), {});
+  const drafted = refit(tuneUpPlan('10k'), {});
+  assert.deepEqual(drafted.season.map((w) => w.block), without.season.map((w) => w.block), 'no taper, no race week');
+  assert.deepEqual(drafted.season.map((w) => w.hours), without.season.map((w) => w.hours));
+  const week = drafted.weeks.w12;
+  assert.equal(durToMin(week.find((s) => s.day === 'Tue').dur), 0, 'the race day is clear');
+  for (const day of ['Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    assert.ok(durToMin(week.find((s) => s.day === day).dur) > 0, `${day} is still a training day`);
+  }
+});
+
+test('a 70.3 tune-up still gets its taper and race week, and still clears the rest of its week', () => {
+  const drafted = refit(tuneUpPlan('70.3'), {});
+  assert.equal(drafted.season[12].block, 'Race');
+  assert.equal(drafted.season[11].block, 'Taper');
+  for (const day of ['Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    assert.equal(durToMin(drafted.weeks.w12.find((s) => s.day === day).dur), 0, day);
+  }
+});
+
+test('freshWeek builds the same week a refit does for a short race', () => {
+  const drafted = refit(tuneUpPlan('10k'), {});
+  assert.deepEqual(freshWeek(drafted, 12), drafted.weeks.w12);
+});
+
+test('a short race in the last weeks is not refused for sitting in the main race\'s taper', () => {
+  // Nothing is overwritten, so there is nothing to refuse; the day is still cleared.
+  const p = tuneUpPlan('10k', '2027-03-09');                // week 18, Tuesday: inside the last three
+  const d = diffPlans(refit(newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 }), {}), refit(p, {}));
+  assert.equal(d.issues.find((i) => i.code === 'race-in-primary-taper'), undefined);
+  assert.equal(raceDayFor(p, 18), 'Tue');
+});
+
+test('a tapered race inside the main race\'s taper is still reported', () => {
+  const p = tuneUpPlan('70.3', '2027-03-09');
+  const base = newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 });
+  assert.ok(diffPlans(base, refit(p, {})).issues.find((i) => i.code === 'race-in-primary-taper'));
 });

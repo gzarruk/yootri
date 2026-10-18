@@ -1,15 +1,22 @@
 /* Generative weekly-volume model — a JS port of ../yootri-rnd/plan_model.py.
    That file is the reference implementation; tests/season.test.js pins this port
    to its numbers. Change the shape here only alongside a finding written back to
-   ../yootri-rnd/FINDINGS.md.
+   docs/FINDINGS.md.
 
    The model is generative rather than fitted. Weekly volume is:
 
-       annual / 52 * multiplier(block, week)
+       base * multiplier(block, week)
 
-   so `annual` is a *scale*, not a total the season sums to — the default blocks
-   cover 27 of 52 weeks and spend ~56% of the budget. Never present the sum of a
-   season as an annual figure. */
+   `base` is what the athlete's availability sets: `fitToRace({ peakHours })`
+   picks it so the season's biggest week is `peakHours` long, which is the most
+   the athlete said they could train. Nothing is clipped, so a season can never
+   outrun the week it has to fit in.
+
+   The reference model's own sizing, `annual / 52`, is still here as
+   `weeklyHours` and `fitToRace({ annualHours })`, for the golden tests and the
+   legacy migration only. `annual` there is a *scale*, not a total the season sums
+   to — the default blocks cover 27 of 52 weeks and spend ~56% of the budget.
+   Nothing the athlete sees asks for it any more. */
 
 export const WEEKS_PER_YEAR = 52;
 
@@ -154,8 +161,10 @@ export const LONG_RUNWAY_WEEKS = 30;
  *
  * @param {object} opts
  * @param {number} opts.weeks      length of the runway
- * @param {number[]} opts.landings absolute weeks the secondary races fall in
- * @returns {{applied: {absWeek: number, taperWeek: number|null}[],
+ * @param {(number|{absWeek: number, taper?: boolean})[]} opts.landings absolute
+ *        weeks the secondary races fall in; `taper: false` marks a race short
+ *        enough to need no taper week
+ * @returns {{applied: {absWeek: number, taperWeek: number|null, taper?: false}[],
  *            refused: {absWeek: number, reason: string}[]}}
  */
 export function planLandings({ weeks, landings = [], season = DEFAULT_SEASON } = {}) {
@@ -164,31 +173,50 @@ export function planLandings({ weeks, landings = [], season = DEFAULT_SEASON } =
   // whole season was built to arrive at. Nothing overwrites them.
   const firstTailWeek = Number.isInteger(n) && n > 0 ? Math.max(0, n - primaryTailWeeks(season)) : 0;
 
-  const wanted = [...new Set((Array.isArray(landings) ? landings : []).map(Number))]
-    .sort((a, b) => (Number.isNaN(a) ? 1 : Number.isNaN(b) ? -1 : a - b));
+  // A landing is a week number, which means a race that gets a taper, or
+  // `{ absWeek, taper: false }` for a race short enough to be a hard day in the
+  // build. Two landings in one week are one, and a taper beats no taper.
+  const byWeek = new Map();
+  for (const l of Array.isArray(landings) ? landings : []) {
+    const obj = l !== null && typeof l === 'object';
+    const raw = obj ? l.absWeek : l;
+    const absWeek = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+    const taper = !(obj && l.taper === false);
+    byWeek.set(absWeek, (byWeek.get(absWeek) ?? false) || taper);
+  }
+  const wanted = [...byWeek]
+    .map(([absWeek, taper]) => ({ absWeek, taper }))
+    .sort((a, b) => (Number.isNaN(a.absWeek) ? 1 : Number.isNaN(b.absWeek) ? -1 : a.absWeek - b.absWeek));
 
   const applied = [];
   const refused = [];
+  let lastTaper = null;
 
-  for (const absWeek of wanted) {
+  for (const { absWeek, taper } of wanted) {
     if (!Number.isInteger(absWeek) || absWeek < 0 || absWeek >= n) {
       // Not clamped: clamping would build a taper for a race the season never
       // reaches, which is worse than saying the race is outside it.
       refused.push({ absWeek, reason: 'outside-season' });
       continue;
     }
+    if (!taper) {
+      // Nothing to overwrite and no free week to find: the race changes no week
+      // of the season, only the day the plan clears and counts.
+      applied.push({ absWeek, taperWeek: null, taper: false });
+      continue;
+    }
     if (absWeek >= firstTailWeek) {
       refused.push({ absWeek, reason: 'in-primary-taper' });
       continue;
     }
-    const last = applied.at(-1);
-    if (last && absWeek - last.absWeek < MIN_LANDING_GAP) {
+    if (lastTaper !== null && absWeek - lastTaper < MIN_LANDING_GAP) {
       refused.push({ absWeek, reason: 'too-close' });
       continue;
     }
     // Week 0 has no week before it to taper in. The race week is still built:
     // a race in the first week of the plan is still a race.
     applied.push({ absWeek, taperWeek: absWeek > 0 ? absWeek - 1 : null });
+    lastTaper = absWeek;
   }
 
   return { applied, refused };
@@ -208,11 +236,15 @@ export function planLandings({ weeks, landings = [], season = DEFAULT_SEASON } =
 
     Returns plain data — a plan stores this once rather than recomputing it, so a
     later change to the model never silently reshapes an athlete's saved season. */
-export function fitToRace({ annualHours, weeks, landings = [], season = DEFAULT_SEASON }) {
+export function fitToRace({ peakHours, annualHours, weeks, landings = [], season = DEFAULT_SEASON }) {
   const n = Number(weeks);
   if (!Number.isInteger(n) || n < 1) {
     throw new Error(`a season needs at least one week; got ${JSON.stringify(weeks)}`);
   }
+  if ((peakHours === undefined) === (annualHours === undefined)) {
+    throw new Error('size a season by exactly one of peakHours or annualHours');
+  }
+  if (peakHours !== undefined && !(peakHours > 0)) throw new Error('peakHours must be > 0');
 
   const full = expand(season);
   let chosen;
@@ -232,10 +264,16 @@ export function fitToRace({ annualHours, weeks, landings = [], season = DEFAULT_
   // `chosen` is already indexed by absolute week, so a landing is a straight
   // splice. Two weeks of whatever block it fell in become the tune-up race's
   // taper and race week; the weeks either side keep the labels they had.
-  for (const { absWeek, taperWeek } of planLandings({ weeks: n, landings, season }).applied) {
+  for (const { absWeek, taperWeek, taper } of planLandings({ weeks: n, landings, season }).applied) {
+    if (taper === false) continue;
     chosen[absWeek] = { block: 'Race', week: 1, recovery: false };
     if (taperWeek !== null) chosen[taperWeek] = { block: 'Taper', week: 1, recovery: false };
   }
+
+  // The season's biggest multiplier lands on `peakHours`; everything else keeps
+  // its proportion. The annual form is the same thing with the base given.
+  const loads = chosen.map((e) => multiplier(e.block, e.week, season));
+  const annual = annualHours ?? (peakHours / Math.max(...loads)) * WEEKS_PER_YEAR;
 
   return chosen.map((e, i) => ({
     ...e,
@@ -244,8 +282,8 @@ export function fitToRace({ annualHours, weeks, landings = [], season = DEFAULT_
     // to know whether a week is genuinely hard, and that cannot be inferred
     // reliably from volume — in a flat season half the weeks sit below the mean
     // by construction. A load at or above 1.0 is at or above a flat average week.
-    load: multiplier(e.block, e.week, season),
-    hours: weeklyHours(annualHours, e.block, e.week, season),
+    load: loads[i],
+    hours: weeklyHours(annual, e.block, e.week, season),
   }));
 }
 

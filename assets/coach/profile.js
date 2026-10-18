@@ -29,7 +29,6 @@ export const LONG_DAY_DISCIPLINES = ['Bike', 'Run'];
 export const MAX_SESSIONS_PER_DAY = 3;
 
 export const DEFAULT_PROFILE = {
-  annualHours: 500,
   raceDate: null,
   raceType: '70.3',
   // A defensible default week: something on most days, the long sessions at the
@@ -147,14 +146,12 @@ export function normalizeProfile(raw = {}) {
       : DEFAULT_PROFILE.availability[d];
   }
 
-  const annual = Number(raw.annualHours);
   const splits = normalizeSplits(raw.splits);
   const weekShape = normalizeWeekShape(raw.weekShape);
   const longDays = normalizeLongDays(raw.longDays);
   const maxSessionsPerDay = normalizeSessionsPerDay(raw.maxSessionsPerDay);
 
   return {
-    annualHours: Number.isFinite(annual) && annual > 0 ? annual : DEFAULT_PROFILE.annualHours,
     raceDate: raw.raceDate ?? DEFAULT_PROFILE.raceDate,
     raceType: raw.raceType ?? DEFAULT_PROFILE.raceType,
     availability,
@@ -170,6 +167,17 @@ export function normalizeProfile(raw = {}) {
 
 export function weeklyAvailableMinutes(profile) {
   return DAYS.reduce((a, d) => a + (profile.availability[d] || 0), 0);
+}
+
+/** The biggest week a season is built to: all the time the athlete said they
+    have, down to the half hour (rounding up would plan past it). A season is
+    sized by this and shaped by the block model, so it can never outrun the
+    week it has to fit in. With no time entered the default week sizes it — the
+    per-day rules already say what is wrong with a week that has no time. */
+export function peakHoursFor(profile) {
+  const minutes = weeklyAvailableMinutes(profile)
+    || DAYS.reduce((a, d) => a + DEFAULT_PROFILE.availability[d], 0);
+  return Math.max(0.5, Math.floor(minutes / 30) / 2);
 }
 
 /** Days a discipline may be scheduled on, after constraints and after removing

@@ -56,6 +56,9 @@ function surfaces() {
     'index.html overnight section': html.slice(nightsFrom, from),
     'privacy notice, overnight': nightsNotice[0],
     'overnight.js': read('../assets/coach/overnight.js'),
+    // The plan's target and the figure it starts from: the notes the athlete reads.
+    'targets.js': read('../assets/coach/targets.js'),
+    'startfit.js': read('../assets/coach/startfit.js'),
     'bridge overnight.py': read('../tools/garmin-bridge/garmin_bridge/overnight.py'),
     'bridge messages': BRIDGE_ERROR_CODES.map((c) => bridgeErrorMessage(c)).join('\n'),
   };
@@ -68,4 +71,79 @@ test('workout export wording makes no medical or performance claims', () => {
       assert.equal(hit, null, `${where} says "${hit && hit[0]}"`);
     }
   }
+});
+
+/* The Training status and Health indicator pages, the fitness cards and chart,
+   and the Season panel show numbers worked out from training load. They sit
+   closest to the body and to performance claims, so the list here is stricter
+   than the one above: no recovery or readiness talk, no promise about what a
+   number means for an athlete, and no named standard a reader could take as a
+   target. */
+
+const STRICTER = [
+  ...FORBIDDEN,
+  /recover/i, /wellness/i, /overreach/i, /\brisk/i, /\btreat/i, /therap/i, /rehab/i, /RED-S/i, /screen(?! reader)/i,
+  /competitive/i, /kona/i, /qualif/i, /comfortabl/i, /enjoy/i, /worn down/i, /carrying too much/i, /earliest sign/i,
+];
+
+const fitnessSurfaces = () => {
+  const html = read('../index.html');
+  const pagesFrom = html.indexOf('<div class="page hidden" data-page="status"');
+  const pagesTo = html.indexOf('<div class="page page-foot">');
+  const scriptFrom = html.indexOf('/* ---- Fitness, fatigue and form');
+  const scriptTo = html.indexOf('/* ---- Init ---- */');
+  const cardsFrom = html.indexOf('<section class="stack ffm"');
+  assert.ok(pagesFrom > 0 && pagesTo > pagesFrom, 'the Status and Health pages are still where this test looks');
+  assert.ok(scriptFrom > 0 && scriptTo > scriptFrom, 'the fitness section is still where this test looks');
+  assert.ok(cardsFrom > 0, 'the fitness cards are still where this test looks');
+  return {
+    html,
+    section: html.slice(scriptFrom, scriptTo),
+    surfaces: {
+      'Status and Health pages': html.slice(pagesFrom, pagesTo),
+      'fitness script': html.slice(scriptFrom, scriptTo),
+      'fitness cards markup': html.slice(cardsFrom, cardsFrom + 600),
+      'fitness.js': read('../assets/coach/fitness.js'),
+      'preparation.js': read('../assets/coach/preparation.js'),
+    },
+  };
+};
+
+test('the fitness surfaces make no claim about the body or about performance', () => {
+  for (const [where, text] of Object.entries(fitnessSurfaces().surfaces)) {
+    for (const re of STRICTER) {
+      const hit = text.match(re);
+      assert.equal(hit, null, `${where} says "${hit && hit[0]}"`);
+    }
+  }
+});
+
+test('what is estimated or illustrative says so wherever it is shown', () => {
+  const { section } = fitnessSurfaces();
+  assert.match(section, /Planned and race-day figures are estimates/, 'the cards say which figures are estimates');
+  assert.match(section, /<span class="tag tag-neutral">Estimate<\/span>/, 'the race-day card is tagged Estimate');
+  assert.match(section, /Planned, estimated/, 'the planned line is called an estimate in the legend');
+  assert.match(section, /Planned fitness \(an estimate\)/, 'the chart is described as an estimate to a screen reader');
+  assert.match(section, /illustrative/i, 'the bands are called illustrative');
+});
+
+test('the fitness section only draws what fitness.js worked out, and stores nothing', () => {
+  const { section } = fitnessSurfaces();
+  assert.match(section, /fitnessSeries\(plan,/, 'the page asks the engine');
+  assert.doesNotMatch(section, /SAMPLE|sampleChart/, 'a hand-written set of numbers is back');
+  assert.doesNotMatch(section, /persistPlan|savePlanLocal|save\(|localStorage|plan\.[a-zA-Z]+\s*=[^=]/, 'the fitness section writes something');
+});
+
+test('race preparation says where a figure sits and never scores or judges it', () => {
+  const { surfaces } = fitnessSurfaces();
+  const text = surfaces['preparation.js'];
+  // The word list above already bars readiness, recovery and risk. These bar the shape of a verdict.
+  for (const re of [/\bscore/i, /\bready\b/i, /\bpass(ed)?\b/i, /on track/i, /good to go/i, /\bgrade/i]) {
+    const code = text.replace(/\/\*[\s\S]*?\*\//g, '');   // the header comment explains what is left out
+    const hit = code.match(re);
+    assert.equal(hit, null, `preparation.js says "${hit && hit[0]}"`);
+  }
+  const { section } = fitnessSurfaces();
+  assert.match(section, /Race preparation/, 'the block is on the page');
+  assert.match(section, /illustrative, not findings/, 'its references say they are illustrative');
 });

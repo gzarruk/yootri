@@ -142,7 +142,7 @@ export function summarizePlan(plan) {
     blocks,
     raceType: profile.raceType ?? null,
     raceDate: profile.raceDate ?? null,
-    annualHours: profile.annualHours ?? null,
+    peakHours: plan.season?.length ? Math.max(...plan.season.map((w) => w.hours ?? 0)) : null,
     plannedMinutes: weekTotals(plan).reduce((a, b) => a + b, 0),
     // `done` keeps false entries when a session is un-ticked, so count what is
     // actually marked rather than how many ids have ever been touched.

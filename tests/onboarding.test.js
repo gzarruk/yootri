@@ -11,7 +11,8 @@ import { durToMin } from '../assets/coach/duration.js';
 import { DAYS } from '../assets/coach/profile.js';
 
 const TODAY = '2026-10-14'; // a Wednesday
-const MONDAY = '2026-10-12';
+const MONDAY = '2026-10-12';            // the Monday before today: already under way
+const NEXT_MONDAY = '2026-10-19';       // where a new plan starts
 
 /** A wizard filled in the way an athlete would. */
 const filled = (over = {}) => ({
@@ -93,8 +94,9 @@ test('every step of a well-filled wizard has nothing to say', () => {
   for (const step of STEPS) assert.deepEqual(stepProblems(step, filled(), { today: TODAY }), [], step);
 });
 
-test('recent weekly hours are the one background answer the plan cannot do without', () => {
-  const p = stepProblems('background', filled({ recentWeeklyHours: undefined }), { today: TODAY });
+test('recent weekly hours are optional, but a nonsense figure is refused', () => {
+  assert.deepEqual(stepProblems('background', filled({ recentWeeklyHours: undefined }), { today: TODAY }), []);
+  const p = stepProblems('background', filled({ recentWeeklyHours: 90 }), { today: TODAY });
   assert.deepEqual(p.map((x) => x.field), ['recentWeeklyHours']);
 });
 
@@ -143,34 +145,32 @@ test('a time goal needs the time', () => {
 
 test('the preview says how long the season is and where tune-ups land', () => {
   const r = racePreview(filled({ tuneUps: [{ name: 'Half', date: '2027-03-07', raceType: 'half-marathon' }] }), { today: TODAY });
-  assert.equal(r.startISO, MONDAY);
-  assert.equal(r.weeks, 31);
+  assert.equal(r.startISO, NEXT_MONDAY);
+  assert.equal(r.weeks, 30);
   assert.equal(r.landings.applied.length, 1);
   assert.equal(r.landings.refused.length, 0);
 });
 
 test('a tune-up inside the main race taper is reported, not hidden', () => {
-  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: '10k' }] }), { today: TODAY });
+  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: 'marathon' }] }), { today: TODAY });
   assert.equal(r.landings.refused[0].reason, 'in-primary-taper');
 });
 
 /* ---- building the plan ---- */
 
-test('the plan starts this Monday and ends on the main race', () => {
+test('the plan starts next Monday and ends on the main race', () => {
   const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
-  assert.equal(p.start, MONDAY);
-  assert.equal(weekCount(p), 31);
+  assert.equal(p.start, NEXT_MONDAY);
+  assert.equal(weekCount(p), 30);
   assert.equal(goalEvent(normalizeEvents(p.events)).date, '2027-05-16');
   assert.equal(p.profile.raceType, '70.3');
 });
 
-test('the first weeks open near what the athlete trains now', () => {
-  for (const hours of [5, 8, 12]) {
-    const p = buildPlanFromAnswers(filled({ recentWeeklyHours: hours }), { today: TODAY, now: 1 });
-    const opening = p.season.slice(0, 4);
-    const mean = opening.reduce((a, w) => a + w.hours, 0) / opening.length;
-    assert.ok(Math.abs(mean - hours) <= 0.5, `${hours} h a week opens at ${mean} h`);
-  }
+test('the biggest week is the time the athlete said they have', () => {
+  const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
+  const week = Object.values(emptyAnswers().availability).reduce((a, b) => a + b, 0);
+  assert.equal(Math.max(...p.season.map((w) => w.hours)), Math.floor(week / 30) / 2);
+  assert.equal('annualHours' in p.profile, false);
 });
 
 test('the week, the long days and the cap reach the profile', () => {
@@ -200,12 +200,21 @@ test('thresholds and the run result go on the plan, body measurements do not', (
 
 test('tune-ups are on the calendar with their taper landed', () => {
   const p = buildPlanFromAnswers(
-    filled({ tuneUps: [{ name: 'Half', date: '2027-03-07', raceType: 'half-marathon' }] }),
+    filled({ tuneUps: [{ name: 'Marathon', date: '2027-03-07', raceType: 'marathon' }] }),
     { today: TODAY, now: 1 },
   );
   const tune = secondaryRaces(normalizeEvents(p.events));
   assert.equal(tune.length, 1);
   assert.ok(p.season.some((w) => w.block === 'Taper'), 'a taper week was spliced in for it');
+});
+
+test('a tune-up of two hours or less is on the calendar with no taper', () => {
+  const p = buildPlanFromAnswers(
+    filled({ tuneUps: [{ name: 'Half', date: '2027-03-07', raceType: 'half-marathon' }] }),
+    { today: TODAY, now: 1 },
+  );
+  assert.equal(secondaryRaces(normalizeEvents(p.events)).length, 1);
+  assert.ok(!p.season.some((w) => w.block === 'Taper'), 'a half marathon is a hard day in the build');
 });
 
 test('a returning athlete keeps their history, splits and other results', () => {
@@ -252,11 +261,11 @@ test('the athlete record collects the About you answers and nothing from the pla
 test('the review shows week 1 and blocks nothing on a buildable plan', () => {
   const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
   const r = planReview(p);
-  assert.equal(r.weeks, 31);
+  assert.equal(r.weeks, 30);
   assert.equal(r.blocked, false);
   assert.deepEqual(r.firstWeek, sessionsAt(p, 0));
   assert.equal(r.firstWeekMinutes, sessionsAt(p, 0).reduce((a, s) => a + durToMin(s.dur), 0));
-  assert.equal(r.hoursByWeek.length, 31);
+  assert.equal(r.hoursByWeek.length, 30);
 });
 
 test('a season built by the wizard is released one week at a time, from week 1', () => {
@@ -298,4 +307,101 @@ test('a plan built from carried answers has all three kinds on the calendar', ()
   assert.equal(secondaryRaces(events).length, 1);
   assert.ok(events.some((e) => e.name === 'Club ride' && e.priority === null));
   assert.equal(new Set(events.map((e) => e.id)).size, events.length, 'ids are unique');
+});
+
+/* ---- when the plan starts ---- */
+
+test('a new plan starts on a Monday that has not happened yet, whatever day it is made', () => {
+  for (let i = 0; i < 21; i++) {
+    const today = new Date(Date.UTC(2026, 9, 12 + i)).toISOString().slice(0, 10);
+    const p = buildPlanFromAnswers(filled({ race: { date: '2027-05-16', raceType: '70.3' } }), { today, now: 1 });
+    assert.equal(new Date(`${p.start}T00:00:00Z`).getUTCDay(), 1, `${p.start} is a Monday`);
+    assert.ok(p.start > today, `${today}: the plan starts ${p.start}, not in the past`);
+    assert.equal(racePreview(filled(), { today }).startISO, p.start, 'the preview shows the same start');
+  }
+});
+
+test('made on a Sunday, the plan starts tomorrow; made on a Monday, a week on', () => {
+  const sunday = buildPlanFromAnswers(filled(), { today: '2026-10-18', now: 1 });
+  assert.equal(sunday.start, '2026-10-19');
+  const monday = buildPlanFromAnswers(filled(), { today: '2026-10-19', now: 1 });
+  assert.equal(monday.start, '2026-10-26');
+});
+
+test('a start date the athlete picks snaps forward to a Monday, never back', () => {
+  const at = (startDate) => buildPlanFromAnswers(filled({ startDate }), { today: TODAY, now: 1 }).start;
+  assert.equal(at('2026-11-02'), '2026-11-02', 'a Monday stays');
+  assert.equal(at('2026-11-04'), '2026-11-09', 'a Wednesday goes to the Monday after');
+  assert.equal(at('2026-09-01'), NEXT_MONDAY, 'a date long gone is the next Monday');
+  assert.equal(at(MONDAY), NEXT_MONDAY, 'so is the Monday that has already started');
+  assert.equal(at('not a date'), NEXT_MONDAY, 'and so is nothing sensible');
+});
+
+test('the preview, the plan and the review use the start the athlete picked', () => {
+  const a = filled({ startDate: '2026-11-04' });
+  const preview = racePreview(a, { today: TODAY });
+  const p = buildPlanFromAnswers(a, { today: TODAY, now: 1 });
+  assert.equal(preview.startISO, '2026-11-09');
+  assert.equal(p.start, preview.startISO);
+  assert.equal(weekCount(p), preview.weeks, 'the length the preview promised is the length built');
+  assert.equal(planReview(p).weeks, preview.weeks);
+});
+
+test('a later start is a shorter runway to the same race', () => {
+  const early = racePreview(filled(), { today: TODAY }).weeks;
+  const late = racePreview(filled({ startDate: '2026-12-07' }), { today: TODAY }).weeks;
+  assert.equal(early - late, 7);
+});
+
+test('a race before the plan starts is refused, with the date it would have to be after', () => {
+  const p = stepProblems('races', filled({ race: { date: '2026-10-16', raceType: '70.3' } }), { today: TODAY });
+  assert.deepEqual(p.map((x) => x.field), ['race']);
+  assert.match(p[0].message, /19 Oct|2026-10-19/);
+});
+
+test('a race on the start day itself is allowed; so is one in the first week', () => {
+  assert.deepEqual(stepProblems('races', filled({ race: { date: NEXT_MONDAY, raceType: '70.3' } }), { today: TODAY }), []);
+  assert.deepEqual(stepProblems('races', filled({ race: { date: '2026-10-24', raceType: '70.3' } }), { today: TODAY }), []);
+});
+
+test('a tune-up before the plan starts is refused, since no week holds it', () => {
+  const p = stepProblems('races', filled({ tuneUps: [{ name: 'Early', date: '2026-10-17', raceType: '10k' }] }), { today: TODAY });
+  assert.deepEqual(p.map((x) => x.field), ['tuneUps.0']);
+});
+
+test('a start after the race week is refused', () => {
+  const p = stepProblems('races', filled({ startDate: '2027-06-07' }), { today: TODAY });
+  assert.deepEqual(p.map((x) => x.field), ['startDate']);
+  assert.deepEqual(stepProblems('races', filled({ startDate: '2027-05-10' }), { today: TODAY }), [], 'the race week itself is fine');
+});
+
+test('when the athlete picked the start, it is the start that is wrong, not the race', () => {
+  // The race is on 2026-11-20; a start of 2026-12-07 would come after it.
+  const answers = filled({ race: { date: '2026-11-20', raceType: '70.3' }, startDate: '2026-12-07' });
+  assert.deepEqual(stepProblems('races', answers, { today: TODAY }).map((x) => x.field), ['startDate']);
+});
+
+test('a start date that is not a date is said so', () => {
+  const p = stepProblems('races', filled({ startDate: 'next week' }), { today: TODAY });
+  assert.deepEqual(p.map((x) => x.field), ['startDate']);
+});
+
+/* ---- tune-ups that need no taper ---- */
+
+test('the preview says a short tune-up gets no taper, and does not refuse it for sitting in the main race\'s', () => {
+  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: '10k' }] }), { today: TODAY });
+  assert.deepEqual(r.landings.refused, [], 'nothing is overwritten, so nothing is turned down');
+  assert.equal(r.landings.applied[0].taper, false);
+});
+
+test('the preview still turns a tune-up with a taper away when it sits inside the main race\'s', () => {
+  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: 'marathon' }] }), { today: TODAY });
+  assert.equal(r.landings.refused[0].reason, 'in-primary-taper');
+});
+
+test('the review reports a refused taper, not a short race', () => {
+  const short = buildPlanFromAnswers(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: '10k' }] }), { today: TODAY, now: 1 });
+  assert.equal(planReview(short).issues.some((i) => i.code === 'race-in-primary-taper'), false);
+  const long = buildPlanFromAnswers(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: 'marathon' }] }), { today: TODAY, now: 1 });
+  assert.equal(planReview(long).issues.some((i) => i.code === 'race-in-primary-taper'), true);
 });

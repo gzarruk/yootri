@@ -255,12 +255,11 @@ test('the Garmin button is hidden until this browser is paired', () => {
   assert.match(m[0], /class="[^"]*\bhidden\b/, 'the Garmin button is visible before anything is paired');
 });
 
-test('the pairing token can only ever be sent to this computer', () => {
+test('the pairing token can only ever be sent to this computer', async () => {
   /* The token goes wherever the stored address says. An address that is not a
      loopback one — typed by mistake, or planted — must not be accepted. */
-  const m = HTML.match(/const GARMIN_URL_RE = (\/.+\/);/);
-  assert.ok(m, 'GARMIN_URL_RE is gone from index.html');
-  const re = new Function(`return ${m[1]}`)();
+  assert.match(HTML, /const GARMIN_URL_RE = BRIDGE_URL_RE;/, 'the page no longer uses the engine\'s loopback rule');
+  const { BRIDGE_URL_RE: re } = await import('../assets/coach/synced.js');
   for (const ok of ['http://127.0.0.1:8765', 'http://localhost:8765', 'http://127.0.0.1:18765']) {
     assert.equal(re.test(ok), true, ok);
   }
@@ -366,46 +365,38 @@ function fnBody(name) {
   return src.slice(open + 1);
 }
 
-test('there is one plan: no switcher, no sibling plans, no second way to create one', () => {
-  for (const gone of ['switchPlan', 'duplicatePlan', 'openNewPlanPanel', 'createNewPlan', 'dropIfUntouched', 'function deletePlan']) {
-    assert.ok(!HTML.includes(gone), `${gone} is back in index.html`);
-  }
-  const menu = fnBody('openPlanMenu');
-  for (const act of ['switch', 'dup', 'blank', 'new']) {
-    assert.doesNotMatch(menu, new RegExp(`menuRow\\('${act}'|data-pm="${act}"`), `the plan menu offers '${act}' again`);
-  }
-  assert.match(menu, /startover/);
-  assert.match(menu, /archive\.length/, 'Past plans only when there are some');
-});
-
-test('starting over keeps the chosen races and replaces the plan only when the wizard finishes', () => {
-  const dlg = fnBody('openStartOverDialog');
-  assert.match(dlg, /upcomingEvents\(/);
-  assert.match(dlg, /carryOver\(/);
-  assert.match(dlg, /openWizard\(\{ restart: true, carry/);
-  assert.doesNotMatch(dlg, /remove\(planKey|cloudDelete\(/, 'nothing is deleted before the wizard finishes');
-  assert.match(fnBody('runMenuAction'), /act === 'startover'\) return openStartOverDialog\(\)/);
-});
-
-test('earlier plans are archived, not deleted, and never reach the coach or the calendar', () => {
-  assert.match(fnBody('settlePlans'), /consolidatePlans\(/);
-  assert.doesNotMatch(fnBody('settlePlans'), /cloudDelete\(planKey/);
-  for (const fn of ['ensurePlans', 'mergeCloudPlans']) assert.match(fnBody(fn), /settlePlans\(\)/, fn);
-  assert.match(fnBody('openPastPlansPanel'), /exportEnvelope\(/);
-});
-
 test('Reset week builds the week the way a re-fit does', () => {
   // freshWeek carries the race day; generateWeek called directly would not.
   assert.match(HTML, /const freshSessions = \(w\) => freshWeek\(/);
 });
 
-test('creating or importing a season replaces the untouched stand-in', () => {
-  for (const fn of ['finishWizard', 'doImport']) {
-    assert.match(fnBody(fn), /replaceCurrentPlan\(/, `${fn} no longer replaces the current plan`);
+test('creating or importing a season replaces whatever is stored, and only once it is finished', () => {
+  for (const fn of ['doImport', 'finishWizard']) {
+    const body = fnBody(fn);
+    assert.match(body, /replaceCurrentPlan\(/, `${fn} no longer replaces the stored plan`);
   }
   const body = fnBody('replaceCurrentPlan');
-  assert.ok(body.indexOf('cloudDelete(') < body.indexOf('addPlan('), 'the old plan goes before the new one is adopted');
+  assert.ok(body.indexOf('clearPlans()') < body.indexOf('addPlan('), 'the old plan is cleared before the new one is adopted');
   assert.match(body, /armUndo\(/, 'a used season is replaced with an Undo');
+  assert.match(fnBody('clearPlans'), /cloudDelete\(/, 'a plan already uploaded goes from the cloud too');
+});
+
+test('starting over keeps the chosen races and deletes nothing before the wizard finishes', () => {
+  const dlg = fnBody('openStartOverDialog');
+  assert.match(dlg, /upcomingEvents\(/);
+  assert.match(dlg, /carryOver\(/);
+  assert.match(dlg, /openWizard\(\{ restart: true, carry/);
+  assert.doesNotMatch(dlg, /clearPlans\(|remove\(planKey|cloudDelete\(/, 'nothing is deleted before the wizard finishes');
+  assert.match(fnBody('runPlanAction'), /act === 'startover'\) return openStartOverDialog\(\)/);
+  assert.match(fnBody('popHtml'), /popRow\('startover'/);
+  assert.doesNotMatch(withoutComments(HTML), /function deletePlan\b/);
+});
+
+test('the plan menu is one plan, not a list of them', () => {
+  const menu = fnBody('popHtml');
+  assert.doesNotMatch(menu, /plans\.map|data-pm="switch"|menuitemradio/);
+  assert.doesNotMatch(withoutComments(HTML), /function (switchPlan|duplicatePlan|openNewPlanPanel)\b/);
+  assert.doesNotMatch(fnBody('runPlanAction'), /'(switch|blank|dup)'/);
 });
 
 test('the untouched check is the engine’s, wherever the page asks it', () => {
@@ -416,10 +407,26 @@ test('the untouched check is the engine’s, wherever the page asks it', () => {
 });
 
 test('FTP and CSS can be entered without Garmin', () => {
-  const body = fnBody('openPacesPanel');
-  assert.match(body, /id="bm-ftp"/);
-  assert.match(body, /id="bm-css"/);
+  const body = fnBody('bioThresholdsHTML');
+  assert.match(body, /id="bio-ftp"/);
+  assert.match(body, /id="bio-css"/);
   assert.doesNotMatch(body, /synced\s*\?/, 'the fields must not wait for a sync');
+});
+
+test('Biometrics saves About you, the plan references and the heart-rate figures to three separate stores', () => {
+  const body = fnBody('saveBiometrics');
+  assert.match(body, /saveAthleteLocal\(next\)/, 'About you goes to this browser');
+  assert.match(body, /saveLoadRefs\(refs\)/, 'FTP and CSS go on the plan');
+  assert.match(body, /save\(HR_THRESHOLDS_KEY, hr\)/, 'heart-rate figures go to this browser');
+  // Nothing is written until every value has been accepted.
+  assert.ok(body.indexOf('if (refused.length)') < body.indexOf('saveAthleteLocal(next)'), 'a refused value must stop the whole save');
+  // And the heart-rate figures never ride on the plan.
+  assert.doesNotMatch(body, /plan\.(hr|lthr)/);
+});
+
+test('the About you and Paces panels are gone: the Biometrics page is their only home', () => {
+  assert.doesNotMatch(HTML, /function openAthletePanel|function openPacesPanel/);
+  assert.match(HTML, /data-page="biometrics"[\s\S]*id="bio-root"/);
 });
 
 /* ---- About you: the athlete record and its own consent ---- */
@@ -506,7 +513,7 @@ test('the wizard saves through the same doors as everything else', () => {
   assert.match(body, /replaceCurrentPlan\(built\)/);
 });
 
-test('the wizard is reachable from first visit, first sign-in and the plan menu', () => {
+test('the wizard is reachable from first visit, first sign-in and the plan switcher', () => {
   assert.match(fnBody('maybeShowFirstRun'), /maybeStartWizard\(\)/);
   assert.match(fnBody('pullFromCloud'), /maybeStartWizard\(\)/);
   assert.match(fnBody('openStartOverDialog'), /currentPlanUntouched\(\)\) return openWizard\(\)/);
@@ -529,7 +536,7 @@ test('a week after the release horizon shows no sessions, on the board or in the
   assert.match(fnBody('renderCalendar'), /if \(!isReleased\(plan, w\.absWeek\)\) continue;/);
 });
 
-test('a release goes through applyDraft, with an undo, and nothing else writes it but the menu toggle', () => {
+test('a release goes through applyDraft, with an undo, and nothing else writes it but the toggle in the plan’s … menu', () => {
   const body = fnBody('applyRelease');
   assert.match(body, /applyDraft\(plan, r\.draft/);
   assert.match(body, /pendingUndo = \{ kind: 'refit'/);
@@ -541,4 +548,179 @@ test('a release goes through applyDraft, with an undo, and nothing else writes i
 test('Plan setup and race changes keep the weeks already trained', () => {
   assert.match(fnBody('previewRefit'), /refit\(plan, \{ profile, keepBefore: trainedWeeks\(\) \}\)/);
   assert.match(fnBody('applyEvents'), /keepBefore: trainedWeeks\(\)/);
+});
+
+/* ---- The redesign's tokens, icons and theme ---- */
+
+const SHELL_CSS = readFileSync(new URL('assets/app-shell.css', ROOT), 'utf8');
+
+test('icons are CSS masks: no icon font is loaded and no Phosphor class is left', () => {
+  assert.ok(!/phosphor/i.test(HTML), 'index.html still loads or names Phosphor');
+  assert.ok(!/\bclass="[^"]*\bph\b/.test(HTML) && !/class="ph /.test(HTML), 'a Phosphor `ph` class is still used');
+  assert.ok(!/\bph-[a-z]/.test(HTML), 'a `ph-*` icon name is still used');
+});
+
+test('every icon the page names is drawn in app-shell.css', () => {
+  const drawn = new Set([...SHELL_CSS.matchAll(/^\.(i-[a-z0-9-]+)\s*\{/gm)].map((m) => m[1]));
+  // Literal uses ("ic i-x") and the names the page passes around ('i-x').
+  const used = new Set([...HTML.matchAll(/\bi-[a-z][a-z0-9-]*/g)].map((m) => m[0]));
+  const missing = [...used].filter((n) => !drawn.has(n));
+  assert.deepEqual(missing, [], `icons used by index.html but not drawn: ${missing.join(', ')}`);
+});
+
+test('the theme is set before first paint and has two palettes', () => {
+  const headEnd = HTML.indexOf('</head>');
+  const early = HTML.slice(0, headEnd);
+  assert.match(early, /<script>[\s\S]*data-theme[\s\S]*<\/script>/, 'no pre-paint theme script in <head>');
+  assert.match(early, /app-shell\.css/, 'app-shell.css is not linked in <head>');
+  assert.match(SHELL_CSS, /:root\s*\{[\s\S]*?--color-accent:/);
+  assert.match(SHELL_CSS, /:root\[data-theme="light"\]\s*\{[\s\S]*?--color-accent:/);
+});
+
+test('the page paints with tokens, not colour literals, so both themes follow', () => {
+  const css = HTML.slice(HTML.indexOf('<style>'), HTML.indexOf('</style>'));
+  const literals = css.match(/#[0-9a-fA-F]{3,8}\b|\b(?:white|black)\b(?!-)/g) || [];
+  // The only literals allowed are the fallbacks after a token in `.pnl`.
+  // Anything else belongs in app-shell.css.
+  assert.deepEqual(literals.filter((l) => !/^#1b1e2b$|^#e8e9f0$/i.test(l)), [], 'a colour literal crept into the page styles');
+  assert.ok(!/DISC\s*=\s*\{[^}]*#[0-9a-f]{6}/i.test(HTML), 'discipline colours are hard-coded again');
+});
+
+/* ---- The shell: sidebar, pages and routes ---- */
+
+test('every id in the static markup is unique', () => {
+  // The markup only: the page script builds panels from templates that repeat
+  // ids on purpose, because only one of them is ever in the document.
+  const markup = HTML.slice(0, HTML.indexOf('<script type="module">'));
+  const seen = new Map();
+  for (const m of markup.matchAll(/\bid="([^"]+)"/g)) seen.set(m[1], (seen.get(m[1]) || 0) + 1);
+  const dupes = [...seen].filter(([, n]) => n > 1).map(([id]) => id);
+  assert.deepEqual(dupes, [], `duplicate ids: ${dupes.join(', ')}`);
+});
+
+test('every sidebar route has a page, and every page has a route', () => {
+  const routes = [...HTML.matchAll(/\bdata-route="([a-z]+)"/g)].map((m) => m[1]);
+  const pages = new Set([...HTML.matchAll(/\bdata-page="([a-z]+)"/g)].map((m) => m[1]));
+  assert.ok(routes.length >= 5, 'the sidebar lost its page links');
+  for (const r of routes) {
+    // Calendar is the week page in its Month view, not a page of its own.
+    const page = r === 'calendar' ? 'week' : r;
+    assert.ok(pages.has(page), `route "${r}" has no [data-page="${page}"]`);
+  }
+  for (const p of pages) assert.ok(routes.includes(p), `page "${p}" is not reachable from the sidebar`);
+  const known = HTML.match(/const ROUTES = \[([^\]]*)\]/);
+  assert.ok(known, 'the page script lost its ROUTES list');
+  for (const r of routes) assert.ok(known[1].includes(`'${r}'`), `ROUTES does not know "${r}"`);
+});
+
+test('the dialog roots sit outside every page, so a hidden page cannot hide a dialog', () => {
+  for (const id of ['modal-root', 'dialog-root', 'panel-root']) {
+    const at = HTML.indexOf(`id="${id}"`);
+    const mainEnd = HTML.indexOf('</main>');
+    assert.ok(at > mainEnd, `#${id} is inside <main>, where a hidden page would hide it`);
+  }
+});
+
+test('Plan setup, Coach and Garmin keep their ids in the sidebar, and the Garmin item starts hidden', () => {
+  const side = HTML.slice(HTML.indexOf('<nav class="side"'), HTML.indexOf('</nav>'));
+  for (const id of ['setup-btn', 'coach-btn', 'garmin-btn', 'theme-seg', 'account', 'mydata-btn']) {
+    assert.ok(side.includes(`id="${id}"`), `#${id} is not in the sidebar`);
+  }
+  assert.match(side, /class="nav hidden" id="garmin-btn"/);
+});
+
+test('the app opens on the current week without writing the plan', () => {
+  // applyRoute(…, true) is the boot call: it must return before persistPlan().
+  const fn = HTML.slice(HTML.indexOf('function applyRoute('), HTML.indexOf('function navigate('));
+  assert.ok(fn.indexOf('if (boot) return;') > -1 && fn.indexOf('if (boot) return;') < fn.indexOf('persistPlan()'),
+    'booting must not persist: a reload is not an edit, and a write is a cloud push');
+  assert.match(HTML, /applyRoute\(routeFromHash\(\), true\);\s*renderAll\(\);/);
+});
+
+/* ---- The phone layout ---- */
+
+test('the phone has a tab bar with the four pages and a More sheet, and a day strip for the board', () => {
+  const bar = HTML.slice(HTML.indexOf('<nav class="tabbar"'), HTML.indexOf('</nav>', HTML.indexOf('<nav class="tabbar"')));
+  for (const r of ['week', 'status', 'biometrics', 'health']) assert.ok(bar.includes(`data-route="${r}"`), `the tab bar has no ${r} tab`);
+  assert.ok(bar.includes('id="tab-more"'), 'the tab bar has no More button');
+  assert.match(HTML, /id="dstrip"/);
+  assert.match(HTML, /<meta name="viewport"[^>]*viewport-fit=cover/, 'the tab bar needs the safe-area inset');
+});
+
+test('the sidebar is the phone sheet, so nothing in it can be missing on a phone', () => {
+  // One nav, two presentations: if the sheet were a copy it could drift from the sidebar.
+  assert.equal((HTML.match(/<nav class="side"/g) || []).length, 1);
+  assert.match(SHELL_CSS, /body\.more-open \.side-wrap \{ display: flex; \}/);
+  assert.match(SHELL_CSS, /@media \(max-width: 760px\)[\s\S]*\.im-board \.im-col\.m-on \{ display: flex; \}/);
+});
+
+/* ---- Pairing the bridge from a link ---- */
+
+test('a pairing link is read by the engine, saved to the one place a pairing lives, and removed from the address bar', () => {
+  const body = fnBody('maybeOpenGarminSetup');
+  assert.match(body, /parsePairing\(location\.hash\)/);
+  assert.match(body, /save\(GARMIN_CONFIG_KEY, pairing\)/);
+  // The fragment is replaced before anything else can show it.
+  assert.ok(body.indexOf('history.replaceState') > -1 && body.indexOf('history.replaceState') < body.indexOf('save(GARMIN_CONFIG_KEY'),
+    'the address bar is cleaned before the token is stored');
+  assert.doesNotMatch(body, /setStatus\([^)]*token|console\.[a-z]+\([^)]*(pairing|token)/i, 'the token must never be shown or logged');
+});
+
+test('the loopback rule for a pairing is the engine\'s, not a copy', () => {
+  assert.match(HTML, /const GARMIN_URL_RE = BRIDGE_URL_RE;/);
+  assert.doesNotMatch(HTML, /GARMIN_URL_RE = \/\^http/, 'the page has its own loopback pattern again');
+});
+
+/* ---- The bridge's state in the page ---- */
+
+test('the bridge is only asked about by a browser that has been paired', () => {
+  const check = fnBody('checkBridge');
+  assert.match(check, /if \(!cfg\)[\s\S]*?return/, 'checkBridge must stop before any request when nothing is paired');
+  assert.ok(check.indexOf('if (!cfg)') < check.indexOf('bridgeFetch('), 'the pairing check comes first');
+  // Every place it is started is gated on a pairing or follows one.
+  assert.match(HTML, /if \(garminConfig\(\)\) checkBridge\(\);/);
+  assert.match(HTML, /if \(garminConfig\(\) && Date\.now\(\) - bridgeCheckedAt > 30000\) checkBridge\(\)/);
+});
+
+test('the state is words, not only a colour, and comes from the engine', () => {
+  assert.match(fnBody('checkBridge'), /bridgeState\(/);
+  assert.match(fnBody('renderBridgeState'), /textContent = b\.label/);
+  assert.match(HTML, /id="garmin-state" role="status"/);
+  assert.match(HTML, /<div class="row"><span>Bridge<\/span><b id="gm-state">/);
+});
+
+test('the page asks for no annual hours and says nothing about them', () => {
+  const src = withoutComments(HTML);
+  assert.doesNotMatch(src, /f-annual|estimateAnnualHours|set_annual_hours|seasonFit|annualHours/);
+  assert.doesNotMatch(HTML, /[Aa]nnual hours/);
+});
+
+/* ---- where a new plan starts ---- */
+
+test('a plan the page makes on its own starts next Monday, not the Monday before today', () => {
+  // `mondayOf(today)` is the Monday before today, which starts a plan six days
+  // in the past on a Sunday. The default is dates.js's nextMonday.
+  const line = HTML.split('\n').find((l) => /const defaultStart = /.test(l));
+  assert.ok(line, 'the page still has a defaultStart');
+  assert.match(line, /nextMonday\(/, 'defaultStart asks nextMonday');
+  assert.doesNotMatch(line, /getDay|since|-since/, 'and no longer walks back to the Monday before');
+  assert.match(HTML, /import \{[^}]*\bnextMonday\b[^}]*\} from '\.\/assets\/coach\/dates\.js'/, 'nextMonday is imported from dates.js');
+});
+
+/* ---- A and B races ---- */
+
+test('races are called A and B on screen, and stored as primary and secondary', () => {
+  assert.match(HTML, /PRIORITY_LABELS = \{ primary: 'A race \(target\)', secondary: 'B race \(fitness test\)' \}/);
+  assert.match(HTML, /<option value="primary"/, 'the stored value is still primary');
+  assert.match(HTML, /<option value="secondary"/, 'and secondary');
+  assert.doesNotMatch(HTML, /value="a"|value="b"|priority: 'A'|priority: 'B'|'A race'\s*:|'B race'\s*:/, 'no stored key was renamed');
+});
+
+test('the event panel keeps what it does not show when a race is edited', () => {
+  const body = HTML.slice(HTML.indexOf('function saveEventFromPanel'), HTML.indexOf('function saveEventFromPanel') + 900);
+  assert.match(body, /\.\.\.\(state\.events\.find\(\(x\) => x\.id === id\) \|\| \{\}\)/, 'the saved event starts from the one being edited');
+});
+
+test('the wizard does not open on the shortest main race just because it is first in the list', () => {
+  assert.doesNotMatch(HTML, /(?<!SECONDARY_)RACE_TYPES\[0\]/);
 });

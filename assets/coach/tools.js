@@ -13,15 +13,16 @@
    Reads operate on the draft when one exists, so the model can see the
    consequences of its own pending changes before proposing them. */
 
-import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsOf, raceDayFor } from './plan.js';
+import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsDetail, raceClosure } from './plan.js';
 import {
   normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES, MAX_SESSIONS_PER_DAY,
+  weeklyAvailableMinutes,
 } from './profile.js';
 import { generateWeek } from './generate.js';
 import { trailingCompliance, weekCompliance } from './actuals.js';
 import { suggest } from './adapt.js';
 import { releaseState, reviewWeek, proposeNextWeek } from './review.js';
-import { seasonFit, volumeBeyondRace } from './validate.js';
+import { volumeBeyondRace } from './validate.js';
 import { durToMin } from './duration.js';
 import { paceTableFor, formatPace, ZONES } from './paces.js';
 import { planLandings, LONG_RUNWAY_WEEKS } from './season.js';
@@ -33,7 +34,7 @@ import { loadThresholds, activityLoad, trainingLoad } from './load.js';
 import {
   EVENT_KINDS, EVENT_PRIORITIES, RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES,
   STORABLE_RACE_TYPES, raceTypeLabel, normalizeEvents, upsertEvent, removeEvent,
-  goalEvent, raceFieldsOf,
+  goalEvent, raceFieldsOf, hasTaper, believableMinutes,
 } from './events.js';
 
 const clone = (x) => structuredClone(x);
@@ -121,7 +122,7 @@ function rebuild(draft, from, to) {
       profile: draft.profile,
       idPrefix: weekKey(w.absWeek),
       // Or regenerating a range would schedule training on a race day.
-      raceDay: raceDayFor(draft, w.absWeek),
+      ...raceClosure(draft, w.absWeek),
     }).sessions;
   }
   return draft;
@@ -179,6 +180,11 @@ const describeEvent = (plan, ev) => {
     raceType: ev.raceType,
     raceTypeName: ev.raceType ? raceTypeLabel(ev.raceType) : null,
     priority: ev.priority ?? 'none',
+    ...(ev.ambition ? { ambition: ev.ambition } : {}),
+    // What the athlete said it will take them, when they did; and whether the
+    // season builds a taper for a race that long. Only a tune-up has either to say.
+    ...(ev.expectedMinutes ? { expectedMinutes: ev.expectedMinutes } : {}),
+    ...(ev.priority === 'secondary' ? { getsTaper: hasTaper(ev) } : {}),
     // Null rather than clamped: a race the plan does not reach is a real thing
     // to have on the calendar, and saying "week 1" for it would be a lie.
     week: Number.isInteger(at) && at >= 0 && at < weekCount(plan) ? weekLabel(at) : null,
@@ -190,8 +196,11 @@ const describeEvent = (plan, ev) => {
 function landingNote(plan, ev) {
   if (!ev || ev.priority !== 'secondary') return null;
   const at = weekIndexOf(plan.start, ev.date);
-  const { applied, refused } = planLandings({ weeks: weekCount(plan), landings: landingsOf(plan) });
+  const { applied, refused } = planLandings({ weeks: weekCount(plan), landings: landingsDetail(plan) });
 
+  if (applied.some((a) => a.absWeek === at && a.taper === false)) {
+    return 'It is short enough to need no taper week, so no taper or race week was built: only its own day is cleared.';
+  }
   if (applied.some((a) => a.absWeek === at)) {
     return `Week ${weekLabel(at)} is now its race week` +
       (at > 0 ? `, with week ${weekLabel(at - 1)} as a taper week before it.` : '.');
@@ -252,7 +261,7 @@ function writeEvents(s, base, next, lead) {
 
 /** Guards shared by every tool that writes an event. Each returns a sentence
     the model can act on, or null when there is nothing wrong. */
-function eventProblem(base, { date, kind, raceType, priority }) {
+function eventProblem(base, { date, kind, raceType, priority, expectedMinutes }) {
   if (date !== undefined) {
     if (!toISO(parseISO(date))) {
       return `"${date}" is not a date. Use YYYY-MM-DD.`;
@@ -269,6 +278,13 @@ function eventProblem(base, { date, kind, raceType, priority }) {
     if (kind === 'other') return 'Only a race carries a distance.';
     if (!STORABLE_RACE_TYPES.includes(raceType)) {
       return `"${raceType}" is not a distance yootri knows. Use one of: ${STORABLE_RACE_TYPES.join(', ')}.`;
+    }
+  }
+  if (expectedMinutes !== undefined && expectedMinutes !== null) {
+    if (kind === 'other') return 'Only a race has a time to finish in.';
+    if (believableMinutes(expectedMinutes) === undefined) {
+      return `"${expectedMinutes}" is not a time to expect. Give the minutes the race should take, ` +
+        'between 20 and 1200, or leave it out to use the usual time for the distance.';
     }
   }
   if (priority !== undefined && !PRIORITY_INPUT.includes(priority)) {
@@ -291,7 +307,7 @@ export const TOOL_DEFS = [
   {
     name: 'get_plan_summary',
     description:
-      'Overview of the whole season: number of weeks, the blocks and their lengths, planned hours per week, the athlete\'s annual hour budget and race details. Call this first to orient yourself before proposing anything.',
+      'Overview of the whole season: number of weeks, the blocks and their lengths, planned hours per week, the athlete\'s race details. Call this first to orient yourself before proposing anything.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -307,7 +323,7 @@ export const TOOL_DEFS = [
   {
     name: 'get_profile',
     description:
-      'The athlete\'s constraints: how many minutes are available each weekday, discipline rules such as "no swimming on Mondays" or a weekly session cap, per-block discipline splits, annual hours and race distance.',
+      'The athlete\'s constraints: how many minutes are available each weekday, discipline rules such as "no swimming on Mondays" or a weekly session cap, per-block discipline splits and race distance.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -396,16 +412,6 @@ export const TOOL_DEFS = [
     description:
       'The athlete\'s running paces: the benchmark result they entered or imported, the VDOT it works out to, and the target pace band for easy, threshold, interval and repetition running, in both min/km and min/mile. Use it whenever you are asked how fast to run something. These are the same numbers the athlete sees in the app, so quoting them keeps you consistent with it — and unlike your own estimate, they are derived from a result this athlete actually ran. An answer saying there is no benchmark yet is a real answer: say so and ask them to add one rather than guessing a pace.',
     input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'set_annual_hours',
-    description:
-      'Change the athlete\'s annual hour budget and refit the whole season to it. This is a scale, not a total the season sums to: a typical week is roughly annual hours divided by 52.',
-    input_schema: {
-      type: 'object',
-      properties: { hours: { type: 'number', description: 'Annual training hours.' } },
-      required: ['hours'],
-    },
   },
   {
     name: 'set_availability',
@@ -553,6 +559,10 @@ export const TOOL_DEFS = [
           description: `The distance. Only ${RACE_TYPES.join(' and ')} can be the race a season is built around; the rest can only be secondary.`,
         },
         priority: { type: 'string', enum: PRIORITY_INPUT, description: 'What this race is to the season.' },
+        expected_minutes: {
+          type: 'integer',
+          description: "How long the athlete expects the race to take them, in minutes (20 to 1200). Optional: without it the usual time for the distance is used. A race of more than two hours gets a taper week; a shorter one is a hard day in the build and only clears its own day.",
+        },
       },
       required: ['date'],
     },
@@ -604,16 +614,13 @@ const HANDLERS = {
       if (last && last.block === w.block) last.weeks++;
       else runs.push({ block: w.block, weeks: 1, startWeek: weekLabel(w.absWeek) });
     }
-    // Whether the budget actually fits the athlete's week. Without this the
-    // model has to notice for itself that annualHours and the weekly minutes
-    // below disagree, which is exactly the kind of judgement that belongs in
-    // tested code rather than in its head.
-    const fit = seasonFit(p.season, p.profile);
+    // Whether the season is out of proportion to the race. The season is sized
+    // by the athlete's own week, so this is the one judgement left to make, and
+    // it belongs in tested code rather than in the model's head.
     const beyond = volumeBeyondRace(p.season, p.profile);
 
     return ok({
       totalWeeks: weekCount(p),
-      annualHours: Math.round(p.profile.annualHours),
       raceType: p.profile.raceType,
       raceDate: p.profile.raceDate,
       startDate: p.start,
@@ -623,15 +630,12 @@ const HANDLERS = {
       // work out what a mid-season Taper and Race block are doing there.
       events: eventsOf(p).map((ev) => describeEvent(p, ev)),
       weeklyPlannedMinutes: p.season.map((w) => weekCompliance(p, w.absWeek).plannedMinutes),
-      fit: fit ? {
-        weeklyCapacityMinutes: fit.capacityMinutes,
-        variationRetained: Number(fit.retained.toFixed(3)),
-        clippedWeeks: fit.clippedWeeks,
-        suggestedAnnualHours: fit.suggestedAnnualHours,
+      fit: {
+        weeklyCapacityMinutes: weeklyAvailableMinutes(p.profile),
         // Null unless the volume is out of proportion to the race, so its
         // presence is itself the finding.
         raceDemandMultiple: beyond ? Number(beyond.multiple.toFixed(1)) : null,
-      } : null,
+      },
     });
   },
 
@@ -643,7 +647,6 @@ const HANDLERS = {
   get_profile(s) {
     const p = current(s);
     return ok({
-      annualHours: Math.round(p.profile.annualHours),
       raceType: p.profile.raceType,
       raceDate: p.profile.raceDate,
       availability: p.profile.availability,
@@ -841,14 +844,6 @@ const HANDLERS = {
     return ok({ benchmark, vdot: Number(table.vdot.toFixed(1)), zones });
   },
 
-  set_annual_hours(s, input) {
-    const hours = Number(input.hours);
-    if (!Number.isFinite(hours) || hours <= 0) return fail('hours must be a positive number.');
-    const base = draftOf(s);
-    s.draft = refit(base, { profile: { ...base.profile, annualHours: hours }, keepBefore: trainedWeeks(s, base) });
-    return ok(`Annual hours set to ${Math.round(hours)} and the season refitted.`);
-  },
-
   set_availability(s, input) {
     if (!DAYS.includes(input.day)) {
       return fail(`"${input.day}" is not a weekday. Use one of: ${DAYS.join(', ')}.`);
@@ -1022,15 +1017,17 @@ const HANDLERS = {
   get_events(s) {
     const p = current(s);
     const events = eventsOf(p);
-    const { applied, refused } = planLandings({ weeks: weekCount(p), landings: landingsOf(p) });
+    const { applied, refused } = planLandings({ weeks: weekCount(p), landings: landingsDetail(p) });
     return ok({
       startDate: p.start,
       totalWeeks: weekCount(p),
       events: events.map((ev) => describeEvent(p, ev)),
-      tunedUpWeeks: applied.map((a) => ({
+      tunedUpWeeks: applied.filter((a) => a.taper !== false).map((a) => ({
         raceWeek: weekLabel(a.absWeek),
         taperWeek: a.taperWeek === null ? null : weekLabel(a.taperWeek),
       })),
+      // Races short enough to need no taper: the week keeps its block and only the race day is cleared.
+      raceDayOnlyWeeks: applied.filter((a) => a.taper === false).map((a) => weekLabel(a.absWeek)),
       // Present only when something was turned down, so its presence is the
       // finding — the same shape get_plan_summary uses for the fit warnings.
       noTaperBuilt: refused.map((r) => ({ week: weekLabel(r.absWeek), reason: r.reason })),
@@ -1043,7 +1040,9 @@ const HANDLERS = {
     const priority = input.priority ?? 'none';
     const raceType = input.race_type ?? null;
 
-    const wrong = eventProblem(base, { date: input.date, kind, raceType, priority });
+    const wrong = eventProblem(base, {
+      date: input.date, kind, raceType, priority, expectedMinutes: input.expected_minutes,
+    });
     if (wrong) return fail(wrong);
 
     const ev = {
@@ -1053,6 +1052,7 @@ const HANDLERS = {
       kind,
       raceType,
       priority: asPriority(priority),
+      ...(input.expected_minutes !== undefined && input.expected_minutes !== null ? { expectedMinutes: input.expected_minutes } : {}),
     };
     const { draft, said } = writeEvents(s, base, upsertEvent(eventsOf(base), ev),
       `Added ${ev.name || 'an event'} on ${ev.date}.`);

@@ -68,8 +68,9 @@ Plan-lifecycle bugs the wizard would otherwise inherit:
   power meter), goal (finish or time).
 - `athleteGaps(athlete, plan)` drives the returning-athlete welcome: what is
   known, what is missing, and why each item matters.
-- `estimateAnnualHours({ recentWeeklyHours, raceType, weeks })` sizes the season
-  so its first week is close to what the athlete already trains.
+- Recent weekly hours are kept as the athlete's own record. (They once sized the
+  season through `estimateAnnualHours`; since 18 Oct the week the athlete gives
+  does — see `docs/FINDINGS.md`.)
 - FTP, CSS and running results stay on the plan, as now. Body measurements
   **never** go on a plan or into an exported plan file — tested the same way
   heart rate is.

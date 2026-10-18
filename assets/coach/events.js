@@ -19,19 +19,22 @@ import { parseISO, toISO } from './dates.js';
 
 const text = (v) => String(v ?? '').trim();
 
-/** Race distances the race a season is *built for* may be given. yootri plans
-    long-course endurance racing, so the short distances are not offered here: a
-    sprint or an olympic is raced off a season built for one of these, not off a
-    season of its own.
+/** Race distances the race a season is *built for* may be given: an olympic, a
+    70.3 or an ironman, shortest first. yootri plans endurance racing from the
+    olympic up, so a sprint is not offered here: it is raced off a season built
+    for one of these, not off a season of its own. (Olympic left this list when
+    yootri went long-course only, and came back on 18 Oct 2026, when the
+    fitness bands and the demand table already described it and a season could
+    be built to arrive at its target.)
 
     These are stored names, not shown ones — a RACE_DEMAND key in generate.js,
     and what every plan already written carries. See RACE_TYPE_LABELS for what
     the athlete reads. */
-export const RACE_TYPES = ['70.3', 'ironman'];
+export const RACE_TYPES = ['olympic', '70.3', 'ironman'];
 
 /* Distances that were offered as a season's own race once and are not any more.
    They are still offerable as a secondary race, below. */
-const RETIRED_RACE_TYPES = ['sprint', 'olympic'];
+const RETIRED_RACE_TYPES = ['sprint'];
 
 /** What each distance is called on screen.
 
@@ -90,6 +93,78 @@ export const SECONDARY_RACE_TYPES = [
     lists is no distance: the generator would fall back without saying so. */
 export const STORABLE_RACE_TYPES = [...new Set([...KNOWN_RACE_TYPES, ...SECONDARY_RACE_TYPES])];
 
+/** How long a race takes and how hard it is raced, for each distance, as a
+    typical mid-pack age-group athlete. Two things read it, and only for a race
+    that is *not* the one the season is built for: whether the race gets a taper
+    (one longer than `TAPER_MIN_MINUTES`) and how much load it adds to the
+    athlete's fitness on the day.
+
+    **Unfitted**, like every coaching number here, and it varies a great deal
+    between athletes — the Ironman row especially, where the finishing time
+    depends on fitness, goal and age more than on the distance. So an event may
+    carry the athlete's own `expectedMinutes`, which wins over this table.
+
+    `intensity` is a share of threshold for the whole race, squared and
+    multiplied by the hours the way every other session is scored (load.js), so
+    a race lands on the same scale as the training around it. */
+export const RACE_NOMINAL = Object.freeze({
+  '10k': Object.freeze({ minutes: 55, intensity: 0.95 }),
+  'half-marathon': Object.freeze({ minutes: 110, intensity: 0.9 }),
+  sprint: Object.freeze({ minutes: 75, intensity: 0.95 }),
+  olympic: Object.freeze({ minutes: 150, intensity: 0.9 }),
+  marathon: Object.freeze({ minutes: 240, intensity: 0.8 }),
+  swimrun: Object.freeze({ minutes: 270, intensity: 0.8 }),
+  '70.3': Object.freeze({ minutes: 330, intensity: 0.78 }),
+  ironman: Object.freeze({ minutes: 750, intensity: 0.68 }),
+});
+
+/** A race of this many minutes or fewer gets no taper week: it is a hard day in
+    the build, not an event to arrive fresh for. Over it, it does. */
+export const TAPER_MIN_MINUTES = 120;
+
+const EXPECTED_MINUTES = Object.freeze({ min: 20, max: 1200 });
+
+/* A time the athlete typed, in whole minutes, or undefined when it is not one
+   to believe: a number or a number in a box, between 20 minutes and 20 hours. */
+export function believableMinutes(v) {
+  if (typeof v === 'boolean' || v === null || v === undefined || (typeof v === 'string' && v.trim() === '')) return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) && n >= EXPECTED_MINUTES.min && n <= EXPECTED_MINUTES.max ? Math.round(n) : undefined;
+}
+
+/** How many minutes a race is expected to take: the athlete's own figure if
+    they gave one, else the nominal time for its distance, else null. */
+export function raceMinutes(event) {
+  return believableMinutes(event?.expectedMinutes) ?? RACE_NOMINAL[event?.raceType]?.minutes ?? null;
+}
+
+/** Does this race get a taper week? A race whose length is not known does — it
+    always did, and an unknown is not a reason to take a taper away. */
+export function hasTaper(event) {
+  const minutes = raceMinutes(event);
+  return minutes === null || minutes > TAPER_MIN_MINUTES;
+}
+
+/** The load a race adds to the day it is on, on load.js's scale, or null when
+    its distance and time are not known. */
+export function raceLoad(event) {
+  const minutes = raceMinutes(event);
+  const row = RACE_NOMINAL[event?.raceType];
+  if (minutes === null || !row) return null;
+  return Math.round((minutes / 60) * row.intensity ** 2 * 1000) / 10;
+}
+
+/** How much the athlete wants from the race, which sets the fitness the season
+    is built to arrive with (targets.js). Stored on the primary race as
+    `ambition`. Ordered from least to most. These are stored names: the words
+    the athlete reads are the page's. */
+export const AMBITIONS = Object.freeze(['finish', 'intermediate', 'competitive']);
+
+/** What a race with no ambition is read as. A plan made before ambitions
+    existed gets this the next time it is re-fitted, in the draft the athlete
+    sees. */
+export const DEFAULT_AMBITION = 'intermediate';
+
 export const EVENT_KINDS = ['race', 'other'];
 
 /** What a race is to this season. Ordered hardest-commitment first, which is
@@ -144,6 +219,12 @@ export function normalizeEvent(raw, { id } = {}) {
     priority = 'secondary';
   }
 
+  // An ambition belongs to the race the season is built for and nothing else —
+  // a tune-up has no target of its own — so it goes with the priority.
+  const ambition = priority === 'primary' && AMBITIONS.includes(raw.ambition) ? raw.ambition : undefined;
+  // The athlete's own idea of how long the race will take them, for a race only.
+  const expectedMinutes = kind === 'race' ? believableMinutes(raw.expectedMinutes) : undefined;
+
   return {
     id: eventId,
     name: text(raw.name),
@@ -152,8 +233,14 @@ export function normalizeEvent(raw, { id } = {}) {
     raceType,
     priority,
     note: text(raw.note),
+    ...(ambition ? { ambition } : {}),
+    ...(expectedMinutes ? { expectedMinutes } : {}),
   };
 }
+
+/* A main race stood down to a tune-up. It keeps its taper; it loses the
+   ambition, which was only ever the main race's. */
+const standDown = ({ ambition: _ambition, ...ev }) => ({ ...ev, priority: 'secondary' });
 
 /**
  * A whole list in canonical form: usable events only, one per id, in date
@@ -179,7 +266,7 @@ export function normalizeEvents(list) {
   let claimed = false;
   return events.map((ev) => {
     if (ev.priority !== 'primary') return ev;
-    if (claimed) return { ...ev, priority: 'secondary' };
+    if (claimed) return standDown(ev);
     claimed = true;
     return ev;
   });
@@ -205,14 +292,22 @@ export function secondaryRaces(events) {
  */
 export function upsertEvent(events, event) {
   const list = Array.isArray(events) ? events : [];
-  const next = normalizeEvent(event);
+  let next = normalizeEvent(event);
   if (!next) return list;
+
+  // A race made the main one without saying how hard to aim takes the ambition
+  // of the race it replaces — or of itself, edited in place. Changing which
+  // race the season is for is not changing how much the athlete wants from it.
+  if (next.priority === 'primary' && !next.ambition) {
+    const prior = list.find((ev) => ev && ev.id === next.id);
+    const displaced = list.find((ev) => ev && ev.id !== next.id && ev.priority === 'primary');
+    const kept = AMBITIONS.find((a) => a === (prior?.ambition ?? displaced?.ambition));
+    if (kept) next = { ...next, ambition: kept };
+  }
 
   const others = list
     .filter((ev) => ev && ev.id !== next.id)
-    .map((ev) => (next.priority === 'primary' && ev.priority === 'primary'
-      ? { ...ev, priority: 'secondary' }
-      : ev));
+    .map((ev) => (next.priority === 'primary' && ev.priority === 'primary' ? standDown(ev) : ev));
 
   return normalizeEvents([...others, next]);
 }

@@ -22,6 +22,25 @@ import { parseISO, toISO, addDays, mondayOf } from './dates.js';
 export const HISTORY_DISCIPLINES = Object.freeze(['Swim', 'Bike', 'Run', 'Strength']);
 export const MAX_HISTORY_WEEKS = 26;
 
+/* The bar the rules that read synced history (adapt.js) hold it to. Stricter
+   than the compliance rules there, because history is evidence about the
+   athlete rather than about the plan: they say nothing on fewer than
+   `minCovered` synced weeks, never propose an increase, and never touch a week
+   that has already started — rebuilding a week under way could move a session
+   somebody has already logged. Hand-chosen and unfitted, like THRESHOLDS. */
+export const HISTORY_THRESHOLDS = {
+  lookback: 4,           // synced weeks read before the planned week
+  minCovered: 3,         // …of which at least this many must be covered by a sync
+  minWeeklyHours: 2,     // below this recorded average there is no baseline to plan from
+  splitDrift: 0.10,      // share points off the block's split worth a mention
+  splitMinHours: 10,     // …over at least this much recorded training
+  splitRound: 0.05,      // proposed split weights come in steps of this
+  longJump: 1.25,        // planned long session this much longer than the longest recorded…
+  longJumpMinutes: 20,   // …and at least this many minutes longer
+  bestEffortMargin: 0.5, // VDOT points a synced run must beat the current benchmark by
+  bestEffortDays: 42,    // only efforts this recent are offered
+};
+
 const shift = (iso, days) => toISO(addDays(parseISO(iso), days));
 const minutesOf = (a) => Math.round((Number(a?.durationS) || 0) / 60);
 const emptyDiscs = () =>

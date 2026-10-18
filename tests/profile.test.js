@@ -6,6 +6,7 @@ import {
   DEFAULT_PROFILE,
   normalizeProfile,
   weeklyAvailableMinutes,
+  peakHoursFor,
   allowedDays,
   maxPerWeek,
 } from '../assets/coach/profile.js';
@@ -25,7 +26,7 @@ test('normalizeProfile clamps nonsense availability instead of trusting it', () 
 });
 
 test('normalizeProfile leaves an already-clean profile untouched', () => {
-  const once = normalizeProfile({ annualHours: 500, availability: { Sun: 120 } });
+  const once = normalizeProfile({ availability: { Sun: 120 } });
   assert.deepEqual(normalizeProfile(once), once, 'normalize must be idempotent');
 });
 
@@ -126,4 +127,24 @@ test('sessions a day is a whole number from one to three, or absent', () => {
 test('the new fields survive normalizing twice', () => {
   const once = normalizeProfile({ longDays: { Bike: 'Sat', Run: 'Sun' }, maxSessionsPerDay: 1 });
   assert.deepEqual(normalizeProfile(once), once);
+});
+
+test('a profile no longer carries annual hours; an old one is read past it', () => {
+  assert.equal('annualHours' in DEFAULT_PROFILE, false);
+  const p = normalizeProfile({ annualHours: 700, availability: { Sun: 120 } });
+  assert.equal('annualHours' in p, false);
+});
+
+test('peakHoursFor is the week the athlete said they have, to the half hour below', () => {
+  const week = (min) => normalizeProfile({ availability: Object.fromEntries(DAYS.map((d) => [d, min])) });
+  assert.equal(peakHoursFor(week(60)), 7);
+  assert.equal(peakHoursFor(normalizeProfile({ availability: { Mon: 0, Tue: 90, Wed: 90, Thu: 90, Fri: 90, Sat: 90, Sun: 90 } })), 9);
+  // 9h50m is not a 10h week: rounding up would put the peak over what they have.
+  assert.equal(peakHoursFor(normalizeProfile({ availability: { Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 350, Sun: 240 } })), 9.5);
+});
+
+test('with no time at all a season is still sized, by the default week', () => {
+  const none = normalizeProfile({ availability: Object.fromEntries(DAYS.map((d) => [d, 0])) });
+  assert.equal(peakHoursFor(none), peakHoursFor(normalizeProfile({})));
+  assert.ok(peakHoursFor(none) > 0);
 });

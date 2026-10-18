@@ -7,7 +7,7 @@ import {
   MAX_RANGE_DAYS, NAME_MAX,
   splitSynced, normalizeSyncedActivity, normalizeActivities, ingestSynced, mergeActivities,
   normalizeActivitySync, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, asRunEffort,
-  bridgeErrorMessage, BRIDGE_ERROR_CODES,
+  bridgeErrorMessage, BRIDGE_ERROR_CODES, BRIDGE_URL_RE, parsePairing, bridgeState,
 } from '../assets/coach/synced.js';
 import { benchmarkCandidates } from '../assets/coach/activities.js';
 
@@ -307,4 +307,81 @@ test('an unreachable bridge on a secure page mentions Safari', () => {
   assert.match(bridgeErrorMessage('unreachable', { secure: true }), /Safari/);
   assert.match(bridgeErrorMessage('unreachable'), /make garmin/);
   assert.match(bridgeErrorMessage('auth_required'), /make garmin-login/);
+});
+
+/* ---- pairing from a link ---- */
+
+const TOKEN = 'k'.repeat(43);
+const link = (url, token = TOKEN) => `#garmin=${encodeURIComponent(url)}&token=${token}`;
+
+test('a pairing link yields the bridge address and the token', () => {
+  assert.deepEqual(parsePairing(link('http://127.0.0.1:8765')), { url: 'http://127.0.0.1:8765', token: TOKEN });
+  assert.deepEqual(parsePairing(link('http://localhost:9001')), { url: 'http://localhost:9001', token: TOKEN });
+});
+
+test('only an address on this computer can be paired', () => {
+  for (const url of ['http://evil.example:8765', 'https://127.0.0.1:8765', 'http://127.0.0.1.evil.example:8765',
+    'http://127.0.0.1', 'http://127.0.0.1:8765/path', 'http://user@127.0.0.1:8765', 'http://[::1]:8765']) {
+    assert.equal(parsePairing(link(url)), null, url);
+  }
+  assert.ok(BRIDGE_URL_RE.test('http://127.0.0.1:8765'));
+  assert.ok(!BRIDGE_URL_RE.test('http://127.0.0.1:8765/'));
+});
+
+test('a short, missing or odd token is refused, and nothing throws', () => {
+  assert.equal(parsePairing(link('http://127.0.0.1:8765', 'short')), null);
+  assert.equal(parsePairing('#garmin=http%3A%2F%2F127.0.0.1%3A8765'), null);
+  assert.equal(parsePairing(`#token=${TOKEN}`), null);
+  for (const bad of [null, undefined, 42, {}, '', '#', '#/week', '#garmin=%E0%A4%A', '?garmin=setup']) {
+    assert.equal(parsePairing(bad), null);
+  }
+});
+
+test('an ordinary page route is never mistaken for a pairing', () => {
+  for (const hash of ['#/week', '#/calendar', '#/biometrics']) assert.equal(parsePairing(hash), null);
+});
+
+/* ---- what state the bridge is in ---- */
+
+test('a signed-in bridge is ready', () => {
+  const s = bridgeState({ status: { ok: true, connected: true } });
+  assert.equal(s.state, 'ready');
+  assert.match(s.label, /ready/i);
+});
+
+test('a bridge that is up but not signed in to Garmin says to sign in, with the command', () => {
+  const s = bridgeState({ status: { ok: true, connected: false } });
+  assert.equal(s.state, 'not-signed-in');
+  assert.match(s.hint, /make garmin-login/);
+  assert.equal(bridgeState({ error: 'auth_required' }).state, 'not-signed-in');
+  assert.equal(bridgeState({ error: 'mfa_required' }).state, 'not-signed-in');
+});
+
+test('no answer at all means the bridge is not running, and says how to start it', () => {
+  const s = bridgeState({ error: 'unreachable' });
+  assert.equal(s.state, 'unreachable');
+  assert.match(s.label, /not running/i);
+  assert.match(s.hint, /make garmin/);
+});
+
+test('a refused token or page says what to do about the pairing', () => {
+  const t = bridgeState({ error: 'unauthorized' });
+  assert.equal(t.state, 'wrong-token');
+  assert.match(t.hint, /make garmin-pair/);
+  assert.equal(bridgeState({ error: 'forbidden_origin' }).state, 'wrong-token');
+});
+
+test('anything else is a problem with the sentence the bridge code already has', () => {
+  const s = bridgeState({ error: 'rate_limited' });
+  assert.equal(s.state, 'problem');
+  assert.equal(s.hint, bridgeErrorMessage('rate_limited'));
+});
+
+test('before any check the state is unknown, and every state has a label and a hint or is quiet', () => {
+  assert.equal(bridgeState().state, 'unknown');
+  assert.equal(bridgeState({}).state, 'unknown');
+  for (const code of BRIDGE_ERROR_CODES) {
+    const s = bridgeState({ error: code });
+    assert.ok(s.state && s.label, code);
+  }
 });

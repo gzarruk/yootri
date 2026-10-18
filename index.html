@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>yootri — Triathlon training planner</title>
 
 <!-- Favicons: SVG for modern browsers, .ico for legacy + the implicit favicon.ico request.
@@ -11,18 +11,30 @@
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
 <meta name="theme-color" content="#161826" />
+<script>
+  /* Set the theme before first paint so a light-theme reader never sees a dark flash.
+     The Dark/Light switch writes the same key; see setTheme in the page script. */
+  (function () {
+    var t = null;
+    try { t = localStorage.getItem('yootri_theme'); } catch (e) {}
+    if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+    var m = document.querySelector('meta[name="theme-color"]');
+    if (m) m.setAttribute('content', t === 'light' ? '#f5f6fa' : '#161826');
+  })();
+</script>
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css" />
 <link rel="stylesheet" href="assets/nocturne.css" />
+<link rel="stylesheet" href="assets/app-shell.css" />
 
 <style>
   body {
     background:
       radial-gradient(1200px 720px at 88% -180px, color-mix(in srgb, var(--color-accent-900) 70%, transparent), transparent 60%),
-      radial-gradient(1000px 820px at -12% 108%, color-mix(in srgb, black 28%, transparent), transparent 55%),
+      radial-gradient(1000px 820px at -12% 108%, var(--page-shade), transparent 55%),
       var(--color-bg);
   }
 
@@ -39,7 +51,8 @@
     gap: 8px 14px;
     margin-bottom: 12px;
   }
-  .hdr-top #account { display: inline-flex; align-items: center; gap: 8px; }
+  .seg-opt .ic { margin-right: 6px; font-size: 14px; }
+  .page:focus { outline: none; }
   .im-h1 {
     font-size: 36px;
     letter-spacing: -0.02em;
@@ -52,38 +65,11 @@
     color: color-mix(in srgb, var(--color-text) 62%, transparent);
   }
 
-  /* ---- Plan title (doubles as the plan menu trigger) ---- */
+  /* ---- Plan title: the name, renamed in place by a double click ---- */
 
   .plan-title-wrap { position: relative; }
-  .plan-title {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 10px;
-    max-width: 100%;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: none;
-    font: inherit;
-    letter-spacing: inherit;
-    color: inherit;
-    text-align: left;
-    cursor: pointer;
-    border-radius: var(--radius-sm);
-    transition: color 0.12s ease;
-  }
-  .plan-title .ph {
-    flex: none;
-    font-size: 0.55em;
-    color: color-mix(in srgb, var(--color-text) 34%, transparent);
-    transition: color 0.12s ease, transform 0.12s ease;
-  }
-  .plan-title:hover .ph,
-  .plan-title:focus-visible .ph { color: var(--color-accent); }
-  .plan-title[aria-expanded="true"] .ph {
-    color: var(--color-accent);
-    transform: rotate(180deg);
-  }
+  .plan-title { display: inline-block; max-width: 100%; border-radius: var(--radius-sm); }
+  .plan-title:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 4px; }
   .im-h1-input {
     display: block;
     width: 100%;
@@ -100,77 +86,6 @@
     line-height: 1.2;
     letter-spacing: -0.02em;
     color: var(--color-text);
-  }
-
-  /* ---- Plan menu ---- */
-
-  .pmenu {
-    position: absolute;
-    top: calc(100% + 8px);
-    left: 0;
-    z-index: 50;
-    min-width: 244px;
-    max-width: min(320px, calc(100vw - 40px));
-    padding: 6px;
-    border-radius: var(--radius-lg);
-    background: var(--color-surface);
-    box-shadow: var(--shadow-md);
-  }
-  .pmenu-list { max-height: 220px; overflow-y: auto; }
-  .pmenu-item {
-    display: flex;
-    align-items: center;
-    gap: 9px;
-    width: 100%;
-    padding: 8px 10px;
-    border: 0;
-    border-radius: var(--radius-sm);
-    background: transparent;
-    font-size: 13px;
-    color: color-mix(in srgb, var(--color-text) 82%, transparent);
-    text-align: left;
-    cursor: pointer;
-    transition: background 0.12s ease, color 0.12s ease;
-  }
-  .pmenu-item .ph {
-    flex: none;
-    width: 15px;
-    font-size: 15px;
-    color: color-mix(in srgb, var(--color-text) 45%, transparent);
-    transition: color 0.12s ease;
-  }
-  .pmenu-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* Ring drawn inside the box so the scrolling plan list can't clip it. */
-  .pmenu-item:focus-visible { outline-offset: -2px; }
-  .pmenu-item:hover,
-  .pmenu-item:focus-visible {
-    background: color-mix(in srgb, var(--color-accent) 12%, transparent);
-    color: var(--color-text);
-  }
-  .pmenu-item:hover .ph, .pmenu-item:focus-visible .ph { color: var(--color-accent); }
-  .pmenu-item[aria-checked="true"] { color: var(--color-text); }
-  .pmenu-item[aria-checked="true"] .ph { color: var(--color-accent); }
-  .pmenu-item.danger:hover, .pmenu-item.danger:focus-visible {
-    background: color-mix(in srgb, #e08a6c 14%, transparent);
-    color: #e08a6c;
-  }
-  .pmenu-item.danger:hover .ph, .pmenu-item.danger:focus-visible .ph { color: #e08a6c; }
-  .pmenu-item[aria-disabled="true"] {
-    opacity: 0.38;
-    cursor: default;
-  }
-  .pmenu-item[aria-disabled="true"]:hover,
-  .pmenu-item[aria-disabled="true"]:focus-visible {
-    background: transparent;
-    color: color-mix(in srgb, var(--color-text) 82%, transparent);
-  }
-  .pmenu-item[aria-disabled="true"]:hover .ph {
-    color: color-mix(in srgb, var(--color-text) 45%, transparent);
-  }
-  .pmenu-sep {
-    height: 1px;
-    margin: 6px 10px;
-    background: var(--color-divider);
   }
 
   /* ---- Plan overview ---- */
@@ -205,7 +120,6 @@
     padding: 3px 8px;
     font-size: 12px;
     width: auto;
-    color-scheme: dark;
   }
   .ov-weeks {
     font-size: 12px;
@@ -324,45 +238,11 @@
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinning { animation: spin 0.55s linear infinite; }
-  .sync-status.error { color: #e08a6c; }
+  .sync-status.error { color: var(--color-danger); }
   .sync-status.error::before {
-    background: #e08a6c;
-    box-shadow: 0 0 0 3px color-mix(in srgb, #e08a6c 25%, transparent);
+    background: var(--color-danger);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-danger) 25%, transparent);
   }
-
-  /* ---- Account chip ---- */
-
-  .account-email {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    color: color-mix(in srgb, var(--color-text) 62%, transparent);
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .account-email i { color: var(--color-accent); font-size: 14px; }
-  .account-note {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    font: inherit;
-    font-size: 12px;
-    padding: 4px 8px;
-    border: 1px solid var(--color-divider);
-    border-radius: var(--radius-md);
-    background: none;
-    cursor: pointer;
-    white-space: nowrap;
-    color: color-mix(in srgb, var(--color-text) 55%, transparent);
-  }
-  .account-note:hover {
-    border-color: color-mix(in srgb, var(--color-accent) 55%, transparent);
-    color: var(--color-text);
-  }
-  .account-note i { font-size: 13px; }
 
   /* ---- Summary bar ---- */
 
@@ -658,7 +538,7 @@
   .cal-evt span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cal-evt.primary {
     background: color-mix(in srgb, var(--color-accent) 26%, transparent);
-    color: color-mix(in srgb, var(--color-accent) 88%, white);
+    color: color-mix(in srgb, var(--color-accent) 88%, var(--color-text));
     font-weight: 600;
   }
   /* A tune-up race reads as a race without competing with the one the season is
@@ -666,7 +546,7 @@
   .cal-evt.secondary {
     background: color-mix(in srgb, var(--color-accent) 10%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 40%, transparent);
-    color: color-mix(in srgb, var(--color-accent) 80%, white);
+    color: color-mix(in srgb, var(--color-accent) 80%, var(--color-text));
   }
   .cal-evt:hover { background: color-mix(in srgb, var(--color-accent) 34%, transparent); }
 
@@ -681,7 +561,7 @@
   .cal-chip-main, .cal-chip-done {
     display: flex; align-items: center; gap: 3px;
     padding: 2px 4px; border: 0; background: none; cursor: pointer;
-    color: color-mix(in srgb, var(--disc-color) 88%, white);
+    color: color-mix(in srgb, var(--disc-color) 88%, var(--color-text));
     font: inherit; font-size: .7rem; line-height: 1.3;
   }
   .cal-chip-main { flex: 1; min-width: 0; overflow: hidden; }
@@ -998,7 +878,7 @@
   .pnl-act { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1.15rem; flex-wrap: wrap; }
   .pnl-act .spacer { margin-right: auto; }
   .pnl-act .danger { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
-  .pnl-act .danger:hover, .pnl-act .danger:focus-visible { color: #e08a6c; }
+  .pnl-act .danger:hover, .pnl-act .danger:focus-visible { color: var(--color-danger); }
   .diff-sum { font-size: .86rem; margin: 0 0 .6rem; }
   .diff-list { max-height: 40vh; overflow: auto; margin: 0; padding: 0; list-style: none; }
   .diff-row { display: grid; grid-template-columns: 1fr auto auto; gap: .6rem; align-items: baseline;
@@ -1007,13 +887,13 @@
   .diff-row .wk { color: color-mix(in srgb, var(--color-text) 72%, transparent); }
   .diff-row .vol { font-variant-numeric: tabular-nums; }
   .diff-row .delta { font-variant-numeric: tabular-nums; font-weight: 600; }
-  .diff-row .delta.up { color: #84c08f; }
-  .diff-row .delta.down { color: #e08a6c; }
+  .diff-row .delta.up { color: var(--color-success); }
+  .diff-row .delta.down { color: var(--color-danger); }
   .diff-issues { margin: .8rem 0 0; padding: .6rem .75rem; border-radius: 9px; font-size: .78rem;
     background: color-mix(in srgb, var(--color-text) 6%, transparent); }
   .diff-issues ul { margin: .3rem 0 0; padding-left: 1.1rem; }
-  .diff-issues .err { color: #e08a6c; }
-  .diff-issues .ok { color: #84c08f; }
+  .diff-issues .err { color: var(--color-danger); }
+  .diff-issues .ok { color: var(--color-success); }
   .diff-empty { font-size: .85rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
   .pnl-h3 { margin: 1.25rem 0 .45rem; font-size: .72rem; font-weight: 600;
     letter-spacing: .06em; text-transform: uppercase;
@@ -1036,7 +916,7 @@
   .bm-list .btn { padding: .2rem .55rem; font-size: .74rem; min-height: 0; }
   .gm-list label { display: flex; align-items: center; gap: .55rem; width: 100%; cursor: pointer; }
   .gm-list .bm-what { margin-right: auto; }
-  .card-actual .ph-watch { font-size: .85em; vertical-align: -.05em; }
+  .card-actual .i-watch { font-size: .85em; vertical-align: -.05em; }
   .card-meta .pace { font-variant-numeric: tabular-nums; }
   .imp-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
     gap: .6rem 1rem; margin: 1rem 0 .8rem; }
@@ -1057,8 +937,8 @@
     border-color: var(--color-accent); font-weight: 600; }
   .card-actual { display: block; margin-top: .2rem; font-size: .72rem; font-variant-numeric: tabular-nums;
     color: color-mix(in srgb, var(--color-text) 60%, transparent); }
-  .card-actual.short { color: #e08a6c; }
-  .card-actual.miss { color: #e08a6c; font-style: italic; }
+  .card-actual.short { color: var(--color-danger); }
+  .card-actual.miss { color: var(--color-danger); font-style: italic; }
   .sum-cell .sub.act { color: color-mix(in srgb, var(--color-text) 55%, transparent); }
 
   /* ---- Coach ---- */
@@ -1070,7 +950,7 @@
     max-width: 85%; }
   .chat-msg.coach { background: color-mix(in srgb, var(--color-text) 7%, transparent); align-self: flex-start;
     max-width: 92%; }
-  .chat-msg.err { background: color-mix(in srgb, #e08a6c 20%, transparent); align-self: flex-start; }
+  .chat-msg.err { background: color-mix(in srgb, var(--color-danger) 20%, transparent); align-self: flex-start; }
   .chat-empty { font-size: .82rem; color: color-mix(in srgb, var(--color-text) 55%, transparent);
     padding: .4rem 0 .8rem; }
   .chat-empty ul { margin: .45rem 0 0; padding-left: 1.1rem; }
@@ -1092,17 +972,6 @@
   .legal b { color: var(--color-text); font-weight: 500; }
   .legal-about { font-size: .82rem; line-height: 1.65; margin: 0;
     color: color-mix(in srgb, var(--color-text) 70%, transparent); }
-  .pp-list { list-style: none; padding: 0; }
-  .pp-row { display: flex; justify-content: space-between; align-items: center; gap: .5rem; padding: .35rem 0; }
-  .np-modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: .3rem 0 0; }
-  .np-mode { text-align: left; padding: .6rem .75rem; border-radius: 10px; cursor: pointer;
-    background: transparent; color: inherit; font: inherit;
-    border: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent); }
-  .np-mode.on { border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
-  .np-mode b { display: block; font-size: .84rem; margin-bottom: .15rem; }
-  .np-mode span { font-size: .74rem; line-height: 1.4;
-    color: color-mix(in srgb, var(--color-text) 62%, transparent); }
   .np-len { font-size: .78rem; margin: .7rem 0 0;
     color: color-mix(in srgb, var(--color-text) 66%, transparent); }
   .np-check { display: flex; gap: .5rem; align-items: flex-start; font-size: .78rem; margin-top: .8rem; }
@@ -1112,8 +981,8 @@
     border-radius: 10px; font-size: .82rem; line-height: 1.5;
     background: color-mix(in srgb, var(--color-text) 6%, transparent);
     border-left: 3px solid color-mix(in srgb, var(--color-text) 30%, transparent); }
-  .advice-card.warn { border-left-color: #e08a6c;
-    background: color-mix(in srgb, #e08a6c 10%, transparent); }
+  .advice-card.warn { border-left-color: var(--color-danger);
+    background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
   .advice-card .grow { flex: 1; }
   .advice-card .btn { flex: none; }
   .chat-busy { font-size: .8rem; font-style: italic;
@@ -1186,9 +1055,6 @@
     .pnl-act .btn { flex: 1 1 auto; min-height: 40px; }
     .pnl-act .spacer { flex-basis: 100%; order: 10; }
 
-    /* The wizard's two modes stack rather than halving their own width. */
-    .np-modes { grid-template-columns: 1fr; }
-
     /* Chat needs the height back that the panel chrome took. */
     .chat-log { max-height: 52vh; }
     .chat-row { flex-wrap: wrap; }
@@ -1216,27 +1082,106 @@
 </style>
 </head>
 <body>
-  <div class="page">
+  <div class="shell">
+    <div class="side-wrap">
+      <nav class="side" id="side" aria-label="yootri">
+        <button type="button" class="btn btn-ghost btn-icon sheet-close" id="sheet-close" aria-label="Close menu"><i class="ic i-x" aria-hidden="true"></i></button>
+        <a class="brand" href="#/week" aria-label="yootri, this week">
+          <svg width="30" height="30" viewBox="0 0 64 64" aria-hidden="true">
+            <rect width="64" height="64" rx="14" style="fill: var(--color-surface)"></rect>
+            <rect width="64" height="64" rx="14" style="fill: var(--color-accent-900); opacity: 0.55"></rect>
+            <g fill="none" stroke-width="6.5" style="stroke: var(--color-accent-300)"><path d="M19 17 L33 40"></path><path d="M45 17 L24.5 55"></path></g>
+          </svg>
+          <span class="brand-name">yootri</span>
+        </a>
+
+        <div class="plan-sw-wrap">
+          <button type="button" class="plan-sw" id="plan-sw" aria-haspopup="menu" aria-expanded="false" aria-controls="plan-pop">
+            <span class="plan-sw-txt"><span class="plan-sw-k">Plan</span><span class="plan-sw-n" id="plan-sw-name"></span></span>
+            <i class="ic i-updown" aria-hidden="true"></i>
+          </button>
+          <div id="plan-pop"></div>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Training</div>
+          <a class="nav" data-route="week" href="#/week"><i class="ic i-calendar" aria-hidden="true"></i><span class="nav-txt">This week</span></a>
+          <a class="nav" data-route="calendar" href="#/calendar"><i class="ic i-month" aria-hidden="true"></i><span class="nav-txt">Calendar</span></a>
+          <button type="button" class="nav" id="setup-btn"><i class="ic i-flag" aria-hidden="true"></i><span class="nav-txt">Plan setup</span></button>
+          <button type="button" class="nav" id="events-btn"><i class="ic i-flame" aria-hidden="true"></i><span class="nav-txt">Events</span></button>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Athlete</div>
+          <a class="nav" data-route="status" href="#/status"><i class="ic i-trend" aria-hidden="true"></i><span class="nav-txt">Training status</span></a>
+          <a class="nav" data-route="biometrics" href="#/biometrics"><i class="ic i-user" aria-hidden="true"></i><span class="nav-txt">Biometrics</span></a>
+          <a class="nav" data-route="health" href="#/health"><i class="ic i-heart" aria-hidden="true"></i><span class="nav-txt">Health indicators</span><span class="tag tag-neutral">Soon</span></a>
+        </div>
+
+        <div class="nav-group">
+          <div class="nav-label">Tools</div>
+          <button type="button" class="nav" id="coach-btn"><i class="ic i-chat" aria-hidden="true"></i><span class="nav-txt">Coach</span></button>
+          <!-- Reads activities from the Garmin bridge running on this computer
+               (tools/garmin-bridge). Not the cloud Sync button in the toolbar:
+               this one talks only to 127.0.0.1. Hidden until this browser is
+               paired, so the published page offers nothing a visitor cannot use. -->
+          <button type="button" class="nav hidden" id="garmin-btn"><i class="ic i-watch" aria-hidden="true"></i><span class="nav-txt">Garmin<small class="nav-sub" id="garmin-state" role="status">Not checked yet</small></span><span class="dot off" id="garmin-dot" aria-hidden="true"></span></button>
+        </div>
+
+        <div class="side-foot">
+          <span class="seg" role="radiogroup" aria-label="Theme" id="theme-seg">
+            <label class="seg-opt"><input type="radio" name="theme" value="dark" /><i class="ic i-moon" aria-hidden="true"></i>Dark</label>
+            <label class="seg-opt"><input type="radio" name="theme" value="light" /><i class="ic i-sun" aria-hidden="true"></i>Light</label>
+          </span>
+          <div class="nav-group">
+            <button type="button" class="nav" id="mydata-btn"><i class="ic i-download" aria-hidden="true"></i><span class="nav-txt">Download my data</span></button>
+            <div class="nav-group" id="account"></div>
+          </div>
+        </div>
+      </nav>
+    </div>
+
+    <main class="main" id="main">
+  <div class="phone-top">
+    <a class="brand" href="#/week" aria-label="yootri, this week">
+      <svg width="28" height="28" viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="14" style="fill: var(--color-surface)"></rect>
+        <rect width="64" height="64" rx="14" style="fill: var(--color-accent-900); opacity: 0.55"></rect>
+        <g fill="none" stroke-width="6.5" style="stroke: var(--color-accent-300)"><path d="M19 17 L33 40"></path><path d="M45 17 L24.5 55"></path></g>
+      </svg>
+    </a>
+    <button type="button" class="plan-sw" id="m-plan" aria-label="Switch plan"><span class="plan-sw-txt"><span class="plan-sw-n" id="m-plan-name"></span></span><i class="ic i-updown" aria-hidden="true"></i></button>
+    <button type="button" class="btn btn-secondary btn-icon" id="m-sync" aria-label="Sync"><i class="ic i-sync" aria-hidden="true"></i></button>
+  </div>
+  <div class="page" data-page="week" tabindex="-1">
 
     <header>
       <div class="hdr-top">
         <span class="kicker">Season plan</span>
-        <span id="account"></span>
       </div>
-      <div class="plan-title-wrap">
-        <h1 class="im-h1">
-          <button type="button" class="plan-title" id="plan-title" aria-haspopup="menu" aria-expanded="false">
-            <span id="plan-title-text"></span>
-            <i class="ph ph-caret-down" aria-hidden="true"></i>
-          </button>
-        </h1>
-        <div id="menu-root"></div>
+      <div class="title-row">
+        <div>
+          <div class="plan-title-wrap">
+            <h1 class="im-h1">
+              <span class="plan-title" id="plan-title" tabindex="-1" title="Double-click to rename"><span id="plan-title-text"></span></span>
+            </h1>
+          </div>
+          <p class="im-sub" id="subtitle"></p>
+        </div>
+        <div class="more-wrap">
+          <button type="button" class="btn btn-secondary btn-icon" id="plan-more" aria-haspopup="menu" aria-expanded="false" aria-controls="more-pop" aria-label="Plan actions: rename, export, delete and start over"><i class="ic i-dots" aria-hidden="true"></i></button>
+          <div id="more-pop"></div>
+        </div>
       </div>
-      <p class="im-sub" id="subtitle"></p>
     </header>
 
-    <input type="file" id="import-file" accept="application/json,.json" hidden />
-    <input type="file" id="activity-file" accept=".csv,.tcx,.gpx,text/csv" hidden />
+    <section class="stack ffm" aria-label="Fitness, fatigue and form">
+      <div class="k-row">
+        <span class="card-kicker">Fitness, fatigue and form</span>
+        <span class="chip-sample" id="ffm-chip"></span>
+      </div>
+      <div class="ind-grid" id="ffm-root"></div>
+    </section>
 
     <div class="overview">
       <div class="ov-row">
@@ -1255,31 +1200,18 @@
     </div>
 
     <div class="toolbar">
-      <button type="button" class="btn btn-secondary" id="setup-btn">
-        <i class="ph ph-sliders-horizontal" aria-hidden="true"></i> Plan setup
-      </button>
-      <button type="button" class="btn btn-secondary" id="coach-btn">
-        <i class="ph ph-chat-teardrop-text" aria-hidden="true"></i> Coach
-      </button>
       <!-- In the toolbar rather than in the calendar bar, so a race can be put
            on the calendar from either view. It used to live inside #calwrap,
            which meant it disappeared with the month grid — and a race is a thing
            you think of while looking at the week you are training. -->
       <button type="button" class="btn btn-secondary" id="add-event-btn">
-        <i class="ph ph-flag-pennant" aria-hidden="true"></i> Add event
-      </button>
-      <!-- Reads activities from the Garmin bridge running on this computer
-           (tools/garmin-bridge). Not the cloud Sync button further along: this
-           one talks only to 127.0.0.1. Hidden until this browser is paired, so
-           the published page offers nothing a visitor cannot use. -->
-      <button type="button" class="btn btn-secondary hidden" id="garmin-btn">
-        <i class="ph ph-watch" aria-hidden="true"></i> Garmin
+        <i class="ic i-flag" aria-hidden="true"></i> Add event
       </button>
       <!-- The other direction: puts upcoming bike sessions in the Garmin calendar
            as structured workouts. Same bridge, same pairing, and off on the
            bridge unless it was started with YOOTRI_GARMIN_WORKOUTS=1. -->
       <button type="button" class="btn btn-secondary hidden" id="garmin-send-btn">
-        <i class="ph ph-paper-plane-tilt" aria-hidden="true"></i> To Garmin
+        <i class="ic i-send" aria-hidden="true"></i> To Garmin
       </button>
 
       <span class="seg" role="group" aria-label="View" id="view-seg">
@@ -1288,16 +1220,16 @@
       </span>
 
       <div class="wk-nav">
-        <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ph ph-caret-left"></i></button>
+        <button type="button" class="btn btn-secondary btn-icon" id="prev-week" aria-label="Previous week"><i class="ic i-left"></i></button>
         <span class="wk-pos"><span class="top" id="week-pos"></span><span class="range" id="week-range"></span></span>
-        <button type="button" class="btn btn-secondary btn-icon" id="next-week" aria-label="Next week"><i class="ph ph-caret-right"></i></button>
+        <button type="button" class="btn btn-secondary btn-icon" id="next-week" aria-label="Next week"><i class="ic i-right"></i></button>
       </div>
 
       <div class="im-actions">
         <span class="sync-status" id="status"></span>
-        <button type="button" class="btn btn-ghost hidden" id="undo-btn"><i class="ph ph-arrow-counter-clockwise" aria-hidden="true"></i> Undo</button>
-        <button type="button" class="btn btn-secondary" id="sync-btn"><i class="ph ph-arrow-clockwise" id="sync-icon"></i> Sync</button>
-        <button type="button" class="btn btn-ghost" id="reset-btn"><i class="ph ph-arrow-counter-clockwise"></i> Reset week</button>
+        <button type="button" class="btn btn-ghost hidden" id="undo-btn"><i class="ic i-undo" aria-hidden="true"></i> Undo</button>
+        <button type="button" class="btn btn-secondary" id="sync-btn"><i class="ic i-sync" id="sync-icon"></i> Sync</button>
+        <button type="button" class="btn btn-ghost" id="reset-btn"><i class="ic i-undo"></i> Reset week</button>
       </div>
     </div>
 
@@ -1305,6 +1237,8 @@
     <div id="advice-root"></div>
 
     <div class="summary" id="summary"></div>
+
+    <div class="dstrip" id="dstrip" role="group" aria-label="Day of this week"></div>
 
     <div class="im-boardwrap" id="boardwrap">
       <div class="im-board" id="board"></div>
@@ -1319,35 +1253,131 @@
 
     <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. <b>Plan setup</b> fits the whole season to the hours you actually have; it always shows you the changes before anything is written, and <b>Reset week</b> rebuilds a single week from that fit.</p>
 
-    <div class="im-chartcard">
-      <div class="chart-head">
-        <span class="chart-title">Season training load</span>
-        <span class="right">
-          <span class="chart-completed" id="chart-completed"></span>
-          <span class="seg" role="group" aria-label="Chart mode" id="chartmode-seg">
-            <label class="seg-opt"><input type="radio" name="chartmode" value="weekly" />Weekly</label>
-            <label class="seg-opt"><input type="radio" name="chartmode" value="cumulative" />Cumulative</label>
-          </span>
-        </span>
+    <section class="panel season" aria-label="Season fitness and training load">
+      <div class="season-top">
+        <span class="card-kicker">Season</span>
+        <div class="seg" role="radiogroup" aria-label="Chart view" id="seasonview-seg">
+          <label class="seg-opt"><input type="radio" name="seasonview" value="fit" checked />Fitness</label>
+          <label class="seg-opt"><input type="radio" name="seasonview" value="load" />Training load</label>
+        </div>
       </div>
-      <span class="chart-scrollhint">Scroll sideways to see the whole season →</span>
-      <div class="im-chartscroll" id="chart-scroll">
-        <svg class="im-chartsvg" id="chart-svg" viewBox="0 0 900 220"></svg>
-        <div class="chart-tip hidden" id="chart-tip"></div>
+      <div class="v-fit" id="v-fit"></div>
+      <div class="v-load hidden" id="v-load">
+        <div class="im-chartcard">
+          <div class="chart-head">
+            <span class="chart-title">Season training load</span>
+            <span class="right">
+              <span class="chart-completed" id="chart-completed"></span>
+              <span class="seg" role="group" aria-label="Chart mode" id="chartmode-seg">
+                <label class="seg-opt"><input type="radio" name="chartmode" value="weekly" />Weekly</label>
+                <label class="seg-opt"><input type="radio" name="chartmode" value="cumulative" />Cumulative</label>
+              </span>
+            </span>
+          </div>
+          <span class="chart-scrollhint">Scroll sideways to see the whole season →</span>
+          <div class="im-chartscroll" id="chart-scroll">
+            <svg class="im-chartsvg" id="chart-svg" viewBox="0 0 900 220"></svg>
+            <div class="chart-tip hidden" id="chart-tip"></div>
+          </div>
+          <div class="chart-legend" id="chart-legend"></div>
+        </div>
       </div>
-      <div class="chart-legend" id="chart-legend"></div>
+    </section>
+  </div>
+
+  <div class="page hidden" data-page="status" tabindex="-1">
+    <header>
+      <div class="hdr-top">
+        <span class="kicker">Athlete</span>
+        <span class="chip-sample" id="status-chip"></span>
+      </div>
+      <h1 class="im-h1">Training status</h1>
+      <p class="im-sub">How recent training load compares with what you are used to. Worked out from your synced sessions each time you open the page, and never stored.</p>
+    </header>
+    <div id="status-root"></div>
+  </div>
+
+  <div class="page hidden" data-page="biometrics" tabindex="-1">
+    <header>
+      <div class="hdr-top">
+        <span class="kicker">Athlete</span>
+        <span class="hdr-actions"><button type="button" class="btn btn-primary" id="bio-save"><i class="ic i-check" aria-hidden="true"></i> Save changes</button></span>
+      </div>
+      <h1 class="im-h1">Biometrics</h1>
+      <p class="im-sub">About you, your thresholds and your training paces. About you stays in this browser and never goes on a plan. FTP and swim threshold are saved with the plan; heart-rate figures stay in this browser.</p>
+    </header>
+    <div class="bio" id="bio-root"></div>
+  </div>
+
+  <div class="page hidden" data-page="health" tabindex="-1">
+    <header>
+      <div class="hdr-top">
+        <span class="kicker">Athlete</span>
+        <span class="tag tag-neutral">Coming soon</span>
+      </div>
+      <h1 class="im-h1">Health indicators</h1>
+      <p class="im-sub">Resting heart rate, heart rate variability and sleep, shown next to your training load. Nothing is shown here yet.</p>
+    </header>
+
+    <div class="grid-3">
+      <section class="panel" aria-label="Resting heart rate">
+        <div class="panel-h"><span class="card-kicker"><i class="ic i-pulse" style="margin-right: 6px" aria-hidden="true"></i>Resting heart rate</span></div>
+        <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>bpm</small></span>
+        <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 36 C40 30 60 40 100 34 S170 24 210 32 S270 38 300 30"></path></svg>
+        <p class="note">Overnight, from your Garmin, as a trend beside your training load.</p>
+      </section>
+      <section class="panel" aria-label="Heart rate variability">
+        <div class="panel-h"><span class="card-kicker"><i class="ic i-heart" style="margin-right: 6px" aria-hidden="true"></i>Heart rate variability</span></div>
+        <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>ms</small></span>
+        <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 30 C30 40 60 24 100 32 S160 44 200 30 S260 22 300 34"></path></svg>
+        <p class="note">The overnight average, set against your own last four weeks and nobody else’s.</p>
+      </section>
+      <section class="panel" aria-label="Sleep">
+        <div class="panel-h"><span class="card-kicker"><i class="ic i-moon" style="margin-right: 6px" aria-hidden="true"></i>Sleep</span></div>
+        <span class="big" style="color: color-mix(in srgb, var(--color-text) 38%, transparent)">—<small>h per night</small></span>
+        <svg viewBox="0 0 300 60" preserveAspectRatio="none" style="width: 100%; height: 60px" aria-hidden="true"><path class="ghost-line" d="M0 28 C40 34 70 22 110 30 S180 42 220 28 S270 24 300 32"></path></svg>
+        <p class="note">Hours asleep each night, from your Garmin.</p>
+      </section>
     </div>
 
+    <section class="panel" aria-label="How it works">
+      <div class="panel-h"><span class="card-kicker">How it works</span></div>
+      <div class="rows">
+        <div class="row"><span>Source</span><b>Your Garmin bridge, the same one that syncs activities</b></div>
+        <div class="row"><span>Where it is kept</span><b>On this device only, like heart rate today</b></div>
+        <div class="row"><span>Today</span><b>If you switch sleep and overnight heart rate on in the Garmin panel, the weekly review sets them beside your usual</b></div>
+        <div class="row"><span>On the plan</span><b>Nothing changes unless you tick the box in the review</b></div>
+      </div>
+      <div class="hdr-actions">
+        <button type="button" class="btn btn-secondary" id="health-garmin"><i class="ic i-watch" aria-hidden="true"></i> Open the Garmin panel</button>
+      </div>
+    </section>
+  </div>
+
+  <div class="page page-foot">
     <footer class="im-foot">
       <span>yootri is a training planner, not medical advice. Free and open source (MIT).</span>
       <button type="button" class="im-foot-link" id="about-btn">About &amp; disclaimer</button>
       <button type="button" class="im-foot-link" id="privacy-btn">Privacy notice</button>
     </footer>
-
-    <div id="modal-root"></div>
-    <div id="dialog-root"></div>
-    <div id="panel-root"></div>
   </div>
+    </main>
+  </div>
+
+  <nav class="tabbar" id="tabbar" aria-label="Sections">
+    <a class="tab" data-route="week" href="#/week"><i class="ic i-calendar" aria-hidden="true"></i>Week</a>
+    <a class="tab" data-route="status" href="#/status"><i class="ic i-trend" aria-hidden="true"></i>Status</a>
+    <a class="tab" data-route="biometrics" href="#/biometrics"><i class="ic i-user" aria-hidden="true"></i>Biometrics</a>
+    <a class="tab" data-route="health" href="#/health"><i class="ic i-heart" aria-hidden="true"></i>Health</a>
+    <button type="button" class="tab" id="tab-more" aria-haspopup="dialog" aria-expanded="false"><i class="ic i-menu" aria-hidden="true"></i>More</button>
+  </nav>
+
+  <input type="file" id="import-file" accept="application/json,.json" hidden />
+  <input type="file" id="activity-file" accept=".csv,.tcx,.gpx,text/csv" hidden />
+
+  <div id="modal-root"></div>
+  <div id="dialog-root"></div>
+  <div id="panel-root"></div>
 
   <script type="module">
   'use strict';
@@ -1357,8 +1387,10 @@
      a browser (`npm test`). This file keeps the markup, styles and DOM. */
   import {
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
-    landingsOf, freshWeek, isUntouchedPlan, carryOver, upcomingEvents, consolidatePlans,
+    landingsOf, freshWeek, isUntouchedPlan, carryOver, upcomingEvents,
   } from './assets/coach/plan.js';
+  import { PLANNED, FITNESS_BANDS, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline } from './assets/coach/fitness.js';
+  import { racePreparation } from './assets/coach/preparation.js';
   import { releaseState, isReleased, reviewWeek, proposeNextWeek, hardestSession } from './assets/coach/review.js';
   import { normalizeNight, mergeOvernight, overnightNights, overnightSyncWindow, compareNights } from './assets/coach/overnight.js';
   import {
@@ -1366,10 +1398,10 @@
     buildPlanFromAnswers, planReview, isReturning,
   } from './assets/coach/onboarding.js';
   import {
-    normalizeAthlete, mergeAthletes, athleteGaps, estimateAnnualHours, wattsPerKg, isEmptyAthlete,
+    normalizeAthlete, mergeAthletes, athleteGaps, wattsPerKg, isEmptyAthlete,
     SEXES, LEVELS, SPORTS as ATHLETE_SPORTS,
   } from './assets/coach/athlete.js';
-  import { normalizeProfile, resolveWeekShape, SPREAD_MODES } from './assets/coach/profile.js';
+  import { normalizeProfile, resolveWeekShape, SPREAD_MODES, peakHoursFor } from './assets/coach/profile.js';
   import { dayBudgets } from './assets/coach/shape.js';
   import {
     STATUSES, getActual, setActual, actualMinutes, weekCompliance, seasonActuals,
@@ -1381,17 +1413,17 @@
     exportEnvelope, readPlanFile, adoptImported, summarizePlan,
   } from './assets/coach/portable.js';
   import {
-    validateSeason, seasonFit, volumeBeyondRace, MIN_VARIATION_RETAINED,
+    validateSeason, volumeBeyondRace,
   } from './assets/coach/validate.js';
   import { fitToRace, planLandings, LONG_RUNWAY_WEEKS } from './assets/coach/season.js';
-  import { weeksUntil } from './assets/coach/dates.js';
+  import { weeksUntil, nextMonday } from './assets/coach/dates.js';
   import {
     dateOf, weekIndexOf, monthOf, firstOfMonth, addMonths, monthGrid, clampMonth,
   } from './assets/coach/calendar.js';
   import {
     RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES, raceTypeLabel,
     normalizeEvents, upsertEvent, removeEvent,
-    goalEvent, eventsByDate, raceFieldsOf, seedEventsFromProfile,
+    goalEvent, eventsByDate, raceFieldsOf, seedEventsFromProfile, hasTaper,
   } from './assets/coach/events.js';
   import { suggest } from './assets/coach/adapt.js';
   import { runTurn } from './assets/coach/agent.js';
@@ -1407,6 +1439,7 @@
   } from './assets/coach/activities.js';
   import {
     ingestSynced, mergeActivities, nextSyncWindow, nextActivitySync, mergeHrStore, hrLookup, bridgeErrorMessage,
+    BRIDGE_URL_RE, MIN_TOKEN, parsePairing, bridgeState,
   } from './assets/coach/synced.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
@@ -1418,19 +1451,19 @@
      ========================================================================= */
 
   const DISC = {
-    Swim: { icon: 'ph-person-simple-swim', color: '#5fb1cb' },
-    Bike: { icon: 'ph-bicycle', color: '#d8a75f' },
-    Run: { icon: 'ph-person-simple-run', color: '#e08a6c' },
-    Strength: { icon: 'ph-barbell', color: '#9aa0ba' },
-    Yoga: { icon: 'ph-flower-lotus', color: '#84c08f' },
-    Brick: { icon: 'ph-link-simple', color: '#b884d6' },
-    Rest: { icon: 'ph-bed', color: '#7b8299' },
+    Swim: { icon: 'i-swim', color: 'var(--disc-swim)' },
+    Bike: { icon: 'i-bike', color: 'var(--disc-bike)' },
+    Run: { icon: 'i-run', color: 'var(--disc-run)' },
+    Strength: { icon: 'i-barbell', color: 'var(--disc-strength)' },
+    Yoga: { icon: 'i-lotus', color: 'var(--disc-yoga)' },
+    Brick: { icon: 'i-link', color: 'var(--disc-brick)' },
+    Rest: { icon: 'i-bed', color: 'var(--disc-rest)' },
   };
 
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const STORE = 'im703_v2';
   const LEGACY = 'im703_v1';
-  const AXIS_GREY = '#b2b6ca';
+  const AXIS_GREY = 'var(--color-neutral-400)';
 
   /* ---- Storage: localStorage is the always-on working store. When signed in,
      each plan also syncs to Firestore (see the module script at the end). ---- */
@@ -1478,7 +1511,9 @@
      day before, anywhere west of Greenwich. */
   const fmtDayISO = (iso) => fmtDate(parseISO(iso));
   const fmtMonthISO = (iso) => parseISO(iso).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const defaultStart = () => { const d = new Date(); const since = (d.getDay() + 6) % 7; return toISO(addDays(d, -since)); };
+  /* Where a plan starts when nothing says: the first Monday after today. Not the
+     Monday before it — that starts a new plan in a week that is already over. */
+  const defaultStart = () => nextMonday(toISO(new Date()));
 
   const durToMin = (x) => {
     if (!x || x === '—') return 0;
@@ -1508,11 +1543,6 @@
   const planKey = (id) => STORE + '_plan_' + id;
   const loadIndex = () => load(STORE + '_plans') || [];
   const saveIndex = (ix) => save(STORE + '_plans', ix);
-  // Plans from the multi-plan era. The page holds one active plan; any others
-  // are kept here, read-only, until the athlete downloads or deletes them.
-  const loadArchive = () => load(STORE + '_archive') || [];
-  const saveArchive = (ix) => save(STORE + '_archive', ix);
-  const ARCHIVE_NOTICE_KEY = STORE + '_archive_notice';
   const loadPlanLocal = (id) => load(planKey(id));
   // The plan record carries the training data, so its outcome is what "is my work
   // saved?" actually means — the index and current-id keys are tiny metadata that
@@ -1523,8 +1553,7 @@
   const currentId = () => load(STORE + '_current');
   const setCurrentId = (id) => save(STORE + '_current', id);
 
-  let plans = [];   // index of the active plan: [{ id, name }] — one entry
-  let archive = []; // index of archived plans: [{ id, name }]
+  let plans = [];   // index: [{ id, name }]
   let plan = null;  // the current plan object
 
   /* The no-input path: bootstrap, and the stand-in after deleting your last
@@ -1560,31 +1589,8 @@
     return false;
   }
 
-  /* One active plan. Anything else that is live — plans from before this rule,
-     or ones another device synced in — is archived, not deleted; an untouched
-     stand-in is dropped. consolidatePlans decides, this applies it. Runs before
-     the page exists, so it never touches the DOM. Returns how many were archived. */
-  function settlePlans() {
-    const records = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean);
-    if (!records.length) return 0;
-    const { active, archived, dropped } = consolidatePlans(records, { now: now() });
-    archived.forEach((p) => {
-      savePlanLocal(p);
-      if (!archive.some((x) => x.id === p.id)) archive.push({ id: p.id, name: p.name });
-    });
-    dropped.forEach((id) => { remove(planKey(id)); cloudDelete(id); });
-    plans = active ? [{ id: active.id, name: active.name }] : [];
-    saveIndex(plans);
-    saveArchive(archive);
-    if (active && currentId() !== active.id) setCurrentId(active.id);
-    if (archived.length) save(ARCHIVE_NOTICE_KEY, (load(ARCHIVE_NOTICE_KEY) || 0) + archived.length);
-    return archived.length;
-  }
-
   function ensurePlans() {
     plans = loadIndex();
-    archive = loadArchive();
-    if (plans.length > 1) settlePlans();
     let made = null;
     if (!plans.length) {
       made = hasLegacy() ? migrateLegacy() : blankPlan('My plan');
@@ -1610,7 +1616,7 @@
   const state = {
     week: 0, sessions: [],
     done: {}, start: defaultStart(),
-    view: 'week', month: null, events: [],
+    view: 'week', month: null, events: [], page: 'week', mDay: 'Mon', mDayWeek: null,
     chartMode: 'weekly', chartHidden: {},
     dragId: null, editingId: null, hoverIdx: null,
     status: 'Saved on this device', statusError: false,
@@ -1706,7 +1712,7 @@
     chartCompleted: $('chart-completed'), chartmodeSeg: $('chartmode-seg'),
     chartScroll: $('chart-scroll'), chartSvg: $('chart-svg'), chartTip: $('chart-tip'),
     chartLegend: $('chart-legend'), modalRoot: $('modal-root'), dialogRoot: $('dialog-root'),
-    planTitle: $('plan-title'), planTitleText: $('plan-title-text'), menuRoot: $('menu-root'),
+    planTitle: $('plan-title'), planTitleText: $('plan-title-text'),
     importFile: $('import-file'), activityFile: $('activity-file'), account: $('account'),
   };
 
@@ -1718,6 +1724,9 @@
   function renderHeader() {
     const name = (plan && plan.name) || 'My plan';
     els.planTitleText.textContent = name;
+    // The untouched stand-in is not a plan the athlete made, so it is not named.
+    $('plan-sw-name').textContent = currentPlanUntouched() ? 'Not set up yet' : name;
+    $('m-plan-name').textContent = name;
     document.title = 'yootri — ' + name;
     const info = weekInfo(state.week);
     els.subtitle.textContent = totalWeeks() + ' weeks · from ' + fmtDate(parseISO(state.start)) +
@@ -1749,7 +1758,9 @@
 
   function renderToolbar() {
     els.viewSeg.querySelectorAll('input[name="view"]').forEach((r) => { r.checked = r.value === state.view; });
+    syncNav();
     els.garminBtn.classList.toggle('hidden', !garminConfig());
+    renderBridgeState();
     els.garminSendBtn.classList.toggle('hidden', !garminConfig());
 
     if (state.view === 'month') {
@@ -1795,7 +1806,7 @@
       (opts.meter != null ? '<div class="sum-meter"><div style="width: ' + opts.meter + '%;"></div></div>' : '') +
       '</div>';
 
-    const icon = (name) => '<i class="ph ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
+    const icon = (name) => '<i class="ic ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
 
     // A week not released yet has no sessions to count: show only the hours
     // it is planned to hold, as the board does.
@@ -1836,7 +1847,7 @@
     const cls = did < planned ? ' short' : '';
     const from = syncedActivity(a.activityId);
     const watch = from
-      ? '<i class="ph ph-watch" aria-label="From Garmin" title="From Garmin' + (from.name ? ': ' + esc(from.name) : '') + '"></i> '
+      ? '<i class="ic i-watch" aria-label="From Garmin" title="From Garmin' + (from.name ? ': ' + esc(from.name) : '') + '"></i> '
       : '';
     return '<span class="card-actual' + cls + '">' + watch + 'did ' + esc(fmtTotal(did) || '0m') +
       esc(syncedDetail(from)) + rpe + '</span>';
@@ -1888,25 +1899,25 @@
     return (
       '<div class="im-card" draggable="true" data-id="' + esc(s.id) + '" style="--disc-color: ' + color + ';">' +
         '<div class="card-top">' +
-          '<span class="disc-tag" style="background: color-mix(in srgb, ' + color + ' 20%, transparent); color: color-mix(in srgb, ' + color + ' 82%, white);">' +
-            '<i class="ph ' + (meta.icon || 'ph-circle') + '"></i>' + esc(s.disc) + '</span>' +
+          '<span class="disc-tag" style="background: color-mix(in srgb, ' + color + ' 20%, transparent); color: color-mix(in srgb, ' + color + ' 82%, var(--color-text));">' +
+            '<i class="ic ' + (meta.icon || 'i-circle') + '"></i>' + esc(s.disc) + '</span>' +
           '<span class="card-acts">' +
-            '<button type="button" class="icon-btn" data-act="edit" data-id="' + esc(s.id) + '" title="Edit session"><i class="ph ph-pencil-simple"></i></button>' +
-            '<button type="button" class="icon-btn del" data-act="delete" data-id="' + esc(s.id) + '" title="Delete session"><i class="ph ph-trash"></i></button>' +
+            '<button type="button" class="icon-btn" data-act="edit" data-id="' + esc(s.id) + '" title="Edit session"><i class="ic i-pencil"></i></button>' +
+            '<button type="button" class="icon-btn del" data-act="delete" data-id="' + esc(s.id) + '" title="Delete session"><i class="ic i-trash"></i></button>' +
           '</span>' +
         '</div>' +
         '<div class="card-focus' + (hasTitle ? '' : ' untitled') + '">' + (hasTitle ? esc(s.focus) : 'Untitled session') + '</div>' +
         '<div class="card-meta">' +
-          '<span><i class="ph ph-clock"></i>' + esc(s.dur) + '</span>' +
-          (zone ? '<span><i class="ph ph-gauge"></i>' + esc(zone) + '</span>' : '') +
+          '<span><i class="ic i-clock"></i>' + esc(s.dur) + '</span>' +
+          (zone ? '<span><i class="ic i-gauge"></i>' + esc(zone) + '</span>' : '') +
           sessionPaceHTML(s) +
         '</div>' +
         actualLineHTML(s) +
         (s.desc && s.desc.trim() ? '<div class="card-desc">' + esc(s.desc) + '</div>' : '') +
         '<div class="card-foot">' +
           (isDone
-            ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ph ph-check-circle"></i>Done</button>'
-            : '<button type="button" class="done-toggle" data-act="done" data-id="' + esc(s.id) + '"><i class="ph ph-circle"></i>Mark done</button>') +
+            ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-check-circle"></i>Done</button>'
+            : '<button type="button" class="done-toggle" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-circle"></i>Mark done</button>') +
         '</div>' +
       '</div>'
     );
@@ -1926,6 +1937,7 @@
     // A plan released one week at a time shows a week after the horizon as what
     // it will be, not what is in it: the sessions are decided at the review.
     if (!isReleased(plan, state.week)) {
+      $('dstrip').innerHTML = '';
       const info = weekInfo(state.week);
       const rel = releaseState(plan, { today: todayISO });
       els.board.innerHTML =
@@ -1957,11 +1969,41 @@
           '</div>' +
           dayItems.map(sessionCardHTML).join('') +
           (dayItems.length === 0 ? '<div class="rest-zone">Rest day — drag or add a session</div>' : '') +
-          '<button type="button" class="add-btn" data-day="' + day + '"><i class="ph ph-plus"></i>Add session</button>' +
+          '<button type="button" class="add-btn" data-day="' + day + '"><i class="ic i-plus"></i>Add session</button>' +
         '</div>'
       );
     }).join('');
+
+    // On a phone the board shows one day: the strip picks it. Starts on today
+    // when it is in this week, else Monday, and starts over when the week changes.
+    if (state.mDayWeek !== state.week || !DAYS.includes(state.mDay)) {
+      state.mDay = DAYS.find((d) => dateOf(state.start, state.week, d) === todayISO) || 'Mon';
+      state.mDayWeek = state.week;
+    }
+    $('dstrip').innerHTML = DAYS.map((day) => {
+      const iso = dateOf(state.start, state.week, day);
+      const dots = state.sessions.filter((s) => s.day === day)
+        .map((s) => '<i style="--c: ' + ((DISC[s.disc] || {}).color || 'var(--color-neutral-500)') + '"></i>').join('');
+      return '<button type="button" class="dchip" data-mday="' + day + '" aria-label="' + day + ' ' + fmtDayISO(iso) + '">' +
+        '<span>' + day + '</span><b>' + Number(iso.slice(8, 10)) + '</b><span class="dots">' + dots + '</span></button>';
+    }).join('');
+    applyMobileDay();
   }
+
+  function applyMobileDay() {
+    document.querySelectorAll('#dstrip .dchip').forEach((b) => {
+      const on = b.dataset.mday === state.mDay;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    els.board.querySelectorAll('.im-col').forEach((c) => c.classList.toggle('m-on', c.dataset.day === state.mDay));
+  }
+  $('dstrip').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-mday]');
+    if (!b) return;
+    state.mDay = b.dataset.mday;
+    applyMobileDay();
+  });
 
   /* ---- Month calendar ----------------------------------------------------
      The same sessions the board shows, laid out on real dates, one row per
@@ -1982,12 +2024,12 @@
         ' style="--disc-color: ' + color + ';">' +
         '<button type="button" class="cal-chip-main" data-act="edit" data-id="' + esc(s.id) + '"' +
           ' title="' + esc(label + ' · ' + s.dur) + '">' +
-          '<i class="ph ' + (meta.icon || 'ph-circle') + '" aria-hidden="true"></i>' +
+          '<i class="ic ' + (meta.icon || 'i-circle') + '" aria-hidden="true"></i>' +
           '<span class="cal-chip-dur">' + esc(s.dur) + '</span>' +
         '</button>' +
         '<button type="button" class="cal-chip-done" data-act="done" data-id="' + esc(s.id) + '"' +
           ' aria-label="' + (isDone ? 'Mark not done' : 'Mark done') + '">' +
-          '<i class="ph ' + (isDone ? 'ph-check-circle' : 'ph-circle') + '" aria-hidden="true"></i>' +
+          '<i class="ic ' + (isDone ? 'i-check-circle' : 'i-circle') + '" aria-hidden="true"></i>' +
         '</button>' +
       '</span>'
     );
@@ -1999,7 +2041,7 @@
     return (
       '<button type="button" class="cal-evt' + (ev.priority ? ' ' + ev.priority : '') + '" data-act="event"' +
         ' data-id="' + esc(ev.id) + '" title="' + esc(title) + '">' +
-        '<i class="ph ' + (ev.kind === 'race' ? 'ph-flag-checkered' : 'ph-bookmark-simple') + '" aria-hidden="true"></i>' +
+        '<i class="ic ' + (ev.kind === 'race' ? 'i-flag-checkered' : 'i-bookmark') + '" aria-hidden="true"></i>' +
         '<span>' + esc(label) + '</span>' +
       '</button>'
     );
@@ -2063,7 +2105,7 @@
             sessions.map(calChipHTML).join('') +
             (d.inPlan
               ? '<button type="button" class="cal-add" data-act="add" data-date="' + d.iso + '"' +
-                ' aria-label="Add a session"><i class="ph ph-plus" aria-hidden="true"></i></button>'
+                ' aria-label="Add a session"><i class="ic i-plus" aria-hidden="true"></i></button>'
               : '') +
           '</div>'
         );
@@ -2170,7 +2212,7 @@
       const y = yAt(v).toFixed(1);
       svg += '<line x1="54" x2="' + rightX + '" y1="' + y + '" y2="' + y + '" style="stroke: ' + faint + ';" stroke-width="1"/>';
       svg += '<line x1="49" x2="54" y1="' + y + '" y2="' + y + '" style="stroke: ' + tickCol + ';" stroke-width="1"/>';
-      svg += '<text x="45" y="' + y + '" text-anchor="end" dominant-baseline="middle" font-size="11" fill="' + AXIS_GREY + '">' + hourLabel(v) + '</text>';
+      svg += '<text x="45" y="' + y + '" text-anchor="end" dominant-baseline="middle" font-size="11" style="fill: ' + AXIS_GREY + '">' + hourLabel(v) + '</text>';
     }
 
     // Axes
@@ -2195,7 +2237,7 @@
     for (let i = 0; i < N; i++) {
       const x = xAt(i).toFixed(1);
       svg += '<line x1="' + x + '" x2="' + x + '" y1="' + baseY + '" y2="' + tickBot + '" style="stroke: color-mix(in srgb, var(--color-text) 45%, transparent);" stroke-width="1"/>';
-      svg += '<text x="' + x + '" y="203" text-anchor="middle" font-size="10.5" fill="' + AXIS_GREY + '">' + (i + 1) + '</text>';
+      svg += '<text x="' + x + '" y="203" text-anchor="middle" font-size="10.5" style="fill: ' + AXIS_GREY + '">' + (i + 1) + '</text>';
     }
     svg += '<text x="' + ((54 + rightX) / 2).toFixed(1) + '" y="217" text-anchor="middle" font-size="11" style="fill: color-mix(in srgb, var(--color-text) 55%, transparent);">Week</text>';
 
@@ -2309,7 +2351,7 @@
         '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">' +
           '<div class="dialog-head">' +
             '<h3 id="dialog-title">Edit session</h3>' +
-            '<button type="button" class="btn btn-icon btn-ghost" data-act="cancel" aria-label="Close"><i class="ph ph-x"></i></button>' +
+            '<button type="button" class="btn btn-icon btn-ghost" data-act="cancel" aria-label="Close"><i class="ic i-x"></i></button>' +
           '</div>' +
           '<div class="field"><label for="ed-disc">Discipline</label><select class="input" id="ed-disc">' + opts + '</select></div>' +
           '<div class="field"><label for="ed-focus">Title</label><input type="text" class="input" id="ed-focus" value="' + esc(s.focus || '') + '" placeholder="e.g. Endurance spin" /></div>' +
@@ -2320,9 +2362,9 @@
           '<div class="field"><label for="ed-desc">Description</label><textarea class="input" id="ed-desc" placeholder="Sets, cues, notes…">' + esc(s.desc || '') + '</textarea></div>' +
           logSectionHTML(s) +
           '<div class="dialog-foot">' +
-            '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ph ph-trash"></i> Delete</button>' +
+            '<button type="button" class="btn btn-ghost del-btn" data-act="modal-delete"><i class="ic i-trash"></i> Delete</button>' +
             (s.disc === 'Bike' && garminConfig()
-              ? '<button type="button" class="btn btn-ghost" data-act="send-garmin" title="Sends the saved session, not unsaved edits"><i class="ph ph-paper-plane-tilt"></i> Send to Garmin</button>'
+              ? '<button type="button" class="btn btn-ghost" data-act="send-garmin" title="Sends the saved session, not unsaved edits"><i class="ic i-send"></i> Send to Garmin</button>'
               : '') +
             '<span class="right">' +
               '<button type="button" class="btn btn-secondary" data-act="cancel">Cancel</button>' +
@@ -2450,7 +2492,7 @@
   });
 
   function planIsUntouched() {
-    return currentPlanUntouched();
+    return plans.length === 1 && currentPlanUntouched();
   }
 
   function renderOrientation() {
@@ -2491,6 +2533,27 @@
     renderSummary();
     renderViewBody();
     renderChart();
+    renderFitness();
+    // A page with typed-but-unsaved boxes is not redrawn under the typist, unless the plan changed.
+    if (state.page === 'biometrics' && (!bioDirty || bioPlanId !== plan.id)) renderBiometrics();
+  }
+
+  const replacedNote = (name) => (name === null ? ' · in place of the starter plan' : ' · replacing "' + name + '"');
+
+  /* The page is never without a plan, so a first visit makes a stand-in "My
+     plan". There is one plan to show: creating or importing a season replaces
+     whatever is stored, rather than leaving a list of old seasons (and their
+     copies in the cloud). Nothing is cleared until the athlete finishes — a
+     wizard or an import that is cancelled never gets here. Returns the name of
+     the plan that was replaced, or null when it was only the untouched
+     stand-in (see isUntouchedPlan). */
+  function clearPlans() {
+    const replaced = currentPlanUntouched() ? null : (plan.name || 'your plan');
+    const ids = plans.map((x) => x.id);
+    plans = [];
+    saveIndex(plans);
+    ids.forEach((id) => { remove(planKey(id)); cloudDelete(id); });
+    return replaced;
   }
 
   /* =========================================================================
@@ -2519,7 +2582,8 @@
           '<div class="dialog-head"><h3 id="so-title">Delete plan &amp; start over</h3></div>' +
           '<p class="pnl-sub">“' + esc(plan.name || 'This plan') + '” — its weeks, completed sessions, logs and coach ' +
             'conversation — is removed from this device' + (authUser ? ' and your account' : '') +
-            ' once you finish setting up the new one. Your results, FTP/CSS, synced Garmin history and About you stay.</p>' +
+            ' once you finish setting up the new one. Your results, FTP/CSS, synced Garmin history and About you stay. ' +
+            'Export it first from the plan’s … menu if you want a copy.</p>' +
           (rows
             ? '<span class="pnl-sub" style="display:block">Keep these races on the calendar</span>' + rows
             : '<p class="pnl-hint">No races or events are coming up, so there is nothing to keep.</p>') +
@@ -2545,71 +2609,15 @@
     };
   }
 
-  /* The page is never without a plan, so a first visit makes a stand-in "My
-     plan". Setting up a real season replaces it. Replacing a plan the athlete
-     has used is the same move with a ten-second Undo. Returns whether the
-     replaced plan was only the stand-in. */
+  /* clearPlans + addPlan, with a ten-second Undo when a season the athlete has
+     used is what is being replaced. Returns what clearPlans does, for
+     replacedNote. */
   function replaceCurrentPlan(next) {
     const old = plan;
-    const standIn = currentPlanUntouched();
-    clearUndo();
-    plans = plans.filter((x) => x.id !== old.id);
-    saveIndex(plans);
-    remove(planKey(old.id));
-    cloudDelete(old.id);
+    const replaced = clearPlans();
     addPlan(next);
-    if (!standIn) armUndo({ kind: 'replace', plan: old, newId: next.id });
-    return standIn;
-  }
-
-  /* ---- Past plans: what the multi-plan era left behind -------------------- */
-
-  function showArchiveNotice() {
-    const n = load(ARCHIVE_NOTICE_KEY);
-    if (!n || els.panelRoot.firstChild) return;
-    remove(ARCHIVE_NOTICE_KEY);
-    panelShell(
-      '<h2>One plan at a time</h2>' +
-      '<p class="pnl-sub">yootri now keeps a single plan. ' + n + (n === 1 ? ' earlier plan was' : ' earlier plans were') +
-        ' moved to <b>Past plans</b> in the plan menu, where you can download or delete ' + (n === 1 ? 'it' : 'them') +
-        '. Nothing was deleted.</p>' +
-      '<div class="pnl-act"><button type="button" class="btn btn-primary" id="an-ok">OK</button></div>',
-      'Past plans');
-    $('an-ok').addEventListener('click', closePanel);
-  }
-
-  function openPastPlansPanel() {
-    const rows = archive.map((e) => {
-      const p = loadPlanLocal(e.id);
-      return '<li class="pp-row"><span><b>' + esc(e.name || 'Plan') + '</b>' +
-        (p ? ' · ' + weekCount(loadPlan(p)) + ' weeks' : '') + '</span>' +
-        '<span><button type="button" class="btn btn-ghost" data-pp="dl" data-id="' + esc(e.id) + '">Download</button>' +
-        '<button type="button" class="btn btn-ghost" data-pp="del" data-id="' + esc(e.id) + '">Delete</button></span></li>';
-    }).join('');
-    panelShell(
-      '<h2>Past plans</h2>' +
-      '<p class="pnl-sub">Kept for reference only — they are not training you and the coach does not see them.</p>' +
-      (rows ? '<ul class="wiz-list pp-list">' + rows + '</ul>' : '<p class="pnl-hint">No past plans.</p>') +
-      '<div class="pnl-act"><button type="button" class="btn btn-ghost" id="pp-close">Close</button></div>',
-      'Past plans');
-    $('pp-close').addEventListener('click', closePanel);
-    els.panelRoot.onclick = async (e) => {
-      const b = e.target.closest('[data-pp]');
-      if (!b) return;
-      const p = loadPlanLocal(b.dataset.id);
-      if (b.dataset.pp === 'dl' && p) {
-        downloadJson(exportEnvelope(p), (p.name || 'plan').replace(/[^\w-]+/g, '_').toLowerCase() + '.json');
-      } else if (b.dataset.pp === 'del') {
-        const ok = await confirmDialog('Delete past plan',
-          'Delete "' + (p?.name || 'this plan') + '" for good? This removes it from this device' + (authUser ? ' and the cloud' : '') + '.', 'Delete');
-        if (!ok) return;
-        archive = archive.filter((x) => x.id !== b.dataset.id);
-        saveArchive(archive);
-        remove(planKey(b.dataset.id));
-        cloudDelete(b.dataset.id);
-        openPastPlansPanel();
-      }
-    };
+    if (replaced !== null) armUndo({ kind: 'replace', plan: old, newId: next.id });
+    return replaced;
   }
 
   /* =========================================================================
@@ -2885,7 +2893,6 @@
   function closePanel() {
     draft = null;
     els.panelRoot.innerHTML = '';
-    els.panelRoot.onclick = null;
     document.removeEventListener('keydown', onPanelKey);
   }
 
@@ -2948,13 +2955,13 @@
      setup form does. Anything else is a note on the calendar, written straight
      away. */
 
-  const PRIORITY_LABELS = { primary: 'Main race', secondary: 'Tune-up race' };
+  const PRIORITY_LABELS = { primary: 'A race (target)', secondary: 'B race (fitness test)' };
 
   const priorityOptions = (current) =>
     '<option value="primary"' + (current === 'primary' ? ' selected' : '') +
-      '>Main race — build the season around it</option>' +
+      '>A race (target) — build the season around it</option>' +
     '<option value="secondary"' + (current === 'secondary' ? ' selected' : '') +
-      '>Tune-up race — taper and race week for it</option>' +
+      '>B race (fitness test) — a tune-up inside the build</option>' +
     '<option value="none"' + (current ? '' : ' selected') +
       '>Just a marker — changes nothing</option>';
 
@@ -2976,7 +2983,7 @@
 
     panelShell(
       '<h2>' + (existing ? 'Edit event' : 'Add event') + '</h2>' +
-      '<p class="pnl-sub">Anything worth seeing next to the training. A race can be the one the season is built around, or a tune-up along the way.</p>' +
+      '<p class="pnl-sub">Anything worth seeing next to the training. A race can be your A race, the one the season is built around, or a B race along the way.</p>' +
       '<div class="pnl-grid">' +
         field('Name', '<input type="text" class="input" id="ev-name" value="' + esc(ev.name) + '" placeholder="e.g. Ironman Cascais" />') +
         field('Date', '<input type="date" class="input" id="ev-date" value="' + esc(ev.date) + '" />') +
@@ -2988,7 +2995,7 @@
       '</div>' +
       '<p class="pnl-hint" id="ev-hint"></p>' +
       '<div class="pnl-act">' +
-        (existing ? '<button type="button" class="btn btn-ghost spacer danger" id="ev-del"><i class="ph ph-trash"></i> Delete</button>' : '') +
+        (existing ? '<button type="button" class="btn btn-ghost spacer danger" id="ev-del"><i class="ic i-trash"></i> Delete</button>' : '') +
         '<button type="button" class="btn btn-ghost" id="ev-cancel">Cancel</button>' +
         '<button type="button" class="btn btn-primary" id="ev-save">Save event</button>' +
       '</div>',
@@ -3024,6 +3031,7 @@
     };
     $('ev-kind').addEventListener('change', sync);
     $('ev-date').addEventListener('change', renderEventHint);
+    $('ev-type').addEventListener('change', renderEventHint);
     $('ev-prio').addEventListener('change', () => { renderTypes(); renderEventHint(); });
     $('ev-cancel').addEventListener('click', closePanel);
     $('ev-save').addEventListener('click', () => saveEventFromPanel(ev.id));
@@ -3063,7 +3071,13 @@
        than describing the rule again here — the two saying different things is
        the failure worth designing out. */
     const at = weekIndexOf(state.start, date);
-    const { applied, refused } = planLandings({ weeks: totalWeeks(), landings: [at] });
+    const taper = hasTaper({ raceType: $('ev-type').value });
+    const { applied, refused } = planLandings({ weeks: totalWeeks(), landings: [{ absWeek: at, taper }] });
+    if (applied.length && !taper) {
+      el.innerHTML = 'That race is short enough to need no taper week, so week <b>' + (at + 1) +
+        '</b> keeps its block and only the race day itself is cleared.';
+      return;
+    }
     if (applied.length) {
       el.innerHTML = 'Week <b>' + (at + 1) + '</b> becomes its race week' +
         (at > 0 ? ', with week <b>' + at + '</b> as a taper week before it' : '') +
@@ -3089,7 +3103,10 @@
     if (!date) { $('ev-hint').innerHTML = 'An event needs a date.'; return; }
     const kind = $('ev-kind').value;
     const priority = $('ev-prio').value;
+    // Edited in place: what the panel does not show (the ambition, the athlete's
+    // expected time) is kept, not rebuilt from nothing.
     applyEvents(upsertEvent(state.events, {
+      ...(state.events.find((x) => x.id === id) || {}),
       id,
       name: $('ev-name').value,
       date,
@@ -3265,7 +3282,7 @@
       '<p class="pnl-sub">Signing in is unavailable on this copy of yootri. Everything else works normally.</p>' +
       '<div class="legal">' +
         '<p><b>Your plans are safe.</b> They are stored in this browser and load again next time you open the page. Nothing has been lost, and nothing is waiting to be uploaded.</p>' +
-        '<p><b>What you do not get.</b> Syncing plans between devices, and signing in with Google. Use <b>Export</b> from the plan menu to move a plan to another browser or keep a backup.</p>' +
+        '<p><b>What you do not get.</b> Syncing plans between devices, and signing in with Google. Use <b>Export this plan</b> (the … button beside the plan’s name) to move a plan to another browser or keep a backup.</p>' +
         '<p><b>If this is your own copy.</b> Cloud sync needs a Firebase project, and its authorized-domain list has to include the domain you are serving from. The README covers setting that up, or skipping it — running local-only is a supported way to use yootri.</p>' +
         (why ? '<p class="muted">Reported by Firebase: ' + esc(why) + '</p>' : '') +
       '</div>' +
@@ -3395,8 +3412,8 @@
       '</div>' +
       '<div class="pnl-sec">' +
         '<p class="legal-about"><b>Your rights.</b> You can ask for a copy of your data, correct it, have it deleted, or withdraw your consent. ' +
-          'A copy needs no asking — <b>Plan menu → Download my data</b> writes out every plan and About you, and ' +
-          '<b>Export this plan</b> writes out one plan. ' +
+          'A copy needs no asking — <b>Download my data</b> (in the sidebar) writes out every plan and About you, and ' +
+          '<b>Export this plan</b> (the … button beside the plan’s name) writes out one plan. ' +
           'Corrections you make by editing the plan. Deletion is the button below. ' +
           'If you believe your data has been mishandled you can complain to ' +
           '<a href="https://www.datatilsynet.no/" target="_blank" rel="noopener">Datatilsynet</a>.</p>' +
@@ -3469,7 +3486,6 @@
       '<h2>Plan setup</h2>' +
       '<p class="pnl-sub">Fit the season to the time you actually have. Nothing changes until you review it.</p>' +
       '<div class="pnl-grid">' +
-        field('Annual hours', '<input type="number" class="input" id="f-annual" min="50" max="2000" step="10" value="' + Math.round(p.annualHours) + '" />') +
         field('Race date', '<span class="pnl-derived" id="f-race">' + goalEventLabel() + '</span>') +
         field('Race distance', '<select class="input" id="f-race-type">' + opts + '</select>') +
         field('Max swims / week', '<input type="number" class="input" id="f-swimcap" min="0" max="7" step="1" value="' + (swimCap ?? '') + '" placeholder="no limit" />') +
@@ -3478,7 +3494,7 @@
         ? '<p class="pnl-hint">About you says you have no pool and no open water. Set <b>Max swims / week</b> to 0 ' +
           'if you cannot swim at all, and the swim time goes to the other sports.</p>'
         : '') +
-      '<p class="pnl-hint">Annual hours is a <b>scale</b>, not a total this plan adds up to. A typical week is annual ÷ 52, and a season covers only part of the year — this one prescribes <b>' +
+      '<p class="pnl-hint">The season builds up to your biggest week — the time you have each day, below, added up — and tapers from it. It prescribes <b>' +
         (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
       '<p class="pnl-hint fit-warn" id="f-fit"></p>' +
       '<div class="pnl-sec">' +
@@ -3523,10 +3539,10 @@
 
     // Say it while the number is being typed, not after a preview. The season
     // keeps its current length here (previewRefit does not pass `weeks`), so
-    // only the budget and the available time can move the fit.
+    // only the available time can move the fit.
     const refresh = () => { renderFitHint(); renderShapeHint(); };
     refresh();
-    $('f-annual').addEventListener('input', refresh);
+    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => i.addEventListener('input', refresh));
     $('f-race-type').addEventListener('change', refresh);
     $('f-shape-on').addEventListener('change', refresh);
     $('f-spread').addEventListener('change', refresh);
@@ -3549,7 +3565,6 @@
     });
     return normalizeProfile({
       ...plan.profile,
-      annualHours: Number($('f-annual').value) || plan.profile.annualHours,
       raceType: $('f-race-type').value,
       availability,
       weekShape: { enabled: $('f-shape-on').value !== 'off', spread: $('f-spread').value, pins },
@@ -3567,7 +3582,7 @@
     const el = $('f-shape');
     if (!el) return;
     const profile = setupProfile();
-    const season = fitToRace({ annualHours: profile.annualHours, weeks: totalWeeks() });
+    const season = fitToRace({ peakHours: peakHoursFor(profile), weeks: totalWeeks() });
     const peak = season.reduce((a, w) => (w.hours > a.hours ? w : a), season[0]);
     const budgets = dayBudgets({ budgetMinutes: Math.round(peak.hours * 60), profile }).perDay;
 
@@ -3582,37 +3597,23 @@
         'Leave a day blank to follow the recommended distribution; type a number to fix it.';
   }
 
-  /* Would the hours being typed actually periodise inside the week being typed?
-     Pure arithmetic over the season model — no sessions are generated for this. */
+  /* Is the week being typed out of proportion to the race? The season is sized
+     by that week, so this is the one thing left to say. Pure arithmetic over the
+     season model — no sessions are generated for this. */
   function renderFitHint() {
     const el = $('f-fit');
     if (!el) return;
 
     const profile = setupProfile();
-    const annualHours = profile.annualHours;
     const raceType = profile.raceType;
-    const season = fitToRace({ annualHours, weeks: totalWeeks() });
-
-    // Two ways the numbers can be wrong, and they are mutually exclusive by
-    // construction: either the budget outruns the week, or the week is roomy
-    // enough to absorb a budget the race never called for.
-    const fit = seasonFit(season, profile);
-    if (fit && fit.retained < MIN_VARIATION_RETAINED) {
-      el.innerHTML = 'That is more than this week can absorb: <b>' + fit.clippedWeeks + ' of ' +
-        totalWeeks() + '</b> weeks would be capped at the same ceiling, so the season stops ' +
-        'building and tapering.' +
-        (fit.suggestedAnnualHours
-          ? ' Around <b>' + fit.suggestedAnnualHours + ' hours</b> would fit.'
-          : '');
-      return;
-    }
+    const season = fitToRace({ peakHours: peakHoursFor(profile), weeks: totalWeeks() });
 
     const beyond = volumeBeyondRace(season, profile);
     if (beyond) {
       el.innerHTML = 'The hardest week would reach <b>' + fmtTotal(beyond.peakMinutes) +
         '</b> of training for ' + esc(raceTypeLabel(raceType) || 'this race') + ' — about <b>' +
         Math.round(beyond.multiple) + '×</b> what the distance itself calls for. ' +
-        'Check the race distance and the hours are both right.';
+        'Check the race distance and the time you have each day are both right.';
       return;
     }
 
@@ -3918,20 +3919,12 @@
       strays.forEach((e) => remove(planKey(e.id)));
       plans = plans.filter((e) => !strays.includes(e));
     }
-    // A plan archived on another device arrives flagged: it belongs in Past
-    // plans here too, not in the index of the one active plan.
-    const flagged = plans.filter((e) => loadPlanLocal(e.id)?.archivedAt);
-    flagged.forEach((e) => { if (!archive.some((x) => x.id === e.id)) archive.push(e); });
-    plans = plans.filter((e) => !flagged.includes(e));
-    // Then the one-plan rule: the newest season stays, any others are archived.
-    settlePlans();
-    [...plans, ...archive].forEach((e) => {
+    plans.forEach((e) => {
       const lp = loadPlanLocal(e.id);
       const cp = cloudById[e.id];
       if (lp && (!cp || (lp.updatedAt || 0) > (cp.updatedAt || 0))) pushPlan(lp);
     });
     saveIndex(plans);
-    saveArchive(archive);
 
     // If the current plan was the stand-in just dropped, land on the season
     // most recently worked on rather than whichever happens to be listed first.
@@ -3956,7 +3949,6 @@
       setStatus('Synced ' + timeStr());
       renderAll();
       renderAccount();
-      showArchiveNotice();
       // An account that brought no season with it is somebody starting out.
       maybeStartWizard();
     } catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
@@ -3979,7 +3971,7 @@
   }
 
   /* =========================================================================
-     The plan: rename, replace (Undo), and the archive of earlier plans
+     Plans: create / switch / rename / duplicate / delete
      ========================================================================= */
 
   function addPlan(p) {
@@ -4020,6 +4012,7 @@
   }
 
   function armUndo(entry) {
+    clearUndo();
     pendingUndo = entry;
     els.undoBtn.classList.remove('hidden');
     undoTimer = setTimeout(clearUndo, UNDO_MS);
@@ -4079,7 +4072,7 @@
      needs no asking. Heart rate and coach conversations are not in it for the
      reason they are in no export: they never leave this browser. */
   function downloadMyData() {
-    const all = [...plans, ...archive].map((e) => loadPlanLocal(e.id)).filter(Boolean).map((p) => exportEnvelope(p).plan);
+    const all = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean).map((p) => exportEnvelope(p).plan);
     downloadJson({
       _type: 'yootri-my-data',
       version: 1,
@@ -4142,10 +4135,9 @@
           '<b>Export this plan</b>. The whole season travels in it: your hours and availability, ' +
           'the block structure, every session, what you have ticked off and anything you have logged.</p>' +
         (error ? '<div class="diff-issues"><b class="err">' + esc(error) + '</b></div>' : '') +
-        (currentPlanUntouched()
-          ? '<p class="pnl-hint">An imported plan takes the place of the starter plan yootri made on your first visit.</p>'
-          : '<p class="pnl-hint">An imported plan <b>replaces</b> "' + esc(plan.name || 'your current plan') +
-            '" — you can undo it for a few seconds afterwards.</p>') +
+        '<p class="pnl-hint">An imported plan arrives alongside the ones you already have — ' +
+          '"' + esc(plan.name || 'your current plan') + '" is not touched, and you can switch ' +
+          'between them from the plan switcher.</p>' +
         '<div class="pnl-act">' +
           '<button type="button" class="btn btn-ghost spacer" id="imp-example">Try the example plan</button>' +
           '<button type="button" class="btn btn-ghost" id="imp-cancel">Cancel</button>' +
@@ -4179,8 +4171,9 @@
 
     panelShell(
       '<h2>Import plan</h2>' +
-      '<p class="pnl-sub">This is what the file contains. Nothing is written until you import it, ' +
-        'and "' + esc(plan.name || 'your current plan') + '" stays as it is.</p>' +
+      '<p class="pnl-sub">This is what the file contains. Nothing is written until you import it' +
+        (currentPlanUntouched()
+          ? '.' : ', and then "' + esc(plan.name || 'your current plan') + '" is replaced by it. Export that one first if you want a copy.') + '</p>' +
       (res.upgraded
         ? '<p class="pnl-hint">This file was written by an older version of yootri. It has been ' +
           'brought up to date on the way in — the file itself is not changed.</p>'
@@ -4193,7 +4186,7 @@
         fact('Starts', esc(fmtLongDate(s.start))) +
         fact('Length', s.weeks + ' week' + (s.weeks === 1 ? '' : 's')) +
         fact('Race', esc(raceTypeLabel(s.raceType) || '—') + (s.raceDate ? ' · ' + esc(fmtLongDate(s.raceDate)) : '')) +
-        fact('Annual budget', s.annualHours ? Math.round(s.annualHours) + ' h' : '—') +
+        fact('Biggest week', s.peakHours ? fmtTotal(Math.round(s.peakHours * 60)) : '—') +
         fact('Planned volume', esc(fmtTotal(s.plannedMinutes) || '0m')) +
         fact('Your history', esc(history)) +
       '</dl>' +
@@ -4235,8 +4228,7 @@
     });
     closePanel();
     const replaced = replaceCurrentPlan(p);
-    setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' +
-      (replaced ? ' · in place of the starter plan' : ''));
+    setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' + replacedNote(replaced));
   }
 
   /* ---- Weekly release -----------------------------------------------------
@@ -4360,7 +4352,7 @@
       (r.eased ? ' · the ' + r.eased.day + ' ' + r.eased.disc.toLowerCase() + ' made easy' : ''));
   }
 
-  /* Weekly release is a way of showing a plan, chosen from the plan menu. It
+  /* Weekly release is a way of showing a plan, chosen from the plan’s … menu. It
      changes no session, so it is written straight away rather than through a
      draft — the same exception a benchmark makes. Turning it on releases up
      to this week. */
@@ -4410,7 +4402,7 @@
     if (carry) wizCarry = carry;
     carry = carry ?? wizCarry;
     const saved = restart ? null : wizSaved();
-    const allPlans = [...plans, ...archive].map((e) => loadPlanLocal(e.id)).filter(Boolean);
+    const allPlans = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean);
     const returning = isReturning({ athlete: loadAthlete(), plans: allPlans });
     if (restart) remove(WIZ_KEY);
     wiz = saved
@@ -4440,7 +4432,7 @@
     markOriented();
     closePanel();
     renderOrientation();
-    setStatus('Season setup saved — pick it up again from the plan menu');
+    setStatus('Season setup saved — pick it up again from New season in the plan switcher');
   }
 
   const WIZ_TITLES = {
@@ -4519,7 +4511,7 @@
           '<ul class="wiz-list">' +
             '<li><b>About you and your training</b> — only your recent weekly hours are needed; the rest is optional.</li>' +
             '<li><b>Your week</b> — the time you have each day, and where the long ride and long run go.</li>' +
-            '<li><b>Your races</b> — the race the season is for, and any tune-ups on the way.</li>' +
+            '<li><b>Your races</b> — your A race, the one the season is for, and any B races on the way.</li>' +
           '</ul>' +
           '<p class="pnl-hint">Nothing is saved until you create the plan. Your answers are kept in this browser as you go, so you can stop and come back.</p>' +
           (wiz.resumed ? '<p class="pnl-hint">Picking up where you left off. <button type="button" class="btn btn-ghost" id="wz-restart">Start over</button></p>' : '');
@@ -4537,7 +4529,7 @@
       return '<h2>Start a new season</h2>' +
         '<p class="pnl-sub">The questions are the same as the first time, already filled in with what yootri knows — check them, ' +
           'change what has changed, and choose the race. ' +
-          (currentPlanUntouched() ? '' : '“' + esc(plan.name) + '” is replaced when you finish — nothing is removed before then.') + '</p>' +
+          (currentPlanUntouched() ? '' : '“' + esc(plan.name) + '” is replaced when you finish. Export it first from the plan’s … menu if you want a copy.') + '</p>' +
         (known.length ? '<span class="pnl-sub" style="display:block">Already known</span><ul class="wiz-list">' +
           known.map((k) => '<li>' + esc(k) + '</li>').join('') + '</ul>' : '') +
         (gaps.length ? '<span class="pnl-sub" style="display:block;margin-top:.6rem">Worth adding this time</span><ul class="wiz-list">' +
@@ -4569,7 +4561,7 @@
     background() {
       const a = wiz.answers;
       return '<h2>Your training</h2>' +
-        '<p class="pnl-sub">Where you are starting from. The first weeks of the season are sized on your recent hours, so they start close to what you already do.</p>' +
+        '<p class="pnl-sub">Where you are starting from. Optional — it is kept as your own record; the season is sized by the week you give on a later step.</p>' +
         '<div class="pnl-grid">' +
           field('Hours a week, lately', wnum('wz-hours', a.recentWeeklyHours, 'min="0.5" max="40" step="0.5" placeholder="e.g. 7"')) +
           field('Years in triathlon', wnum('wz-years', a.yearsInSport, 'min="0" max="80"')) +
@@ -4590,7 +4582,7 @@
       const distOpts = STANDARD_DISTANCES.map((d) => [d.meters, d.label]);
       return '<h2>Your numbers</h2>' +
         '<p class="pnl-sub">Leave any of these empty if you do not know them yet — sessions show their zones by feel until you add one, ' +
-          'from Training paces in the plan menu.</p>' +
+          'from Training paces on the Biometrics page.</p>' +
         '<div class="pnl-grid">' +
           field('FTP (watts)', wnum('wz-ftp', a.ftpW, 'min="50" max="600"')) +
           field('Swim CSS (per 100 m)', '<input type="text" class="input" id="wz-css" placeholder="1:45" value="' + esc(cssText(a.cssSecPer100m)) + '" />') +
@@ -4608,7 +4600,7 @@
       const a = wiz.answers;
       const dayOpts = DAYS.map((d) => [d, d]);
       return '<h2>Your week</h2>' +
-        '<p class="pnl-sub">The most you could train on each day, in minutes. A day at 0 is a rest day. This is the ceiling, not what every week will hold.</p>' +
+        '<p class="pnl-sub">The most you could train on each day, in minutes. A day at 0 is a rest day. Your biggest week is these days added up: the season builds up to it and tapers from it, and no week goes past it.</p>' +
         '<div class="pnl-days">' +
           DAYS.map((d) => '<label>' + d + '<input type="number" class="input" data-wzday="' + d + '" min="0" max="600" step="15" value="' +
             (a.availability?.[d] || 0) + '" /></label>').join('') +
@@ -4642,20 +4634,20 @@
         '</div>';
       }).join('');
       return '<h2>Your races</h2>' +
-        '<p class="pnl-sub">The race this season is built for, and any tune-up races on the way. The season runs from this Monday to race week.</p>' +
-        '<h3 class="pnl-h3">Main race</h3>' +
+        '<p class="pnl-sub">Your A race is the one this season is built for; B races are fitness tests on the way. The season runs from the Monday it starts to race week.</p>' +
+        '<h3 class="pnl-h3">A race (target)</h3>' +
         '<div class="pnl-grid">' +
           field('Name', '<input type="text" class="input" id="wz-rname" placeholder="e.g. Ironman 70.3 Cascais" value="' + esc(r.name || '') + '" />') +
           field('Date', '<input type="date" class="input" id="wz-racedate" value="' + esc(r.date || '') + '" />') +
-          field('Distance', '<select class="input" id="wz-racetype">' + raceTypeOptions(r.raceType || RACE_TYPES[0], { keepRetired: false }) + '</select>') +
+          field('Distance', '<select class="input" id="wz-racetype">' + raceTypeOptions(r.raceType || '70.3', { keepRetired: false }) + '</select>') +
         '</div>' +
         (preview.weeks
           ? '<p class="np-len">That is a <b>' + preview.weeks + '-week</b> season, built backwards from race week so the taper lands on it.' +
               (preview.longRunway ? ' A runway this long opens with extra preparation weeks before the base blocks.' : '') + '</p>'
           : '') +
-        '<h3 class="pnl-h3">Tune-up races</h3>' +
-        (tuneRows || '<p class="pnl-hint">None yet. A tune-up gets a short taper of its own and nothing on race day.</p>') +
-        '<div class="pnl-act" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="wz-addtune">Add a tune-up race</button></div>';
+        '<h3 class="pnl-h3">B races (fitness tests)</h3>' +
+        (tuneRows || '<p class="pnl-hint">None yet. A B race of more than two hours gets a taper week of its own; a shorter one only clears its own day.</p>') +
+        '<div class="pnl-act" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="wz-addtune">Add a B race</button></div>';
     },
 
     goal() {
@@ -4799,7 +4791,7 @@
     state.view = 'week';
     select(0);
     renderAll();
-    setStatus('Created "' + built.name + '" · ' + weekCount(built) + ' weeks' + (replaced ? ' · in place of the starter plan' : ''));
+    setStatus('Created "' + built.name + '" · ' + weekCount(built) + ' weeks' + replacedNote(replaced));
 
     const week = sessionsAt(built, 0).filter((x) => x.disc !== 'Rest');
     panelShell(
@@ -4807,7 +4799,7 @@
       '<p class="pnl-sub">' + esc(built.name) + ' runs ' + weekCount(built) + ' weeks to race week. Week 1 is on your calendar now: ' +
         week.length + ' session' + (week.length === 1 ? '' : 's') + ', ' + esc(fmtTotal(week.reduce((x, s) => x + durToMin(s.dur), 0)) || '0m') + '.</p>' +
       '<p class="pnl-hint">The rest of the season is released a week at a time: when a week is over, review how it went and the next one is set. ' +
-        'Log what you do as the week goes, or sync it from Garmin. Plan setup, Training paces and About you in the plan menu change anything you told the wizard.</p>' +
+        'Log what you do as the week goes, or sync it from Garmin. Plan setup in the sidebar, and Training paces and About you on the Biometrics page, change anything you told the wizard.</p>' +
       '<div class="pnl-act"><button type="button" class="btn btn-primary" id="wz-done">See week 1</button></div>',
       'Your plan is ready',
     );
@@ -4841,14 +4833,23 @@
     ['ab-ride', 'longest ride', 'longestRideMin'], ['ab-run', 'longest run', 'longestRunMin'],
   ];
 
-  function openAthletePanel() {
-    const a = loadAthlete();
+  /* ---- The Biometrics page ------------------------------------------------
+
+     About you, the thresholds and the training paces on one page. Three stores
+     sit behind it and the page keeps them apart: About you in this browser (and
+     the account, under its own consent), FTP and swim threshold on the plan
+     (`loadRefs`), heart-rate figures in this browser (`yootri_hr_thresholds`).
+     "Save changes" writes About you and the thresholds together, refusing the
+     lot if one value is out of range; a pace result is written the moment it is
+     added, as a benchmark always was. */
+
+  let bioDirty = false;
+  let bioPlanId = null;
+
+  function bioAboutHTML(a) {
     const gaps = athleteGaps(a, plan).filter((g) => g.used);
     const canKeep = cloudReady() && authUser && hasSyncConsent();
     const wkg = wattsPerKg(plan.loadRefs?.ftpW, a.weightKg);
-    const est = estimateAnnualHours({
-      recentWeeklyHours: a.recentWeeklyHours, weeks: weekCount(plan), landings: landingsOf(plan),
-    });
 
     const sel = (id, value, options) => '<select class="input" id="' + id + '"><option value="">—</option>' +
       options.map(([v, label]) => '<option value="' + esc(v) + '"' + (value === v ? ' selected' : '') + '>' +
@@ -4859,12 +4860,12 @@
     const clock = (id, v, ph) => '<input type="text" class="input" id="' + id + '" placeholder="' + ph +
       '" value="' + esc(v ? minToDur(v) : '') + '" />';
 
-    panelShell(
-      '<h2>About you</h2>' +
-      '<p class="pnl-sub">Who your seasons are for. Every field is optional. It is kept in this browser — never ' +
+    return '<section class="panel" aria-label="About you">' +
+      '<div class="panel-h"><span class="card-kicker">About you</span></div>' +
+      '<p class="note">Who your seasons are for. Every field is optional. It is kept in this browser — never ' +
         'on a plan, never in a plan export, and never read by the coach.</p>' +
       (gaps.length
-        ? '<div class="pnl-sec"><span class="pnl-sub" style="display:block">Worth adding — these change what yootri shows you:</span>' +
+        ? '<div><span class="note" style="display:block">Worth adding — these change what yootri shows you:</span>' +
           '<ul class="ab-gaps">' + gaps.map((g) => '<li><b>' + esc(g.label) + '</b> — ' + esc(g.why) + '</li>').join('') +
           '</ul></div>'
         : '') +
@@ -4890,12 +4891,8 @@
           sel('ab-lv-' + sp, a.levels?.[sp], LEVELS.map((l) => [l, LEVEL_LABELS[l]])))).join('') +
       '</div>' +
       '<p class="pnl-hint">' +
-        (est
-          ? 'To open this plan’s ' + weekCount(plan) + ' weeks near ' + esc(a.recentWeeklyHours) +
-            ' h a week, set Plan setup’s annual hours to about <b>' + est + '</b>; this plan uses ' +
-            esc(plan.profile.annualHours) + '. (Annual hours is a scale, not a yearly total.) '
-          : 'Hours a week lately sizes a season so it starts close to what you already do. ') +
-        'The rest of this section is not used for planning yet.</p>' +
+        'Nothing in this section is used for planning yet: your season is sized by the time you have each day, in Plan setup. ' +
+        'Hours a week lately is kept as your own record.</p>' +
 
       '<h3 class="pnl-h3">Equipment and goal</h3>' +
       '<div class="pnl-grid">' +
@@ -4909,7 +4906,7 @@
       '<p class="pnl-hint">Not used for planning yet.</p>' +
 
       (canKeep
-        ? '<div class="pnl-sec"><label class="np-check"><input type="checkbox" id="ab-cloud"' +
+        ? '<div><label class="np-check"><input type="checkbox" id="ab-cloud"' +
             (hasHealthConsent() ? ' checked' : '') + ' />' +
             '<span>Keep About you in my account too, so it follows me to my other devices.</span></label>' +
           '<p class="pnl-hint">Weight and height are health data, so this is a consent of its own, separate ' +
@@ -4918,19 +4915,61 @@
         : '<p class="pnl-hint">Only in this browser. Signed in with sync on, you can choose to keep it in ' +
             'your account too.</p>') +
 
-      '<div class="diff-issues hidden" id="ab-msg"></div>' +
-      '<div class="pnl-act">' +
-        (isEmptyAthlete(a) ? '' : '<button type="button" class="btn btn-ghost spacer danger" id="ab-clear">Clear About you</button>') +
-        '<button type="button" class="btn btn-ghost' + (isEmptyAthlete(a) ? ' spacer' : '') + '" id="ab-close">Close</button>' +
-        '<button type="button" class="btn btn-primary" id="ab-save">Save</button>' +
-      '</div>',
-      'About you',
-    );
+      (isEmptyAthlete(a) ? '' : '<div><button type="button" class="btn btn-ghost danger" id="ab-clear">Clear About you</button></div>') +
+    '</section>';
+  }
 
-    $('ab-close').addEventListener('click', closePanel);
-    $('ab-save').addEventListener('click', saveAthleteFromPanel);
-    const clear = $('ab-clear');
-    if (clear) clear.addEventListener('click', clearAthlete);
+  function bioThresholdsHTML() {
+    const refs = plan.loadRefs || {};
+    const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
+    // Until a formula has been chosen, About you's answer preselects one;
+    // nothing is stored until Save changes.
+    const sex = loadAthlete().sex;
+    const trimp = hr.trimp || (sex === 'male' || sex === 'female' ? sex : '');
+    const opt = (v, label) => '<option value="' + v + '"' + (trimp === v ? ' selected' : '') + '>' + label + '</option>';
+    return '<section class="panel" aria-label="Thresholds">' +
+      '<div class="panel-h"><span class="card-kicker">Thresholds</span></div>' +
+      '<div class="pnl-grid">' +
+        field('Bike FTP (watts)', '<input type="number" class="input" id="bio-ftp" min="50" max="600" value="' + esc(refs.ftpW || '') + '" />') +
+        field('Swim threshold (per 100 m)', '<input type="text" class="input" id="bio-css" placeholder="1:40" value="' + esc(cssText(refs.cssSecPer100m)) + '" />') +
+        field('Threshold heart rate (bpm)', '<input type="number" class="input" id="bio-lthr" min="80" max="220" value="' + esc(hr.lthr || '') + '" />') +
+        field('Maximum heart rate (bpm)', '<input type="number" class="input" id="bio-hrmax" min="100" max="230" value="' + esc(hr.max || '') + '" />') +
+        field('Resting heart rate (bpm)', '<input type="number" class="input" id="bio-hrrest" min="25" max="100" value="' + esc(hr.rest || '') + '" />') +
+        field('Heart-rate formula', '<select class="input" id="bio-trimp"><option value=""' + (trimp ? '' : ' selected') + '>Choose…</option>' +
+          opt('male', 'Banister, men') + opt('female', 'Banister, women') + '</select>') +
+      '</div>' +
+      '<p class="note">With an FTP set, bike sessions sent to Garmin carry watts instead of percentages. ' +
+        'FTP and swim threshold are saved with the plan; the heart-rate figures stay in this browser.</p>' +
+    '</section>';
+  }
+
+  /* What reads each answer today. Written from the hints About you has always
+     carried, so it only claims what the code does; the rest says "Not used yet". */
+  function bioUsesHTML() {
+    const row = (what, tag, cls) => '<div class="row"><span>' + what + '</span><span class="tag ' + cls + '">' + tag + '</span></div>';
+    return '<section class="panel" aria-label="What yootri uses">' +
+      '<div class="panel-h"><span class="card-kicker">What yootri uses</span></div>' +
+      '<div class="rows">' +
+        row('Recent weekly hours', 'Sizes your season', 'tag-accent') +
+        row('Benchmark result', 'Sets run paces', 'tag-accent') +
+        row('FTP', 'Bike targets in watts', 'tag-accent') +
+        row('Weight', 'FTP in watts per kilogram', 'tag-accent') +
+        row('Sex', 'Preselects the heart-rate formula', 'tag-accent') +
+        row('Birth year and height', 'Not used yet', 'tag-neutral') +
+        row('Background, equipment and goal', 'Not used yet', 'tag-neutral') +
+      '</div>' +
+    '</section>';
+  }
+
+  function renderBiometrics() {
+    $('bio-root').innerHTML =
+      '<div class="diff-issues hidden" id="ab-msg" role="alert"></div>' +
+      '<div class="grid-2">' + bioAboutHTML(loadAthlete()) +
+        '<div class="bio-col">' + bioThresholdsHTML() + bioUsesHTML() + '</div>' +
+      '</div>' + bioPacesHTML();
+    wirePacesForm();
+    bioDirty = false;
+    bioPlanId = plan.id;
   }
 
   function readAthleteForm() {
@@ -4951,7 +4990,7 @@
     };
   }
 
-  async function saveAthleteFromPanel() {
+  async function saveBiometrics() {
     const next = normalizeAthlete({ ...readAthleteForm(), updatedAt: now() });
     // Name what was refused rather than storing a different number, or
     // silently none: the boxes stay as typed so it can be corrected in place.
@@ -4959,26 +4998,45 @@
       .filter(([id, , key]) => $(id).value.trim() !== '' && next[key] === undefined)
       .map(([, label]) => label);
     if ($('ab-goaltime').value.trim() !== '' && next.goal === 'time' && next.goalTime === undefined) refused.push('target time');
+
+    const val = (id) => $(id).value.trim();
+    const refs = readLoadRefs(val('bio-ftp'), val('bio-css'));
+    if (val('bio-ftp') && !refs?.ftpW) refused.push('FTP');
+    if (val('bio-css') && !refs?.cssSecPer100m) refused.push('swim threshold');
+    const hr = normalizeHrThresholds({
+      lthr: val('bio-lthr'), max: val('bio-hrmax'), rest: val('bio-hrrest'), trimp: val('bio-trimp'),
+    });
+    for (const [id, key, label] of [['bio-lthr', 'lthr', 'threshold heart rate'], ['bio-hrmax', 'max', 'maximum heart rate'], ['bio-hrrest', 'rest', 'resting heart rate']]) {
+      if (val(id) && hr?.[key] === undefined) refused.push(label);
+    }
     if (refused.length) {
       const msg = $('ab-msg');
       msg.innerHTML = '<b class="err">' + esc('Check the ' + refused.join(', ') + ' — ' +
-        (refused.length === 1 ? 'that value is' : 'those values are') + ' outside what yootri can use.') + '</b>';
+        (refused.length === 1 ? 'that value is' : 'those values are') + ' outside what yootri can use. ' +
+        'A threshold heart rate has to sit between the resting and maximum ones.') + '</b>';
       msg.classList.remove('hidden');
+      msg.scrollIntoView({ block: 'nearest' });
       return;
     }
 
     saveAthleteLocal(next);
-    let status = 'About you saved on this device';
+    saveLoadRefs(refs);
+    if (hr) save(HR_THRESHOLDS_KEY, hr);
+    else remove(HR_THRESHOLDS_KEY);
+    if (coach && coach.session) coach.session.device = { ...coach.session.device, hrThresholds: hr ?? null };
+
+    let status = 'Biometrics saved on this device';
     const box = $('ab-cloud');
     if (box) {
       if (box.checked && !hasHealthConsent()) recordHealthConsent();
       else if (!box.checked && hasHealthConsent()) {
         forgetHealthConsent();
-        if (await withdrawCloudAthlete()) status = 'About you saved on this device and removed from your account';
+        if (await withdrawCloudAthlete()) status = 'Biometrics saved on this device, and About you removed from your account';
       }
-      if (hasHealthConsent() && await pushAthlete()) status = 'About you saved, in your account too';
+      if (hasHealthConsent() && await pushAthlete()) status = 'Biometrics saved, About you in your account too';
     }
-    closePanel();
+    renderAll();
+    renderBiometrics();
     setStatus(status);
   }
 
@@ -4993,7 +5051,7 @@
     if (!ok) return;
     remove(ATHLETE_KEY);
     if (inAccount) { forgetHealthConsent(); await withdrawCloudAthlete(); }
-    closePanel();
+    renderBiometrics();
     setStatus('About you cleared');
   }
 
@@ -5056,21 +5114,20 @@
             ? '<span class="bm-tag">in use</span>'
             : '<button type="button" class="btn btn-ghost" data-bm-use="' + esc(b.id) + '">Use this</button>') +
           '<button type="button" class="icon-btn del" data-bm-del="' + esc(b.id) + '" ' +
-            'title="Remove this result" aria-label="Remove this result"><i class="ph ph-trash"></i></button>' +
+            'title="Remove this result" aria-label="Remove this result"><i class="ic i-trash"></i></button>' +
         '</li>').join('') + '</ul>';
   }
 
-  function openPacesPanel() {
+  function bioPacesHTML() {
     const table = paceTableFor(state.benchmarks);
     const error = pacesView && pacesView.error ? pacesView.error : '';
-
     const distanceOpts = STANDARD_DISTANCES
       .map((d) => '<option value="' + d.meters + '">' + esc(d.label) + '</option>').join('') +
       '<option value="other">Another distance</option>';
 
-    panelShell(
-      '<h2>Training paces</h2>' +
-      '<p class="pnl-sub">Worked out from a running result you enter — a race, or a time trial you ran flat ' +
+    return '<section class="panel" id="bio-paces" aria-label="Training paces">' +
+      '<div class="panel-h"><span class="card-kicker">Training paces</span></div>' +
+      '<p class="note">Worked out from a running result you enter — a race, or a time trial you ran flat ' +
         'out. yootri measures nothing itself, so when that result stops being you, replace it and every week ' +
         'of the season picks up the new one at once.</p>' +
 
@@ -5083,10 +5140,10 @@
           paceTableHTML(table)
         : '<p class="pnl-hint">No result yet, so a Run card shows its zone but no pace. Add one below.</p>') +
 
-      (error ? '<div class="diff-issues"><b class="err">' + esc(error) + '</b></div>' : '') +
+      (error ? '<div class="diff-issues" role="alert"><b class="err">' + esc(error) + '</b></div>' : '') +
 
       '<h3 class="pnl-h3">Add a result</h3>' +
-      '<div class="pnl-grid">' +
+      '<div class="pnl-grid bio-bm-grid">' +
         field('Distance', '<select class="input" id="bm-dist">' + distanceOpts + '</select>') +
         field('Kilometres', '<input type="number" class="input" id="bm-km" min="0.4" max="200" step="0.01" value="10" />') +
         field('Time', '<input type="text" class="input" id="bm-time" placeholder="42:00" />') +
@@ -5096,37 +5153,23 @@
 
       keptListHTML() +
 
-      '<h3 class="pnl-h3">Bike and swim</h3>' +
-      '<p class="pnl-hint">Your FTP puts watts on a bike workout sent to Garmin, and with your CSS it scores ' +
-        'the load of synced rides and swims. Leave either empty if you do not know it yet. Both are saved with ' +
-        'the plan.' +
-        (wattsPerKg(plan.loadRefs?.ftpW, loadAthlete().weightKg)
-          ? ' At the weight in About you that FTP is <b>' + wattsPerKg(plan.loadRefs.ftpW, loadAthlete().weightKg).toFixed(2) + ' W/kg</b>.'
-          : '') + '</p>' +
-      '<div class="pnl-grid">' +
-        field('FTP (watts)', '<input type="number" class="input" id="bm-ftp" min="50" max="600" value="' +
-          esc(plan.loadRefs?.ftpW || '') + '" />') +
-        field('CSS (per 100 m)', '<input type="text" class="input" id="bm-css" placeholder="1:40" value="' +
-          esc(cssText(plan.loadRefs?.cssSecPer100m)) + '" />') +
-      '</div>' +
-      '<div class="pnl-act"><button type="button" class="btn btn-secondary" id="bm-refs-save">Save FTP and CSS</button></div>' +
-
-      '<div class="pnl-act">' +
-        '<button type="button" class="btn btn-ghost spacer" id="bm-file">Import from a file…</button>' +
+      '<div class="bio-acts">' +
+        '<button type="button" class="btn btn-ghost" id="bm-file"><i class="ic i-upload" aria-hidden="true"></i> Import from a file…</button>' +
         (stravaConfig()
           ? '<button type="button" class="btn btn-secondary" id="bm-strava">' +
             (stravaConnected() ? 'Read from Strava' : 'Connect Strava') + '</button>'
           : '') +
-        '<button type="button" class="btn btn-ghost" id="bm-close">Close</button>' +
-        '<button type="button" class="btn btn-primary" id="bm-add">Use this result</button>' +
-      '</div>',
-      'Training paces',
-    );
+        '<button type="button" class="btn btn-secondary" id="bm-add"><i class="ic i-plus" aria-hidden="true"></i> Use this result</button>' +
+      '</div>' +
+    '</section>';
+  }
 
-    // "Another distance" is the only case that needs the kilometres box; for the
-    // rest the select already said, and two ways to say one thing invites them
-    // to disagree.
+  // "Another distance" is the only case that needs the kilometres box; for the
+  // rest the select already said, and two ways to say one thing invites them
+  // to disagree.
+  function wirePacesForm() {
     const dist = $('bm-dist');
+    if (!dist) return;
     const kmField = $('bm-km').closest('.pnl-f');
     const syncDist = () => {
       const other = dist.value === 'other';
@@ -5136,20 +5179,21 @@
     dist.value = String(10000);
     syncDist();
     dist.addEventListener('change', syncDist);
+  }
 
-    $('bm-close').addEventListener('click', closePanel);
-    $('bm-file').addEventListener('click', () => els.activityFile.click());
-    $('bm-add').addEventListener('click', addTypedBenchmark);
-    $('bm-refs-save').addEventListener('click', saveRefsFromPaces);
-    const strava = $('bm-strava');
-    if (strava) strava.addEventListener('click', () => (stravaConnected() ? loadFromStrava() : startStravaConnect()));
+  function renderPacesCard() {
+    const card = $('bio-paces');
+    if (!card) return;
+    card.outerHTML = bioPacesHTML();
+    wirePacesForm();
+  }
 
-    els.panelRoot.querySelectorAll('[data-bm-use]').forEach((b) => {
-      b.addEventListener('click', () => useBenchmark(b.getAttribute('data-bm-use')));
-    });
-    els.panelRoot.querySelectorAll('[data-bm-del]').forEach((b) => {
-      b.addEventListener('click', () => dropBenchmark(b.getAttribute('data-bm-del')));
-    });
+  /* Where the paces are looked at: the Biometrics page. The file and Strava
+     flows still choose a result in a panel, and come back here when done. */
+  function showPaces() {
+    closePanel();
+    if (state.page !== 'biometrics') navigate('biometrics');
+    else renderPacesCard();
   }
 
   /** Write a benchmark list, redraw everything that shows a pace, reopen. */
@@ -5158,7 +5202,7 @@
     persistPlan();
     renderAll();
     if (status) setStatus(status);
-    openPacesPanel();
+    showPaces();
   }
 
   function useBenchmark(id) {
@@ -5201,26 +5245,9 @@
     );
   }
 
-  /* FTP and CSS used to be reachable only from the Garmin panel, and only once
-     something had synced — so without Garmin a bike workout could never show
-     watts. They live here too now, beside the running result they belong with. */
-  function saveRefsFromPaces() {
-    const ftp = $('bm-ftp').value.trim();
-    const css = $('bm-css').value.trim();
-    const refs = readLoadRefs(ftp, css);
-    if (ftp && !refs?.ftpW) return failPaces('An FTP is a number of watts between 50 and 600.');
-    if (css && !refs?.cssSecPer100m) {
-      return failPaces('That CSS could not be read. Write it as a time per 100 m, like 1:40.');
-    }
-    saveLoadRefs(refs);
-    pacesView = null;
-    setStatus(refs ? 'FTP and CSS saved' : 'FTP and CSS cleared');
-    openPacesPanel();
-  }
-
   function failPaces(reason) {
     pacesView = { ...(pacesView || {}), error: reason };
-    openPacesPanel();
+    showPaces();
   }
 
   /* ---- reading an activity file -----------------------------------------
@@ -5389,7 +5416,7 @@
       'Choose a result',
     );
 
-    $('bm-back').addEventListener('click', () => { pacesView = null; openPacesPanel(); });
+    $('bm-back').addEventListener('click', () => { pacesView = null; showPaces(); });
     $('bm-close').addEventListener('click', closePanel);
     const refile = $('bm-refile');
     if (refile) refile.addEventListener('click', () => els.activityFile.click());
@@ -5628,7 +5655,7 @@
   const HR_THRESHOLDS_KEY = 'yootri_hr_thresholds';
   const GARMIN_DEFAULT_URL = 'http://127.0.0.1:8765';
   // Loopback only, so the token cannot be sent anywhere but this computer.
-  const GARMIN_URL_RE = /^http:\/\/(127\.0\.0\.1|localhost):\d{2,5}$/;
+  const GARMIN_URL_RE = BRIDGE_URL_RE;
   const GARMIN_TIMEOUT_MS = 120000;
   // What was last sent to Garmin, by session id: this browser only, like the heart rate.
   const GARMIN_WORKOUTS_KEY = 'yootri_garmin_workouts';
@@ -5638,7 +5665,7 @@
 
   function garminConfig() {
     const cfg = readJson(GARMIN_CONFIG_KEY);
-    return cfg && GARMIN_URL_RE.test(cfg.url) && typeof cfg.token === 'string' && cfg.token.length >= 16 ? cfg : null;
+    return cfg && GARMIN_URL_RE.test(cfg.url) && typeof cfg.token === 'string' && cfg.token.length >= MIN_TOKEN ? cfg : null;
   }
 
   const readHrStore = () => readJson(GARMIN_HR_KEY);
@@ -5647,7 +5674,7 @@
   const bridgeError = (code) =>
     Object.assign(new Error(bridgeErrorMessage(code, { secure: location.protocol === 'https:' })), { code });
 
-  async function bridgeFetch(path, cfg = garminConfig(), post = null) {
+  async function bridgeFetch(path, cfg = garminConfig(), post = null, timeoutMs = GARMIN_TIMEOUT_MS) {
     if (!cfg) throw bridgeError('not_configured');
     let res;
     try {
@@ -5655,7 +5682,7 @@
         ...(post ? { method: 'POST', body: JSON.stringify(post) } : {}),
         headers: { Authorization: 'Bearer ' + cfg.token, ...(post ? { 'Content-Type': 'application/json' } : {}) },
         cache: 'no-store',
-        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(GARMIN_TIMEOUT_MS) : undefined,
+        signal: typeof AbortSignal.timeout === 'function' ? AbortSignal.timeout(timeoutMs) : undefined,
       });
     } catch (e) {
       // A refused connection, a blocked one (Safari, or Chrome's local network
@@ -5675,7 +5702,8 @@
     panelShell(
       '<h2>Garmin</h2>' +
       '<p class="pnl-sub">Pair this browser with the Garmin bridge running on this computer. Start it with ' +
-        '<code>make garmin</code>: it prints the address and the pairing token to paste here.</p>' +
+        '<code>make garmin</code>, then <code>make garmin-pair</code> opens a link that pairs this browser in one click. To pair by hand, paste the address and token <code>make garmin</code> prints.</p>' +
+      '<div class="rows"><div class="row"><span>Bridge</span><b id="gm-state"></b></div></div>' +
       '<div class="pnl-grid">' +
         field('Bridge address', '<input type="text" class="input" id="gm-url" value="' + esc(cfg.url) + '" spellcheck="false" />') +
         field('Pairing token', '<input type="password" class="input" id="gm-token" value="' + esc(cfg.token) + '" autocomplete="off" spellcheck="false" />') +
@@ -5695,9 +5723,10 @@
       '</div>',
       'Garmin',
     );
+    renderBridgeState();
 
     const typed = () => ({ url: $('gm-url').value.trim().replace(/\/+$/, ''), token: $('gm-token').value.trim() });
-    const valid = (c) => GARMIN_URL_RE.test(c.url) && c.token.length >= 16;
+    const valid = (c) => GARMIN_URL_RE.test(c.url) && c.token.length >= MIN_TOKEN;
     const invalid = 'The address must be http://127.0.0.1:<port> or http://localhost:<port>, and the token is the long one `make garmin` prints.';
 
     $('gm-close').addEventListener('click', closePanel);
@@ -5710,6 +5739,7 @@
       if (!valid(c)) { openGarminSetupPanel(invalid); return; }
       try {
         const st = await bridgeFetch('/v1/status', c);
+        bridgeNow = bridgeState({ status: st });
         const nightsOff = overnightOn() && !st.overnight
           ? ' It is not reading sleep and overnight heart rate: start it with `YOOTRI_GARMIN_OVERNIGHT=1 make garmin`.' : '';
         openGarminSetupPanel((st.connected
@@ -5718,6 +5748,7 @@
         st.connected && !nightsOff ? 'ok' : 'err');
         $('gm-url').value = c.url; $('gm-token').value = c.token;
       } catch (e) {
+        bridgeNow = bridgeState({ error: e.code || 'internal' });
         openGarminSetupPanel(e.message);
         $('gm-url').value = c.url; $('gm-token').value = c.token;
       }
@@ -5729,6 +5760,7 @@
       closePanel();
       renderToolbar();
       setStatus('Paired with the Garmin bridge');
+      checkBridge();
     });
     const forget = $('gm-forget');
     if (forget) forget.addEventListener('click', () => {
@@ -5836,17 +5868,69 @@
     openGarminSetupPanel('Training load settings saved.', 'ok');
   }
 
-  /* `?garmin=setup` opens the pairing panel once and leaves the address bar
-     clean, so a reload or a bookmark does not reopen it. It waits behind the
-     first-run notice rather than covering it. */
+  /* `?garmin=setup` is how the bridge's printed link lands here. With a good
+     `#garmin=<address>&token=<token>` after it the browser is paired on the
+     spot, and both leave the address bar at once (so they are not in this
+     history entry, a bookmark or a screenshot). Without one it opens the pairing
+     panel for pasting by hand, as before. It waits behind the first-run notice
+     rather than covering it. */
   function maybeOpenGarminSetup() {
     const params = new URLSearchParams(location.search);
     if (params.get('garmin') !== 'setup') return;
+    const pairing = parsePairing(location.hash);
+    const fragmentGiven = location.hash.startsWith('#garmin=');
     params.delete('garmin');
     const rest = params.toString();
-    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash);
-    if (ackSeen()) openGarminSetupPanel();
+    history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + (fragmentGiven ? '#/' + state.page.replace(/^calendar$/, 'week') : location.hash));
+    if (pairing) {
+      if (save(GARMIN_CONFIG_KEY, pairing)) {
+        renderToolbar();
+        setStatus('Paired with the Garmin bridge');
+        checkBridge();
+      } else if (ackSeen()) {
+        openGarminSetupPanel('This browser would not store the pairing.');
+      }
+      return;
+    }
+    if (ackSeen()) {
+      openGarminSetupPanel(fragmentGiven ? 'That pairing link could not be used. Run `make garmin-pair` again, or paste the address and token here.' : undefined);
+    }
   }
+
+  /* Is the bridge there, and signed in? Asked only of a browser that has been
+     paired — an unpaired one makes no request to this computer at all, so the
+     published page never provokes a local-network prompt for a visitor who never
+     meant to use it. The answer is words under the Garmin item and a row in its
+     panel; nothing else depends on it, and a sync still tries whatever it says. */
+  let bridgeNow = { state: 'unknown', label: 'Not checked yet', hint: '' };
+  let bridgeCheckedAt = 0;
+
+  function renderBridgeState() {
+    const paired = !!garminConfig();
+    const b = paired ? bridgeNow : { state: 'unknown', label: 'Not paired', hint: '' };
+    const el = $('garmin-state');
+    if (el) el.textContent = b.label;
+    const dot = $('garmin-dot');
+    if (dot) { dot.classList.toggle('off', b.state !== 'ready'); dot.title = b.label; }
+    const row = $('gm-state');
+    if (row) row.textContent = b.label;
+  }
+
+  async function checkBridge(cfg = garminConfig()) {
+    if (!cfg) { bridgeNow = { state: 'unknown', label: 'Not paired', hint: '' }; renderBridgeState(); return bridgeNow; }
+    bridgeCheckedAt = Date.now();
+    try {
+      bridgeNow = bridgeState({ status: await bridgeFetch('/v1/status', cfg, null, 3000) });
+    } catch (e) {
+      bridgeNow = bridgeState({ error: e.code || 'internal' });
+    }
+    renderBridgeState();
+    return bridgeNow;
+  }
+
+  // Looking at the page again is a good moment to look at the bridge, at most
+  // twice a minute.
+  window.addEventListener('focus', () => { if (garminConfig() && Date.now() - bridgeCheckedAt > 30000) checkBridge(); });
 
   let garminBusy = false;
   let garminReview = null;
@@ -5865,6 +5949,7 @@
       garminBusy = false;
       els.garminBtn.disabled = false;
       setStatus('Garmin: not synced', true);
+      checkBridge();
       openGarminSetupPanel(e.message);
       return;
     }
@@ -5884,6 +5969,7 @@
     if (coach && coach.session) coach.session.plan = plan;
 
     const found = matchActivities(plan, plan.activities, { from: body.since, to: body.until });
+    bridgeNow = bridgeState({ status: { ok: true, connected: true } });
     renderAll();
     setStatus('Garmin: ' + got.activities.length + ' activit' + (got.activities.length === 1 ? 'y' : 'ies') + ' read');
     openGarminReviewPanel({
@@ -6307,39 +6393,7 @@
     setStatus('Logged ' + picked.length + ' session' + (picked.length === 1 ? '' : 's') + ' from Garmin');
   }
 
-  /* ---- Small dialogs (name entry / confirm) reusing the modal styles ---- */
-
-  function nameDialog(title, initial, okLabel) {
-    return new Promise((resolve) => {
-      els.dialogRoot.innerHTML =
-        '<div class="modal-backdrop" id="nd-backdrop">' +
-          '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="nd-title" style="width: min(400px, 100%);">' +
-            '<div class="dialog-head"><h3 id="nd-title">' + esc(title) + '</h3>' +
-              '<button type="button" class="btn btn-icon btn-ghost" data-nd="cancel" aria-label="Close"><i class="ph ph-x"></i></button></div>' +
-            '<div class="field"><label for="nd-input">Name</label><input type="text" class="input" id="nd-input" value="' + esc(initial || '') + '" maxlength="60" /></div>' +
-            '<div class="dialog-foot" style="justify-content: flex-end;">' +
-              '<span class="right"><button type="button" class="btn btn-secondary" data-nd="cancel">Cancel</button>' +
-              '<button type="button" class="btn btn-primary" data-nd="ok">' + esc(okLabel || 'Save') + '</button></span>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      const input = els.dialogRoot.querySelector('#nd-input');
-      input.focus();
-      input.select();
-      const close = (val) => { els.dialogRoot.innerHTML = ''; els.dialogRoot.onclick = null; resolve(val); };
-      els.dialogRoot.onclick = (e) => {
-        if (e.target.id === 'nd-backdrop') return close(null);
-        const b = e.target.closest('[data-nd]');
-        if (!b) return;
-        if (b.dataset.nd === 'cancel') close(null);
-        else close(input.value.trim() || null);
-      };
-      input.onkeydown = (e) => {
-        if (e.key === 'Enter') close(input.value.trim() || null);
-        else if (e.key === 'Escape') close(null);
-      };
-    });
-  }
+  /* ---- Small dialogs (confirm) reusing the modal styles ---- */
 
   function confirmDialog(title, message, okLabel) {
     return new Promise((resolve) => {
@@ -6366,107 +6420,41 @@
   /* ---- Account chip rendering ---- */
 
   function renderAccount() {
+    const item = (attrs, icon, label, title) =>
+      '<button type="button" class="nav" ' + attrs + (title ? ' title="' + esc(title) + '"' : '') + '>' +
+      '<i class="ic ' + icon + '" aria-hidden="true"></i><span class="nav-txt">' + esc(label) + '</span></button>';
     if (!cloudReady()) {
-      els.account.innerHTML =
-        '<button type="button" class="account-note" id="local-only" ' +
-        'title="Sign-in is unavailable here — your plans are saved in this browser">' +
-        '<i class="ph ph-hard-drives"></i> Local only</button>';
+      els.account.innerHTML = item('id="local-only"', 'i-drive', 'Local only',
+        'Sign-in is unavailable here — your plans are saved in this browser');
       $('local-only').addEventListener('click', openLocalOnlyPanel);
     } else if (authUser && !hasSyncConsent()) {
       // Signed in, nothing agreed to, nothing sent. Dismissing the consent panel
       // lands here rather than in a state with no way back to the question.
       els.account.innerHTML =
-        '<button type="button" class="account-note" id="sync-off" ' +
-        'title="Signed in, but sync is off — your plans are saved in this browser">' +
-        '<i class="ph ph-cloud-slash"></i> Sync off</button>' +
-        '<button type="button" class="btn btn-ghost" data-acct="signout">Sign out</button>';
+        item('id="sync-off"', 'i-cloud-off', 'Sync off', 'Signed in, but sync is off — your plans are saved in this browser') +
+        item('data-acct="signout"', 'i-logout', 'Sign out');
       $('sync-off').addEventListener('click', openSyncConsentPanel);
     } else if (authUser) {
       els.account.innerHTML =
-        '<span class="account-email"><i class="ph ph-cloud-check"></i>' + esc(authUser.email || 'Signed in') + '</span>' +
-        '<button type="button" class="btn btn-ghost" data-acct="signout">Sign out</button>';
+        item('data-acct="signout"', 'i-logout', 'Sign out') +
+        '<div class="who" title="' + esc(authUser.email || 'Signed in') + '"><i class="ic i-cloud-check" aria-hidden="true"></i>' + esc(authUser.email || 'Signed in') + '</div>';
     } else {
-      els.account.innerHTML = '<button type="button" class="btn btn-secondary" data-acct="signin"><i class="ph ph-google-logo"></i> Sign in to sync</button>';
+      els.account.innerHTML = item('data-acct="signin"', 'i-google', 'Sign in to sync');
     }
   }
 
   /* =========================================================================
-     Plan menu — the <h1> is the trigger, so the plan's name and every action
-     on it live in one place.
+     Plan actions — what the sidebar's plan switcher and the header's "…"
+     button do. Rows that open a dialog close their popup first (see closePop):
+     #dialog-root and a popup must not be live at the same time.
      ========================================================================= */
 
-  const menuOpen = () => !!els.menuRoot.firstChild;
-  const menuItems = () => Array.from(els.menuRoot.querySelectorAll('.pmenu-item:not([aria-disabled="true"])'));
-
-  function menuRow(act, icon, label) {
-    return '<button type="button" role="menuitem" class="pmenu-item" data-pm="' + act + '">' +
-      '<i class="ph ph-' + icon + '" aria-hidden="true"></i><span class="pmenu-label">' + esc(label) + '</span></button>';
-  }
-
-  function openPlanMenu() {
-    const standIn = currentPlanUntouched();
-    els.menuRoot.innerHTML =
-      '<div class="pmenu" role="menu" aria-labelledby="plan-title">' +
-        menuRow('rename', 'pencil-simple', 'Rename') +
-        menuRow('export', 'download-simple', 'Export this plan') +
-        menuRow('paces', 'gauge', 'Training paces…') +
-        menuRow('athlete', 'user-circle', 'About you…') +
-        menuRow('release', 'calendar-check', plan.release ? 'Show the whole season' : 'Show one week at a time') +
-        '<div class="pmenu-sep" role="separator"></div>' +
-        (standIn
-          ? menuRow('startover', 'plus', 'Set up my season…') + menuRow('import', 'upload-simple', 'Import plan…')
-          : '<button type="button" role="menuitem" class="pmenu-item danger" data-pm="startover">' +
-            '<i class="ph ph-trash" aria-hidden="true"></i><span class="pmenu-label">Delete plan &amp; start over…</span></button>') +
-        (archive.length ? menuRow('past', 'archive', 'Past plans…') : '') +
-        menuRow('mydata', 'archive', 'Download my data') +
-      '</div>';
-    els.planTitle.setAttribute('aria-expanded', 'true');
-    document.addEventListener('keydown', onMenuKey, true);
-    document.addEventListener('mousedown', onMenuOutside, true);
-    window.addEventListener('blur', closePlanMenu);
-    const first = els.menuRoot.querySelector('[aria-checked="true"]') || menuItems()[0];
-    if (first) first.focus();
-  }
-
-  function closePlanMenu(refocus) {
-    if (!menuOpen()) return;
-    els.menuRoot.innerHTML = '';
-    els.planTitle.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('keydown', onMenuKey, true);
-    document.removeEventListener('mousedown', onMenuOutside, true);
-    window.removeEventListener('blur', closePlanMenu);
-    if (refocus !== false) els.planTitle.focus();
-  }
-
-  function onMenuOutside(e) {
-    if (!els.menuRoot.contains(e.target) && !els.planTitle.contains(e.target)) closePlanMenu(false);
-  }
-
-  function onMenuKey(e) {
-    if (e.key === 'Escape') { e.preventDefault(); return closePlanMenu(); }
-    if (e.key === 'Tab') return closePlanMenu(false);
-    const items = menuItems();
-    if (!items.length) return;
-    const at = items.indexOf(document.activeElement);
-    if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
-    else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
-    else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
-  }
-
-  // Menu actions that open a dialog must close the menu first — #menu-root and
-  // #dialog-root are separate roots and must not be live at the same time.
-  async function runMenuAction(act) {
-    closePlanMenu(act !== 'rename');
+  async function runPlanAction(act, id) {
     if (act === 'rename') return startRename();
     if (act === 'export') return exportPlan();
     if (act === 'import') return openImportPanel(null);
-    if (act === 'paces') { pacesView = null; return openPacesPanel(); }
-    if (act === 'athlete') return openAthletePanel();
     if (act === 'release') return toggleRelease();
-    if (act === 'mydata') return downloadMyData();
-    if (act === 'past') return openPastPlansPanel();
-    if (act === 'startover') return openStartOverDialog();
+    if (act === 'new' || act === 'startover') return openStartOverDialog();
   }
 
   /* ---- Inline rename: the title edits itself in place ---- */
@@ -6475,7 +6463,6 @@
 
   function startRename() {
     if (renaming) return;
-    closePlanMenu(false);
     renaming = true;
     const before = (plan && plan.name) || '';
     els.planTitle.classList.add('hidden');
@@ -6509,17 +6496,222 @@
      Events
      ========================================================================= */
 
-  // Plan title + menu
-  els.planTitle.addEventListener('click', () => { if (menuOpen()) closePlanMenu(); else openPlanMenu(); });
+  /* Theme: one attribute on <html>, set before first paint by the script in
+     <head>. The switch only keeps that attribute, the stored choice and the
+     browser chrome colour in step. */
+  const THEME_KEY = 'yootri_theme';
+  function setTheme(t) {
+    if (t !== 'light' && t !== 'dark') return;
+    document.documentElement.setAttribute('data-theme', t);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', t === 'light' ? '#f5f6fa' : '#161826');
+    try { localStorage.setItem(THEME_KEY, t); } catch (e) {}
+    document.querySelectorAll('#theme-seg input').forEach((r) => { r.checked = r.value === t; });
+  }
+  document.querySelectorAll('#theme-seg input').forEach((r) => r.addEventListener('change', () => setTheme(r.value)));
+  setTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
+
+  /* =========================================================================
+     Sidebar and pages — the plan switcher, the plan's own actions, and which
+     page is showing.
+     ========================================================================= */
+
+  const POP_BTN = { 'plan-pop': $('plan-sw'), 'more-pop': $('plan-more') };
+  let popOpen = null;
+
+  function popRow(act, icon, label, opts) {
+    const o = opts || {};
+    return '<button type="button" role="menuitem" class="pop-item' + (o.danger ? ' danger' : '') + '" data-pm="' + act + '"' +
+      (o.disabled ? ' aria-disabled="true"' : '') + '><i class="ic ' + icon + '" aria-hidden="true"></i><span>' + esc(label) + '</span></button>';
+  }
+
+  function popHtml(id) {
+    if (id === 'more-pop') {
+      return '<div class="pop" role="menu" aria-label="Plan actions">' +
+        popRow('rename', 'i-pencil', 'Rename') +
+        popRow('export', 'i-download', 'Export this plan') +
+        popRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +
+        '<div class="pop-sep" role="separator"></div>' +
+        popRow('startover', 'i-trash', 'Delete plan & start over…', { danger: true }) +
+      '</div>';
+    }
+    // One plan, not a list of them: what is here is how to start or replace it.
+    return '<div class="pop" role="menu" aria-label="Plan">' +
+      popRow('new', 'i-plus', currentPlanUntouched() ? 'Set up your season…' : 'Start a new season…') +
+      popRow('import', 'i-upload', 'Import plan…') +
+    '</div>';
+  }
+
+  const popItems = () => (popOpen ? Array.from($(popOpen).querySelectorAll('.pop-item:not([aria-disabled="true"])')) : []);
+
+  function openPop(id) {
+    if (popOpen === id) return closePop();
+    closePop(false);
+    $(id).innerHTML = popHtml(id);
+    popOpen = id;
+    POP_BTN[id].setAttribute('aria-expanded', 'true');
+    document.addEventListener('keydown', onPopKey, true);
+    document.addEventListener('mousedown', onPopOutside, true);
+    (($(id).querySelector('[aria-checked="true"]')) || popItems()[0])?.focus();
+  }
+
+  function closePop(refocus) {
+    if (!popOpen) return;
+    const id = popOpen;
+    popOpen = null;
+    $(id).innerHTML = '';
+    POP_BTN[id].setAttribute('aria-expanded', 'false');
+    document.removeEventListener('keydown', onPopKey, true);
+    document.removeEventListener('mousedown', onPopOutside, true);
+    if (refocus !== false) POP_BTN[id].focus();
+  }
+
+  function onPopOutside(e) {
+    if (!$(popOpen).contains(e.target) && !POP_BTN[popOpen].contains(e.target)) closePop(false);
+  }
+
+  function onPopKey(e) {
+    if (e.key === 'Escape') { e.preventDefault(); return closePop(); }
+    if (e.key === 'Tab') return closePop(false);
+    const items = popItems();
+    if (!items.length) return;
+    const at = items.indexOf(document.activeElement);
+    if (e.key === 'ArrowDown') { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); items[(at - 1 + items.length) % items.length].focus(); }
+    else if (e.key === 'Home') { e.preventDefault(); items[0].focus(); }
+    else if (e.key === 'End') { e.preventDefault(); items[items.length - 1].focus(); }
+  }
+
+  $('plan-sw').addEventListener('click', () => openPop('plan-pop'));
+  $('plan-more').addEventListener('click', () => openPop('more-pop'));
+  for (const id of ['plan-pop', 'more-pop']) {
+    $(id).addEventListener('click', (e) => {
+      const b = e.target.closest('.pop-item');
+      if (!b || b.getAttribute('aria-disabled') === 'true') return;
+      closePop(false);
+      runPlanAction(b.dataset.pm, b.dataset.id);
+    });
+  }
+  $('events-btn').addEventListener('click', () => openEventPanel(null));
+
+  // Biometrics: one set of listeners on the page root, because its cards are
+  // redrawn from scratch and a redrawn button has lost its handler.
+  $('bio-save').addEventListener('click', saveBiometrics);
+  $('bio-root').addEventListener('input', (e) => { if (!e.target.id.startsWith('bm-')) bioDirty = true; });
+  $('bio-root').addEventListener('change', (e) => { if (!e.target.id.startsWith('bm-')) bioDirty = true; });
+  $('bio-root').addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.id === 'ab-clear') clearAthlete();
+    else if (b.id === 'bm-add') addTypedBenchmark();
+    else if (b.id === 'bm-file') els.activityFile.click();
+    else if (b.id === 'bm-strava') (stravaConnected() ? loadFromStrava() : startStravaConnect());
+    else if (b.dataset.bmUse) useBenchmark(b.dataset.bmUse);
+    else if (b.dataset.bmDel) dropBenchmark(b.dataset.bmDel);
+  });
+  $('mydata-btn').addEventListener('click', downloadMyData);
+
+  /* Pages. The address bar says which one (#/week, #/calendar, #/status …) so
+     back, forward and a reload land where the athlete was. Calendar is the week
+     page in its Month view; This week is that page on the week today falls in. */
+
+  const ROUTES = ['week', 'calendar', 'status', 'biometrics', 'health'];
+  const routeFromHash = () => {
+    const m = /^#\/([a-z]+)/.exec(location.hash);
+    return m && ROUTES.includes(m[1]) ? m[1] : 'week';
+  };
+
+  function activeRoute() {
+    return state.page === 'week' ? (state.view === 'month' ? 'calendar' : 'week') : state.page;
+  }
+
+  function syncNav() {
+    const on = activeRoute();
+    document.querySelectorAll('#side [data-route], #tabbar [data-route]').forEach((n) => {
+      // The tab bar has no Calendar tab, so the Month view lights the Week tab.
+      const here = n.classList.contains('tab') ? n.dataset.route === (on === 'calendar' ? 'week' : on) : n.dataset.route === on;
+      n.classList.toggle('on', here);
+      if (here) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+    });
+  }
+
+  function setView(v) {
+    state.view = v === 'month' ? 'month' : 'week';
+    // Open the month the selected week is in, rather than wherever the athlete
+    // last browsed to.
+    if (state.view === 'month') state.month = monthOf(dateOf(state.start, state.week, 'Mon'));
+    if (state.page === 'week' && routeFromHash() !== (state.view === 'month' ? 'calendar' : 'week')) {
+      try { history.replaceState(null, '', '#/' + (state.view === 'month' ? 'calendar' : 'week')); } catch (e) {}
+    }
+  }
+
+  function applyRoute(r, boot) {
+    state.page = r === 'calendar' ? 'week' : r;
+    let changed = false;
+    if (state.page === 'week') {
+      if (r === 'week') {
+        const w = weekIndexOf(state.start, toISO(new Date()));
+        if (Number.isInteger(w) && w >= 0 && w < totalWeeks() && w !== state.week) {
+          state.week = w;
+          state.sessions = sessionsFor(w);
+          state.dragId = null;
+          changed = true;
+        }
+      }
+      const want = r === 'calendar' ? 'month' : 'week';
+      if (state.view !== want) { setView(want); changed = true; }
+    }
+    document.querySelectorAll('[data-page]').forEach((pg) => pg.classList.toggle('hidden', pg.dataset.page !== state.page));
+    if (boot) return;   // the first renderAll follows, and a reload is not an edit
+    if (changed) persistPlan();
+    renderAll();
+    window.scrollTo(0, 0);
+    document.querySelector('[data-page]:not(.hidden)')?.focus({ preventScroll: true });
+  }
+
+  function navigate(r) {
+    if (location.hash === '#/' + r) applyRoute(r);
+    else location.hash = '#/' + r;
+  }
+
+  const onNavClick = (e) => {
+    const a = e.target.closest('a[data-route], a.brand');
+    if (!a) return;
+    e.preventDefault();
+    navigate(a.dataset.route || 'week');
+  };
+  $('side').addEventListener('click', onNavClick);
+  $('tabbar').addEventListener('click', onNavClick);
+  document.querySelector('.phone-top .brand').addEventListener('click', onNavClick);
+
+  /* On a phone the sidebar is a sheet that the tab bar's "More" opens. Choosing
+     anything in it, the scrim, the close button and Escape all put it away. */
+  const phone = matchMedia('(max-width: 760px)');
+  function openMore() {
+    document.body.classList.add('more-open');
+    $('tab-more').setAttribute('aria-expanded', 'true');
+    $('sheet-close').focus();
+  }
+  function closeMore(refocus) {
+    if (!document.body.classList.contains('more-open')) return;
+    closePop(false);
+    document.body.classList.remove('more-open');
+    $('tab-more').setAttribute('aria-expanded', 'false');
+    if (refocus) $('tab-more').focus();
+  }
+  $('tab-more').addEventListener('click', () => (document.body.classList.contains('more-open') ? closeMore(true) : openMore()));
+  $('sheet-close').addEventListener('click', () => closeMore(true));
+  document.querySelector('.side-wrap').addEventListener('mousedown', (e) => { if (e.target === e.currentTarget) closeMore(false); });
+  $('side').addEventListener('click', (e) => {
+    if (phone.matches && e.target.closest('a.nav, button.nav, a.brand, .pop-item')) closeMore(false);
+  });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !popOpen) closeMore(true); });
+  phone.addEventListener('change', () => closeMore(false));
+  $('m-plan').addEventListener('click', () => { openMore(); openPop('plan-pop'); });
+  $('m-sync').addEventListener('click', () => els.syncBtn.click());
+  window.addEventListener('hashchange', () => applyRoute(routeFromHash()));
+
+  // Plan title: a double click renames it in place
   els.planTitle.addEventListener('dblclick', startRename);
-  els.planTitle.addEventListener('keydown', (e) => {
-    if (e.key === 'ArrowDown' && !menuOpen()) { e.preventDefault(); openPlanMenu(); }
-  });
-  els.menuRoot.addEventListener('click', (e) => {
-    const b = e.target.closest('.pmenu-item');
-    if (!b || b.getAttribute('aria-disabled') === 'true') return;
-    runMenuAction(b.dataset.pm);
-  });
   els.undoBtn.addEventListener('click', undoDelete);
   els.importFile.addEventListener('change', (e) => {
     const f = e.target.files && e.target.files[0];
@@ -6571,10 +6763,7 @@
 
   els.viewSeg.addEventListener('change', (e) => {
     if (e.target.name !== 'view') return;
-    state.view = e.target.value === 'month' ? 'month' : 'week';
-    // Open the month the selected week is in, rather than wherever the athlete
-    // last browsed to.
-    if (state.view === 'month') state.month = monthOf(dateOf(state.start, state.week, 'Mon'));
+    setView(e.target.value);
     persistPlan();
     renderToolbar();
     renderViewBody();
@@ -6811,12 +7000,291 @@
     }
   });
 
+  /* ---- Fitness, fatigue and form -----------------------------------------
+
+     Worked out by assets/coach/fitness.js each time the page draws, from the
+     plan's synced activities and this browser's own references (FTP, CSS, the
+     running result, heart-rate thresholds). Nothing here is stored or put on a
+     plan. What is measured and what is estimated is said where it is shown:
+     the planned line and the race-day figures rest on an estimate of each
+     planned session; the three bands are illustrative, not findings. */
+
+  /* The chart's dash patterns, in one place so the legend swatches are drawn from the same ones. */
+  const LINE_DASH = { planned: '7 5', trend: '1 5', followed: '12 4 2 4' };
+  const swatch = (color, width, dash, opacity) => '<svg class="lg-sw" width="28" height="8" viewBox="0 0 28 8" aria-hidden="true"><line x1="2" y1="4" x2="26" y2="4" stroke="' + color +
+    '" stroke-width="' + width + '" stroke-linecap="round"' + (dash ? ' stroke-dasharray="' + dash + '"' : '') + (opacity ? ' opacity="' + opacity + '"' : '') + '></line></svg>';
+  const BAND_COLORS = { olympic: 'var(--disc-swim)', '70.3': 'var(--disc-bike)', ironman: 'var(--disc-brick)' };
+  const BANDS = FITNESS_BANDS.map((b) => ({ ...b, color: BAND_COLORS[b.key] }));
+
+  const MISSING_WORDS = {
+    power: 'power on rides', ftp: 'your FTP', distance: 'distance on runs and swims',
+    'run-threshold': 'a running result', css: 'your swim threshold', rpe: 'an effort rating on strength sessions',
+    'heart-rate': 'heart rate', 'hr-thresholds': 'heart-rate thresholds',
+  };
+
+  function fitnessNow() {
+    const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
+    const thresholds = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
+    return fitnessSeries(plan, { today: toISO(new Date()), thresholds, hrById: hrLookup(readHrStore()) });
+  }
+
+  const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(Math.round(n));
+  const whole = (n) => String(Math.round(n));
+
+  function deltaHTML(n, tail) {
+    const r = Math.round(n);
+    const arrow = r > 0 ? '<i class="ic i-up" aria-hidden="true"></i>' : r < 0 ? '<i class="ic i-down" aria-hidden="true"></i>' : '';
+    return '<span class="delta">' + arrow + (r === 0 ? 'No change ' : signed(n) + ' ') + tail + '</span>';
+  }
+
+  /* Why there is no figure, in the athlete's words. */
+  function whyEmptyHTML(fs) {
+    const acts = (plan.activities || []).length;
+    const lacks = fs.missing.map((m) => MISSING_WORDS[m]).filter(Boolean);
+    return '<p class="note">' +
+      (!acts
+        ? 'No synced sessions yet. Sync from Garmin and your sessions are scored here.'
+        : fs.unscored + ' synced session' + (fs.unscored === 1 ? '' : 's') + ' could not be scored' +
+          (lacks.length ? ' — it needs ' + esc(lacks.join(', ')) + '. Add them on the Biometrics page.' : '.')) +
+      '</p>';
+  }
+
+  function ffmCardHTML(title, sub, d, tail, foot, estimate) {
+    const z = formZone(d.form);
+    const pin = Math.max(4, Math.min(96, 50 + (d.form / 40) * 100));
+    return '<article class="ind" aria-label="' + esc(title) + '">' +
+      '<div class="ind-h"><div class="ind-t"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></div>' +
+        '<span class="sample-h">' + (estimate ? '<span class="tag tag-neutral">Estimate</span>' : '') +
+        '<button type="button" class="icon-btn" data-ffm-info aria-label="How fitness, fatigue and form are worked out"><i class="ic i-info" aria-hidden="true"></i></button></span></div>' +
+      '<div class="ind-body">' +
+        '<div class="ind-hero"><span class="kicker kicker-sm">Fitness</span><span class="ind-num">' + whole(d.fit) + '</span>' + deltaHTML(d.dFit, tail) + '</div>' +
+        '<div class="ind-side">' +
+          '<div class="ind-row"><span class="ind-lbl">Fatigue' + deltaHTML(d.dFat, tail) + '</span><span class="ind-val">' + whole(d.fat) + '</span></div>' +
+          '<div class="ind-row"><span class="ind-lbl">Form' + deltaHTML(d.dForm, tail) + '</span><span class="ind-val">' + signed(d.form) + '</span></div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="scale-wrap"><div class="scale" role="img" aria-label="Form is ' + z.name.toLowerCase() + '">' +
+        [0, 1, 2].map((i) => '<i' + (i === z.index ? ' class="on"' : '') + '></i>').join('') +
+        '<span class="pin" style="left: ' + pin + '%"></span></div>' +
+        '<div class="scale-lbl">' + ['Low', 'Neutral', 'High'].map((n, i) => '<span' + (i === z.index ? ' class="now"' : '') + '>' + n + '</span>').join('') + '</div></div>' +
+      '<div class="ind-foot"><span class="tag tag-accent">Form: ' + z.name + '</span>' + esc(foot) + '</div>' +
+    '</article>';
+  }
+
+  function ffmEmptyHTML(title, sub, fs) {
+    return '<article class="ind" aria-label="' + esc(title) + '">' +
+      '<div class="ind-h"><div class="ind-t"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></div></div>' +
+      '<div class="ind-body"><div class="ind-hero"><span class="kicker kicker-sm">Fitness</span><span class="ind-num" style="opacity:.4">—</span></div></div>' +
+      whyEmptyHTML(fs) + '</article>';
+  }
+
+  /* The Fitness view of the Season panel. x is the week; y runs 0 to `top`. */
+  function fitnessChart(fs, N, nowWeek) {
+    const peak = Math.max(120, ...fs.weeks.flatMap((w) => [w.planned, w.actual ?? 0, w.trend ?? 0]));
+    const top = Math.ceil(peak / 40) * 40;
+    const X = (i) => (N > 1 ? 20 + (i * 940) / (N - 1) : 500);
+    const H = 360;
+    const Y = (v) => H - (v / top) * H;
+    const f1 = (n) => n.toFixed(1);
+    const last = N - 1;
+    /* The chart is stretched to its box, so a <circle> would come out an ellipse. A zero-length
+       line with a round cap and a non-scaling stroke stays round at any size: ring, then fill. */
+    const dot = (x, y, ring, fill) => {
+      const d = 'x1="' + f1(x) + '" y1="' + f1(y) + '" x2="' + f1(x) + '" y2="' + f1(y) + '" stroke-linecap="round" style="vector-effect: non-scaling-stroke; ';
+      return '<line ' + d + 'stroke: ' + ring + '; stroke-width: 11"></line><line ' + d + 'stroke: ' + fill + '; stroke-width: 5.5"></line>';
+    };
+    const pts = (rows) => rows.map(([i, v]) => f1(X(i)) + ',' + f1(Y(v))).join(' ');
+    const actual = fs.weeks.filter((w) => w.actual !== null).map((w) => [w.week, w.actual]);
+
+    let svg = [0, 1, 2, 3].map((k) => { const y = k * (H / 3) || 0.5; return '<line class="grid-l" x1="0" y1="' + y + '" x2="1000" y2="' + y + '"></line>'; }).join('');
+    for (const b of BANDS) {
+      svg += '<rect class="band" style="--bc: ' + b.color + '" x="0" y="' + f1(Y(b.hi)) + '" width="1000" height="' + f1(Y(b.lo) - Y(b.hi)) + '"></rect>' +
+        '<line class="band-lo" style="--bc: ' + b.color + '" x1="0" y1="' + f1(Y(b.lo)) + '" x2="1000" y2="' + f1(Y(b.lo)) + '"></line>' +
+        '<line class="band-hi" style="--bc: ' + b.color + '" x1="0" y1="' + f1(Y(b.hi)) + '" x2="1000" y2="' + f1(Y(b.hi)) + '"></line>';
+    }
+    svg += '<line x1="' + f1(X(nowWeek)) + '" y1="0" x2="' + f1(X(nowWeek)) + '" y2="' + H + '" stroke-dasharray="3 4" style="stroke: var(--color-accent); stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
+      '<line x1="' + f1(X(last)) + '" y1="0" x2="' + f1(X(last)) + '" y2="' + H + '" style="stroke: var(--color-text); opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
+      '<polyline class="ln" style="stroke: var(--color-accent-300); stroke-width: 2; stroke-dasharray: ' + LINE_DASH.planned + '" points="' + pts(fs.weeks.map((w) => [w.week, w.planned])) + '"></polyline>';
+    const trend = fs.weeks.filter((w) => w.trend !== null).map((w) => [w.week, w.trend]);
+    const followed = fs.weeks.filter((w) => w.followed !== null).map((w) => [w.week, w.followed]);
+    if (fs.today && followed.length) {
+      svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5; stroke-dasharray: ' + LINE_DASH.followed + '" points="' + pts([[nowWeek, fs.today.fit], ...followed]) + '"></polyline>';
+    }
+    if (fs.today && trend.length) {
+      svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-dasharray: ' + LINE_DASH.trend + '; stroke-width: 2.5" points="' + pts([[nowWeek, fs.today.fit], ...trend]) + '"></polyline>';
+    }
+    if (actual.length) {
+      svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 3" points="' + pts(actual) + '"></polyline>' +
+        dot(X(actual[actual.length - 1][0]), Y(actual[actual.length - 1][1]), 'var(--color-accent)', 'var(--color-accent)');
+    }
+    const raceW = fs.race ? Math.min(last, fs.race.week) : last;
+    const raceV = fs.race ? fs.race.fit : fs.weeks[last].planned;
+    svg += dot(X(raceW), Y(raceV), 'var(--color-accent-300)', 'var(--color-surface)');
+    if (fs.trend !== null) svg += dot(X(raceW), Y(fs.trend), 'var(--color-accent)', 'var(--color-surface)');
+
+    const step = Math.max(1, Math.ceil(N / 16));
+    return {
+      svg, top,
+      xlab: Array.from({ length: N }, (_, i) => i).filter((i) => i % step === 0 || i === last)
+        .map((i) => '<span style="left: ' + f1(X(i) / 10) + '%">' + (i + 1) + '</span>').join(''),
+      bands: BANDS.map((b) => '<span style="top: ' + f1((Y(b.lo) + Y(b.hi)) / 2) + 'px"><b><u style="--bc: ' + b.color + '"></u>' + b.name + '</b><i>' + b.lo + ' to ' + b.hi + '</i></span>').join(''),
+      key: BANDS.map((b) => '<span style="--bc: ' + b.color + '"><u></u>' + b.name + ' ' + b.lo + ' to ' + b.hi + '</span>').join(''),
+    };
+  }
+
+  /* Race preparation: facts set beside the chart. No score and no verdict; the page
+     says where a figure sits and nothing about what it means for the athlete. */
+  const AGAINST_WORDS = { below: 'below the range', within: 'within the range', above: 'above the range' };
+  function preparationHTML(fs) {
+    const prep = racePreparation(plan, { today: toISO(new Date()), fitness: fs });
+    if (!prep.available) return '';
+    const range = (r) => (r ? signedRange(r) : '');
+    const row = (i) => {
+      const isRange = i.reference && typeof i.reference === 'object';
+      const value = i.key === 'form' ? signed(i.value) : whole(i.value);
+      const ref = isRange ? range(i.reference) : i.key === 'steady' ? 'of ' + i.reference : 'often ' + i.reference;
+      return '<div class="prep-row"><span class="prep-lbl">' + esc(i.label) + '<small>' + esc(i.detail) + '</small></span>' +
+        '<span class="prep-val"><b>' + value + '</b><small>' + (i.against ? esc(AGAINST_WORDS[i.against]) + ' · ' : '') + esc(ref) + '</small></span></div>';
+    };
+    return '<div class="prep"><div class="prep-h"><b>Race preparation</b>' +
+      '<span>Worked out from your synced sessions. The references are illustrative, not findings.</span></div>' +
+      prep.items.map(row).join('') + '</div>';
+  }
+  const signedRange = (r) => (r.lo > 0 ? '+' : '') + r.lo + ' to ' + (r.hi > 0 ? '+' : '') + r.hi;
+
+  function renderFitness() {
+    const N = totalWeeks();
+    const fs = fitnessNow();
+    const w0 = weekIndexOf(state.start, toISO(new Date()));
+    const nowWeek = Number.isInteger(w0) ? Math.max(0, Math.min(N - 1, w0)) : 0;
+
+    $('ffm-chip').innerHTML = '<i class="ic i-info" aria-hidden="true"></i>' +
+      (fs.hasHistory ? 'Planned and race-day figures are estimates' : 'Needs synced sessions');
+    $('ffm-root').innerHTML = fs.hasHistory
+      ? ffmCardHTML('Today', 'Where your training stands right now', fs.today, 'in 7 days',
+          fs.today.form > PLANNED.form.high ? 'Fitness is well above fatigue.' : fs.today.form < PLANNED.form.low ? 'Fatigue is well above fitness.' : 'Fitness and fatigue are close.', false) +
+        (fs.race
+          ? ffmCardHTML('Race day · ' + fmtLongDate(fs.race.date), 'The plan followed from today', fs.race, 'vs today',
+              (fs.race.form > PLANNED.form.high ? 'Fitness is well above fatigue on the day.' : fs.race.form < PLANNED.form.low ? 'Fatigue is well above fitness on the day.' : 'Fitness and fatigue are close on the day.') +
+              ' A range often used on race day (illustrative): +' + PLANNED.raceForm.low + ' to +' + PLANNED.raceForm.high + '.', true)
+          : ffmEmptyHTML('Race day', 'The plan followed from today', { ...fs, missing: [] }).replace(whyEmptyHTML({ ...fs, missing: [] }), '<p class="note">The race date has passed, or the plan has none.</p>'))
+      : ffmEmptyHTML('Today', 'Where your training stands right now', fs) + ffmEmptyHTML('Race day', 'The plan followed from today', fs);
+
+    const c = fitnessChart(fs, N, nowWeek);
+    $('v-fit').innerHTML =
+      (fs.hasHistory ? '' : whyEmptyHTML(fs)) +
+      '<div class="fplot">' +
+        '<div class="plot-y"><span>' + c.top + '</span><span>' + Math.round(c.top * 2 / 3) + '</span><span>' + Math.round(c.top / 3) + '</span><span>0</span></div>' +
+        '<svg viewBox="0 0 1000 380" preserveAspectRatio="none" role="img" aria-label="Fitness by week. Planned fitness (an estimate) goes from ' + fs.weeks[0].planned + ' in week 1 to ' + fs.weeks[N - 1].planned + ' in week ' + N + '.' +
+          (fs.today ? ' Actual fitness is ' + Math.round(fs.today.fit) + ' now.' + (fs.race ? ' The plan followed from today reaches ' + Math.round(fs.race.fit) + ' on race day.' : '') : ' There is no actual line yet.') +
+          (fs.trend !== null ? ' On the current trend it reaches ' + Math.round(fs.trend) + ' on race day.' : '') + ' ' +
+          BANDS.map((b) => b.name + ' band, illustrative, runs ' + b.lo + ' to ' + b.hi).join(', ') + '.">' + c.svg + '</svg>' +
+        '<div class="bands" aria-hidden="true">' + c.bands + '</div>' +
+        '<div class="plot-x">' + c.xlab + '</div>' +
+      '</div>' +
+      '<div class="fplot-key" aria-hidden="true">' + c.key + '</div>' +
+      '<div class="legend">' +
+        (fs.today ? '<span class="lg">' + swatch('var(--color-accent)', 3) + 'Actual, synced from Garmin <span>' + whole(fs.today.fit) + ' now</span></span>' : '') +
+        '<span class="lg">' + swatch('var(--color-accent-300)', 2, LINE_DASH.planned) + 'Planned, estimated <span>' + whole(fs.weeks[N - 1].planned) + ' in week ' + N + '</span></span>' +
+        (fs.race ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.followed) + 'Plan from today <span>' + whole(fs.race.fit) + ' on race day</span></span>' : '') +
+        (fs.trend !== null ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.trend) + 'On current trend <span>' + whole(fs.trend) + ' on race day</span></span>' : '') +
+        '<span class="lg">' + swatch('var(--color-text)', 1.5, null, 0.5) + 'Race day, week ' + N + '</span>' +
+      '</div>' + preparationHTML(fs);
+
+    renderStatusPage(fs);
+  }
+
+  function renderStatusPage(fs) {
+    const hm = (m) => fmtTotal(m) || '0m';
+    $('status-chip').innerHTML = '<i class="ic i-info" aria-hidden="true"></i>' + (fs.hasHistory ? 'From your synced sessions' : 'Needs synced sessions');
+    const t = fs.today;
+    const cards =
+      '<div class="grid-3">' +
+        '<div class="panel"><span class="card-kicker">Fitness · 42-day load</span><span class="big">' + (t ? whole(t.fit) : '—') +
+          (t ? '<small>' + (Math.round(t.dFit) >= 0 ? '↑ ' : '↓ ') + Math.abs(Math.round(t.dFit)) + ' on last week</small>' : '') + '</span>' +
+          '<p class="note">The slow average of training load. It rises when training is steady for weeks.</p></div>' +
+        '<div class="panel"><span class="card-kicker">Fatigue · 7-day load</span><span class="big">' + (t ? whole(t.fat) : '—') +
+          (t ? '<small>' + (Math.round(t.dFat) >= 0 ? '↑ ' : '↓ ') + Math.abs(Math.round(t.dFat)) + ' on last week</small>' : '') + '</span>' +
+          '<p class="note">The fast average. It rises after a big week and falls after an easy one.</p></div>' +
+        '<div class="panel"><span class="card-kicker">Form</span><span class="big">' + (t ? signed(t.form) : '—') + '<small>Fitness minus fatigue</small></span>' +
+          '<p class="note">Positive when fitness is above fatigue, negative when it is below.</p></div>' +
+      '</div>';
+
+    // Last twelve plan weeks up to this one, at the end of each.
+    const nowW = fs.weeks.filter((w) => w.actual !== null);
+    const rows = nowW.slice(-12);
+    const X = (i) => (rows.length > 1 ? 20 + (i * 940) / (rows.length - 1) : 500);
+    const peak = Math.max(100, ...rows.flatMap((w) => [w.actual, w.actualFat]));
+    const top = Math.ceil(peak / 50) * 50;
+    const Y = (v) => (150 - (v / top) * 150).toFixed(1);
+    const line = (key) => rows.map((w, i) => X(i).toFixed(1) + ',' + Y(w[key])).join(' ');
+    const chart = rows.length >= 2
+      ? '<div class="plot"><div class="plot-y"><span>' + top + '</span><span>' + top / 2 + '</span><span>0</span></div>' +
+          '<svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Fitness and fatigue at the end of each of the last ' + rows.length + ' plan weeks. Fitness ' + Math.round(rows[0].actual) + ' to ' + Math.round(rows[rows.length - 1].actual) + '; fatigue ' + Math.round(rows[0].actualFat) + ' to ' + Math.round(rows[rows.length - 1].actualFat) + '.">' +
+            [0, 0.5, 1].map((k) => '<line class="grid-l" x1="0" y1="' + (k * 150 || 0.5) + '" x2="1000" y2="' + (k * 150 || 0.5) + '"></line>').join('') +
+            '<polyline class="ln" style="stroke: var(--disc-bike); stroke-dasharray: 7 5" points="' + line('actualFat') + '"></polyline>' +
+            '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5" points="' + line('actual') + '"></polyline></svg>' +
+          '<div class="plot-x">' + rows.map((w) => '<span>' + (w.week + 1) + '</span>').join('') + '</div></div>' +
+        '<div class="legend"><span class="lg" style="--c: var(--color-accent)"><i></i>Fitness <span>' + whole(t.fit) + '</span></span>' +
+          '<span class="lg" style="--c: var(--disc-bike)"><i class="dash"></i>Fatigue <span>' + whole(t.fat) + '</span></span></div>'
+      : '<p class="note">A line needs at least two plan weeks of synced sessions.</p>';
+
+    const mins = minutesByDiscipline(plan.activities, { today: toISO(new Date()), days: 28 });
+    const total = Object.values(mins).reduce((a, b) => a + b, 0);
+    const disc = [['Bike', 'i-bike', 'var(--disc-bike)'], ['Run', 'i-run', 'var(--disc-run)'], ['Swim', 'i-swim', 'var(--disc-swim)'], ['Strength', 'i-barbell', 'var(--disc-strength)']]
+      .filter(([n]) => mins[n])
+      .map(([n, icon, color]) => '<div class="hbar"><div class="hbar-h"><b style="font-weight: 500"><i class="ic ' + icon + '" style="color: ' + color + '; margin-right: 6px" aria-hidden="true"></i>' + n + '</b><span>' +
+        hm(mins[n]) + ' · ' + Math.round((mins[n] / total) * 100) + '%</span></div><div class="bar"><i style="width: ' + Math.round((mins[n] / total) * 100) + '%; background: ' + color + '"></i></div></div>').join('');
+
+    $('status-root').innerHTML = cards +
+      '<section class="panel" aria-label="Fitness and fatigue by week"><div class="panel-h"><span class="card-kicker">Fitness and fatigue · by plan week</span></div>' +
+        (t ? chart : whyEmptyHTML(fs)) + '</section>' +
+      '<div class="grid-2">' +
+        '<section class="panel" aria-label="Time by discipline"><div class="panel-h"><span class="card-kicker">Time by discipline · last 28 days</span></div>' +
+          (disc || '<p class="note">No synced sessions in the last 28 days.</p>') + '</section>' +
+        '<section class="panel" aria-label="How this is worked out"><div class="panel-h"><span class="card-kicker">How this is worked out</span></div>' +
+          '<div class="rows">' +
+            '<div class="row"><span>Each session</span><b>One load number, an hour at threshold being 100</b></div>' +
+            '<div class="row"><span>Fitness and fatigue</span><b>The 42-day and 7-day averages of it</b></div>' +
+            '<div class="row"><span>Sessions scored</span><b>' + fs.scored + (fs.unscored ? ' · ' + fs.unscored + ' could not be' : '') + '</b></div>' +
+            '<div class="row"><span>Where it is kept</span><b>Nowhere: worked out when you open the page</b></div>' +
+          '</div>' +
+          '<p class="note">None of this changes your plan. The averages describe training, not you.</p></section>' +
+      '</div>';
+  }
+
+  function openFitnessInfo() {
+    panelShell(
+      '<h2>Fitness, fatigue and form</h2>' +
+      '<p class="pnl-sub">Every session gets one load number, where an hour at threshold is 100: from power for rides, pace for runs and swims, effort rating for strength, and heart rate when nothing better exists.</p>' +
+      '<p class="pnl-hint"><b>Fitness</b> is the average of that over the last 42 days and <b>fatigue</b> the average over the last 7. ' +
+        '<b>Form</b> is fitness minus fatigue. They are worked out each time the page opens from sessions synced through your Garmin bridge, and are never stored or put on your plan.</p>' +
+      '<p class="pnl-hint">The <b>planned</b> line and the <b>race day</b> figures cannot be measured, so each planned session is scored from its length and zone with one fixed intensity per zone. ' +
+        'The <b>trend</b> carries today’s figures to race day with the rest of the plan done at the rate of the last four weeks. The cut-offs for low and high form and the bands are starting values, not findings.</p>' +
+      '<div class="pnl-act"><button type="button" class="btn btn-primary" id="ffm-close">Close</button></div>',
+      'Fitness, fatigue and form',
+    );
+    $('ffm-close').addEventListener('click', closePanel);
+  }
+
+  /* The Season panel opens on Fitness. The choice is not stored. */
+  function setSeasonView(v) {
+    const fit = v !== 'load';
+    $('v-fit').classList.toggle('hidden', !fit);
+    $('v-load').classList.toggle('hidden', fit);
+    $('seasonview-seg').querySelectorAll('input').forEach((r) => { r.checked = r.value === (fit ? 'fit' : 'load'); });
+    if (!fit) renderChart();
+  }
+  $('seasonview-seg').addEventListener('change', (e) => setSeasonView(e.target.value));
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-ffm-info]')) openFitnessInfo(); });
+  $('health-garmin').addEventListener('click', () => openGarminSetupPanel());
+
   /* ---- Init ---- */
 
+  applyRoute(routeFromHash(), true);
   renderAll();
   renderAccount();
   maybeShowFirstRun();
-  showArchiveNotice();
 
   // A Strava connection finishes on a redirect back to this page, so the code
   // in the address bar has to be spent on the way in. Does nothing at all
@@ -6825,6 +7293,7 @@
 
   // `?garmin=setup` pairs this browser with the bridge (see the Garmin section).
   maybeOpenGarminSetup();
+  if (garminConfig()) checkBridge();
 
   // The Firebase module (below) is a deferred module, so it loads after this
   // classic script. Bind when it signals ready; if it never loads, stay local.
