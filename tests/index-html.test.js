@@ -546,7 +546,7 @@ test('a release goes through applyDraft, with an undo, and nothing else writes i
 });
 
 test('Plan setup and race changes keep the weeks already trained', () => {
-  assert.match(fnBody('previewRefit'), /refit\(plan, \{ profile, keepBefore: trainedWeeks\(\) \}\)/);
+  assert.match(fnBody('previewRefit'), /refit\(\{ \.\.\.plan, events \}, \{\s*profile, keepBefore: trainedWeeks\(\)/);
   assert.match(fnBody('applyEvents'), /keepBefore: trainedWeeks\(\)/);
 });
 
@@ -742,4 +742,105 @@ test('the engine modules that store a figure on a plan do not import the heart-r
     const src = readFileSync(new URL(`assets/coach/${file}`, ROOT), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
     assert.doesNotMatch(src, /hrById|hrThresholds|activity_hr|normalizeHrThresholds/, file);
   }
+});
+
+/* ---- Phase 5: the target on screen ---- */
+
+const section = (from, to) => {
+  const a = HTML.indexOf(from);
+  const b = HTML.indexOf(to, a);
+  assert.ok(a > 0 && b > a, `${from} … ${to} is where this test looks`);
+  return HTML.slice(a, b);
+};
+
+test('the wizard asks how hard to build, between the races and the goal', () => {
+  assert.match(HTML, /ambition: 'How hard to build'/, 'the step has a title');
+  const body = section('const WIZ_STEP_HTML = {', '  const WIZ_STEP_BIND = {');
+  assert.match(body, /\n    ambition\(\) \{/);
+  assert.match(body, /name="wz-amb"/, 'a choice among the levels');
+  assert.match(body, /ambitionOptions\(r\.raceType\)/, 'offered for the race being built for, with the target each sets');
+  assert.match(fnBody('readWizardStep'), /case 'ambition'/);
+  assert.match(fnBody('readWizardStep'), /input\[name="wz-amb"\]:checked/);
+});
+
+test('the races step has a start date, and only a date the athlete changed it to is kept', () => {
+  const body = section('const WIZ_STEP_HTML = {', '  const WIZ_STEP_BIND = {');
+  assert.match(body, /id="wz-startdate"/);
+  assert.match(fnBody('readWizardStep'), /v\('wz-startdate'\) !== nextMonday\(wizToday\(\)\)/, 'the default is not an answer');
+  assert.match(HTML, /\['wz-racedate', 'wz-racetype', 'wz-startdate'\]/, 'the length is redrawn as the date is typed');
+});
+
+test('the review shows the target, where the athlete starts from, and a way to replace it', () => {
+  const review = fnBody('wizReviewHTML');
+  assert.match(review, /targetFactsHTML\(built\.target/);
+  assert.match(review, /targetBlockHTML\(built\.target/);
+  assert.match(review, /targetSparkHTML\(built\.season, built\.target\)/, 'the planned line against the target');
+  assert.match(review, /startFitnessFor\(/, 'the sentence about where the start came from');
+  assert.match(review, /id="wz-startctl"/);
+  assert.match(review, /id="wz-startctl-set"/);
+  assert.match(review, /planReview\(built, \{ levers: true \}\)/, 'what would help, only when the target cannot be reached');
+  assert.match(HTML, /startCtlEntered = Number\(x\)/);
+});
+
+test('Plan setup shows the target and builds an old season to one only when asked', () => {
+  const setup = fnBody('setupTargetHTML');
+  assert.match(setup, /id="f-ambition"/);
+  assert.match(setup, /id="f-startctl"/);
+  assert.match(setup, /id="f-target-on"/, 'a plan sized the old way is offered a target, not given one');
+  const preview = fnBody('previewRefit');
+  assert.match(preview, /const upgrade = !plan\.target && !!\$\('f-target-on'\) && \$\('f-target-on'\)\.checked/);
+  assert.match(preview, /upgrade: true/);
+  assert.match(preview, /source: 'entered'/, 'a typed number is the athlete\'s own');
+});
+
+test('the review of a change says what the season is now built to, and whether it can be reached', () => {
+  assert.match(fnBody('renderDiff'), /draftTargetHTML\(\)/);
+  const body = fnBody('draftTargetHTML');
+  assert.match(body, /leversFor\(draft\)/);
+  assert.match(body, /This also builds the season to a target fitness/);
+});
+
+test('the event panel sets how hard to aim, for the main race, and the time a race is expected to take', () => {
+  const panel = fnBody('openEventPanel');
+  assert.match(panel, /id="ev-amb"/);
+  assert.match(panel, /id="ev-time"/);
+  const save = fnBody('saveEventFromPanel');
+  assert.match(save, /ambition: isMain/, 'only the main race carries one');
+  assert.match(save, /expectedMinutes: minutes > 0 \? minutes : undefined/, 'and it may be cleared');
+  const apply = fnBody('applyEvents');
+  assert.match(apply, /aimed\(plan\.events\) !== aimed\(next\)/, 'changing either re-sizes the season');
+  assert.match(apply, /upgrade: true/, 'a change of race is one of the changes that builds a season to a target');
+  assert.match(apply, /landingsDetail\(/, 'and a race whose taper changes moves the season even if its week does not');
+});
+
+test('the race this season is for is shown above the week and the month, with its target', () => {
+  const at = HTML.indexOf('id="race-label"');
+  assert.ok(at > 0 && at < HTML.indexOf('id="summary"'), 'above the summary, so above both views');
+  assert.match(fnBody('renderAll'), /renderRaceLabel\(\)/);
+  const body = fnBody('raceLabelHTML');
+  assert.match(body, /fmtLongDate\(main\.date\)/);
+  assert.match(body, /Target fitness/);
+  assert.match(body, /the plan reaches about/, 'and says so when it falls short');
+});
+
+test('the Fitness chart marks the plan target on race day, and says so in words', () => {
+  const chart = fnBody('fitnessChart');
+  assert.match(chart, /plan\.target/);
+  const section2 = section('/* ---- Fitness, fatigue and form', '/* ---- Init ---- */');
+  assert.match(section2, /Plan target/);
+  assert.match(section2, /The plan target is /, 'for a screen reader too');
+});
+
+test('where the athlete starts from is worked out with no heart-rate store', () => {
+  const body = fnBody('startFor');
+  assert.match(body, /startFitness\(/);
+  assert.doesNotMatch(body, /hrById|hrThresholds|readHrStore|HR_/);
+});
+
+test('a change that moves only the target can still be applied', () => {
+  const body = fnBody('renderDiff');
+  assert.match(body, /const targetMoves = /);
+  assert.match(body, /\(!d\.weeks\.length && !targetMoves\) \? ' disabled'/, 'Apply is not disabled when only the target moves');
+  assert.match(body, /d\.weeks\.length \|\| targetMoves/, 'and it is wired up');
+  assert.match(body, /No week changes, but what the season is built to does/);
 });
