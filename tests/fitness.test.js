@@ -271,3 +271,56 @@ test('carry steps the two averages one day at a time, adding the load of each da
   const fat1 = 20 + ka * (100 - 20);
   assert.ok(Math.abs(end.fat - (fat1 + ka * (100 - fat1))) < 1e-9);
 });
+
+/* ---- a tune-up race's own load ---- */
+
+// The six-week plan above is a week of one-hour rides; a 10 km tune-up lands on its Wednesday of week 3.
+const withRace = (ev) => plan({ events: [{ id: 'ev-t', name: 'Tune', kind: 'race', priority: 'secondary', ...ev }] });
+const TUNE = { date: dayISO(16), raceType: '10k' };                          // Wednesday, week 3
+
+test('a tune-up race adds its own load to the planned line from its day on', () => {
+  const without = fitnessSeries(plan(), { today: TODAY, thresholds: T });
+  const withIt = fitnessSeries(withRace(TUNE), { today: TODAY, thresholds: T });
+  assert.equal(withIt.weeks[0].planned, without.weeks[0].planned, 'before the race nothing moves');
+  assert.equal(withIt.weeks[1].planned, without.weeks[1].planned);
+  assert.ok(withIt.weeks[2].planned > without.weeks[2].planned, 'the week it is in');
+  assert.ok(withIt.weeks[5].planned > without.weeks[5].planned, 'and the weeks after');
+});
+
+test('the load is the race\'s nominal time at its nominal intensity', () => {
+  // 55 min at 0.95 is about 83 load. One day's load moves a 42-day average by 1/42 of the gap to it.
+  const without = fitnessSeries(plan(), { today: TODAY, thresholds: T });
+  const withIt = fitnessSeries(withRace(TUNE), { today: TODAY, thresholds: T });
+  const step = withIt.weeks[2].planned - without.weeks[2].planned;
+  assert.ok(step > 0.5 && step < 3, `a single hard day lifts the end of its week by about a point or two, got ${step}`);
+});
+
+test('a longer race, or the athlete\'s own slower time, adds more', () => {
+  const at = (ev) => fitnessSeries(withRace({ ...TUNE, ...ev }), { today: TODAY, thresholds: T }).weeks[5].planned;
+  assert.ok(at({ raceType: '70.3' }) > at({ raceType: '10k' }));
+  assert.ok(at({ expectedMinutes: 90 }) > at({}), 'a 10 km that takes 90 minutes costs more than one that takes 55');
+});
+
+test('the race the season is built for adds nothing: the plan arrives at it', () => {
+  const primary = plan({ events: [{ id: 'ev-p', name: 'Race', date: '2026-10-17', kind: 'race', raceType: '70.3', priority: 'primary' }] });
+  const a = fitnessSeries(primary, { today: TODAY, thresholds: T });
+  const b = fitnessSeries(plan(), { today: TODAY, thresholds: T });
+  assert.deepEqual(a.weeks.map((w) => w.planned), b.weeks.map((w) => w.planned));
+});
+
+test('a marker, a race outside the plan and a race of unknown length add nothing', () => {
+  const base = fitnessSeries(plan(), { today: TODAY, thresholds: T }).weeks.map((w) => w.planned);
+  const planned = (events) => fitnessSeries(plan({ events }), { today: TODAY, thresholds: T }).weeks.map((w) => w.planned);
+  assert.deepEqual(planned([{ id: 'm', date: TUNE.date, kind: 'race', raceType: '10k', priority: null }]), base, 'a marker');
+  assert.deepEqual(planned([{ id: 'o', date: '2027-06-06', kind: 'race', raceType: '10k', priority: 'secondary' }]), base, 'after the plan');
+  assert.deepEqual(planned([{ id: 'b', date: '2026-08-01', kind: 'race', raceType: '10k', priority: 'secondary' }]), base, 'before it');
+  assert.deepEqual(planned([{ id: 'u', date: TUNE.date, kind: 'race', raceType: null, priority: 'secondary' }]), base, 'no distance, no load');
+});
+
+test('the projection to race day counts a tune-up that is still ahead', () => {
+  const { activities, sync } = history();
+  const base = plan({ activities, activitySync: sync });
+  const without = fitnessSeries(base, { today: TODAY, thresholds: T });
+  const withIt = fitnessSeries({ ...base, events: [{ id: 'ev-t', date: dayISO(30), kind: 'race', raceType: '70.3', priority: 'secondary' }] }, { today: TODAY, thresholds: T });
+  assert.ok(withIt.race.fit > without.race.fit);
+});

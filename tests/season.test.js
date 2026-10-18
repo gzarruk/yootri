@@ -305,3 +305,59 @@ test('a season is sized by one of peakHours or annualHours', () => {
   assert.throws(() => fitToRace({ weeks: 10, peakHours: 10, annualHours: 500 }), /peakHours|annualHours/);
   assert.throws(() => fitToRace({ weeks: 10, peakHours: 0 }), /peakHours/);
 });
+
+/* ---- a race that needs no taper ---- */
+
+/* A landing is a bare week number — a race that gets its taper and race week,
+   as every tune-up always did — or `{ absWeek, taper: false }`: a race short
+   enough to be a hard day in the build. That one changes no week of the
+   season; it is only the athlete's race day, which the plan clears and counts. */
+
+test('a landing with no taper is applied without touching the season', () => {
+  const plain = fitToRace({ annualHours: 700, weeks: 20 });
+  const day = fitToRace({ annualHours: 700, weeks: 20, landings: [{ absWeek: 8, taper: false }] });
+  assert.equal(JSON.stringify(day), JSON.stringify(plain), 'no block is replaced, no hour moves');
+  assert.deepEqual(planLandings({ weeks: 20, landings: [{ absWeek: 8, taper: false }] }).applied,
+    [{ absWeek: 8, taperWeek: null, taper: false }]);
+});
+
+test('a landing given as { absWeek } alone, or with taper true, is a tapered one', () => {
+  const asNumber = planLandings({ weeks: 20, landings: [8] });
+  assert.deepEqual(planLandings({ weeks: 20, landings: [{ absWeek: 8 }] }), asNumber);
+  assert.deepEqual(planLandings({ weeks: 20, landings: [{ absWeek: 8, taper: true }] }), asNumber);
+  assert.equal(JSON.stringify(fitToRace({ annualHours: 700, weeks: 20, landings: [{ absWeek: 8, taper: true }] })),
+    JSON.stringify(fitToRace({ annualHours: 700, weeks: 20, landings: [8] })));
+});
+
+test('a race with no taper sits beside a tapered one without crowding it', () => {
+  // A taper needs the week before it free. A race with no taper needs no free week, and does not
+  // use one up for the race after it.
+  const { applied, refused } = planLandings({ weeks: 24, landings: [{ absWeek: 8, taper: false }, 9, 10] });
+  assert.deepEqual(refused, [{ absWeek: 10, reason: 'too-close' }], 'the tapered 10 is too close to the tapered 9, not to the untapered 8');
+  assert.deepEqual(applied.map((x) => x.absWeek), [8, 9]);
+  assert.deepEqual(applied.filter((x) => x.taper === false).map((x) => x.absWeek), [8]);
+  assert.deepEqual(applied.find((x) => x.absWeek === 9), { absWeek: 9, taperWeek: 8 });
+});
+
+test('a race with no taper is still turned away when it is outside the season', () => {
+  const { applied, refused } = planLandings({ weeks: 20, landings: [{ absWeek: -1, taper: false }, { absWeek: 20, taper: false }] });
+  assert.deepEqual(applied, []);
+  assert.deepEqual(refused.map((x) => x.reason), ['outside-season', 'outside-season']);
+});
+
+test('a race with no taper in the last weeks changes nothing there, and is not refused for it', () => {
+  const { applied, refused } = planLandings({ weeks: 20, landings: [{ absWeek: 18, taper: false }] });
+  assert.deepEqual(refused, []);
+  assert.deepEqual(applied.map((x) => x.absWeek), [18]);
+});
+
+test('a tapered and an untapered race in one week: the taper wins', () => {
+  const { applied } = planLandings({ weeks: 20, landings: [{ absWeek: 8, taper: false }, 8] });
+  assert.deepEqual(applied, [{ absWeek: 8, taperWeek: 7 }]);
+});
+
+test('planLandings tells a bad landing from a good one whatever shape it came in', () => {
+  const { applied, refused } = planLandings({ weeks: 20, landings: [null, 'x', {}, { absWeek: 'x' }, { absWeek: 5, taper: false }] });
+  assert.deepEqual(applied.map((x) => x.absWeek), [5]);
+  assert.ok(refused.length >= 1 && refused.every((x) => x.reason === 'outside-season'), 'unreadable ones are outside the season, not week 0');
+});

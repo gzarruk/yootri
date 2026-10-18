@@ -1423,7 +1423,7 @@
   import {
     RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES, raceTypeLabel,
     normalizeEvents, upsertEvent, removeEvent,
-    goalEvent, eventsByDate, raceFieldsOf, seedEventsFromProfile,
+    goalEvent, eventsByDate, raceFieldsOf, seedEventsFromProfile, hasTaper,
   } from './assets/coach/events.js';
   import { suggest } from './assets/coach/adapt.js';
   import { runTurn } from './assets/coach/agent.js';
@@ -2891,13 +2891,13 @@
      setup form does. Anything else is a note on the calendar, written straight
      away. */
 
-  const PRIORITY_LABELS = { primary: 'Main race', secondary: 'Tune-up race' };
+  const PRIORITY_LABELS = { primary: 'A race (target)', secondary: 'B race (fitness test)' };
 
   const priorityOptions = (current) =>
     '<option value="primary"' + (current === 'primary' ? ' selected' : '') +
-      '>Main race — build the season around it</option>' +
+      '>A race (target) — build the season around it</option>' +
     '<option value="secondary"' + (current === 'secondary' ? ' selected' : '') +
-      '>Tune-up race — taper and race week for it</option>' +
+      '>B race (fitness test) — a tune-up inside the build</option>' +
     '<option value="none"' + (current ? '' : ' selected') +
       '>Just a marker — changes nothing</option>';
 
@@ -2919,7 +2919,7 @@
 
     panelShell(
       '<h2>' + (existing ? 'Edit event' : 'Add event') + '</h2>' +
-      '<p class="pnl-sub">Anything worth seeing next to the training. A race can be the one the season is built around, or a tune-up along the way.</p>' +
+      '<p class="pnl-sub">Anything worth seeing next to the training. A race can be your A race, the one the season is built around, or a B race along the way.</p>' +
       '<div class="pnl-grid">' +
         field('Name', '<input type="text" class="input" id="ev-name" value="' + esc(ev.name) + '" placeholder="e.g. Ironman Cascais" />') +
         field('Date', '<input type="date" class="input" id="ev-date" value="' + esc(ev.date) + '" />') +
@@ -2967,6 +2967,7 @@
     };
     $('ev-kind').addEventListener('change', sync);
     $('ev-date').addEventListener('change', renderEventHint);
+    $('ev-type').addEventListener('change', renderEventHint);
     $('ev-prio').addEventListener('change', () => { renderTypes(); renderEventHint(); });
     $('ev-cancel').addEventListener('click', closePanel);
     $('ev-save').addEventListener('click', () => saveEventFromPanel(ev.id));
@@ -3006,7 +3007,13 @@
        than describing the rule again here — the two saying different things is
        the failure worth designing out. */
     const at = weekIndexOf(state.start, date);
-    const { applied, refused } = planLandings({ weeks: totalWeeks(), landings: [at] });
+    const taper = hasTaper({ raceType: $('ev-type').value });
+    const { applied, refused } = planLandings({ weeks: totalWeeks(), landings: [{ absWeek: at, taper }] });
+    if (applied.length && !taper) {
+      el.innerHTML = 'That race is short enough to need no taper week, so week <b>' + (at + 1) +
+        '</b> keeps its block and only the race day itself is cleared.';
+      return;
+    }
     if (applied.length) {
       el.innerHTML = 'Week <b>' + (at + 1) + '</b> becomes its race week' +
         (at > 0 ? ', with week <b>' + at + '</b> as a taper week before it' : '') +
@@ -3032,7 +3039,10 @@
     if (!date) { $('ev-hint').innerHTML = 'An event needs a date.'; return; }
     const kind = $('ev-kind').value;
     const priority = $('ev-prio').value;
+    // Edited in place: what the panel does not show (the ambition, the athlete's
+    // expected time) is kept, not rebuilt from nothing.
     applyEvents(upsertEvent(state.events, {
+      ...(state.events.find((x) => x.id === id) || {}),
       id,
       name: $('ev-name').value,
       date,
@@ -4465,7 +4475,7 @@
           '<ul class="wiz-list">' +
             '<li><b>About you and your training</b> — only your recent weekly hours are needed; the rest is optional.</li>' +
             '<li><b>Your week</b> — the time you have each day, and where the long ride and long run go.</li>' +
-            '<li><b>Your races</b> — the race the season is for, and any tune-ups on the way.</li>' +
+            '<li><b>Your races</b> — your A race, the one the season is for, and any B races on the way.</li>' +
           '</ul>' +
           '<p class="pnl-hint">Nothing is saved until you create the plan. Your answers are kept in this browser as you go, so you can stop and come back.</p>' +
           (wiz.resumed ? '<p class="pnl-hint">Picking up where you left off. <button type="button" class="btn btn-ghost" id="wz-restart">Start over</button></p>' : '');
@@ -4588,20 +4598,20 @@
         '</div>';
       }).join('');
       return '<h2>Your races</h2>' +
-        '<p class="pnl-sub">The race this season is built for, and any tune-up races on the way. The season runs from this Monday to race week.</p>' +
-        '<h3 class="pnl-h3">Main race</h3>' +
+        '<p class="pnl-sub">Your A race is the one this season is built for; B races are fitness tests on the way. The season runs from the Monday it starts to race week.</p>' +
+        '<h3 class="pnl-h3">A race (target)</h3>' +
         '<div class="pnl-grid">' +
           field('Name', '<input type="text" class="input" id="wz-rname" placeholder="e.g. Ironman 70.3 Cascais" value="' + esc(r.name || '') + '" />') +
           field('Date', '<input type="date" class="input" id="wz-racedate" value="' + esc(r.date || '') + '" />') +
-          field('Distance', '<select class="input" id="wz-racetype">' + raceTypeOptions(r.raceType || RACE_TYPES[0], { keepRetired: false }) + '</select>') +
+          field('Distance', '<select class="input" id="wz-racetype">' + raceTypeOptions(r.raceType || '70.3', { keepRetired: false }) + '</select>') +
         '</div>' +
         (preview.weeks
           ? '<p class="np-len">That is a <b>' + preview.weeks + '-week</b> season, built backwards from race week so the taper lands on it.' +
               (preview.longRunway ? ' A runway this long opens with extra preparation weeks before the base blocks.' : '') + '</p>'
           : '') +
-        '<h3 class="pnl-h3">Tune-up races</h3>' +
-        (tuneRows || '<p class="pnl-hint">None yet. A tune-up gets a short taper of its own and nothing on race day.</p>') +
-        '<div class="pnl-act" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="wz-addtune">Add a tune-up race</button></div>';
+        '<h3 class="pnl-h3">B races (fitness tests)</h3>' +
+        (tuneRows || '<p class="pnl-hint">None yet. A B race of more than two hours gets a taper week of its own; a shorter one only clears its own day.</p>') +
+        '<div class="pnl-act" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="wz-addtune">Add a B race</button></div>';
     },
 
     goal() {

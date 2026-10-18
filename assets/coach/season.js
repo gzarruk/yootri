@@ -161,8 +161,10 @@ export const LONG_RUNWAY_WEEKS = 30;
  *
  * @param {object} opts
  * @param {number} opts.weeks      length of the runway
- * @param {number[]} opts.landings absolute weeks the secondary races fall in
- * @returns {{applied: {absWeek: number, taperWeek: number|null}[],
+ * @param {(number|{absWeek: number, taper?: boolean})[]} opts.landings absolute
+ *        weeks the secondary races fall in; `taper: false` marks a race short
+ *        enough to need no taper week
+ * @returns {{applied: {absWeek: number, taperWeek: number|null, taper?: false}[],
  *            refused: {absWeek: number, reason: string}[]}}
  */
 export function planLandings({ weeks, landings = [], season = DEFAULT_SEASON } = {}) {
@@ -171,31 +173,50 @@ export function planLandings({ weeks, landings = [], season = DEFAULT_SEASON } =
   // whole season was built to arrive at. Nothing overwrites them.
   const firstTailWeek = Number.isInteger(n) && n > 0 ? Math.max(0, n - primaryTailWeeks(season)) : 0;
 
-  const wanted = [...new Set((Array.isArray(landings) ? landings : []).map(Number))]
-    .sort((a, b) => (Number.isNaN(a) ? 1 : Number.isNaN(b) ? -1 : a - b));
+  // A landing is a week number, which means a race that gets a taper, or
+  // `{ absWeek, taper: false }` for a race short enough to be a hard day in the
+  // build. Two landings in one week are one, and a taper beats no taper.
+  const byWeek = new Map();
+  for (const l of Array.isArray(landings) ? landings : []) {
+    const obj = l !== null && typeof l === 'object';
+    const raw = obj ? l.absWeek : l;
+    const absWeek = raw === null || raw === undefined || raw === '' ? NaN : Number(raw);
+    const taper = !(obj && l.taper === false);
+    byWeek.set(absWeek, (byWeek.get(absWeek) ?? false) || taper);
+  }
+  const wanted = [...byWeek]
+    .map(([absWeek, taper]) => ({ absWeek, taper }))
+    .sort((a, b) => (Number.isNaN(a.absWeek) ? 1 : Number.isNaN(b.absWeek) ? -1 : a.absWeek - b.absWeek));
 
   const applied = [];
   const refused = [];
+  let lastTaper = null;
 
-  for (const absWeek of wanted) {
+  for (const { absWeek, taper } of wanted) {
     if (!Number.isInteger(absWeek) || absWeek < 0 || absWeek >= n) {
       // Not clamped: clamping would build a taper for a race the season never
       // reaches, which is worse than saying the race is outside it.
       refused.push({ absWeek, reason: 'outside-season' });
       continue;
     }
+    if (!taper) {
+      // Nothing to overwrite and no free week to find: the race changes no week
+      // of the season, only the day the plan clears and counts.
+      applied.push({ absWeek, taperWeek: null, taper: false });
+      continue;
+    }
     if (absWeek >= firstTailWeek) {
       refused.push({ absWeek, reason: 'in-primary-taper' });
       continue;
     }
-    const last = applied.at(-1);
-    if (last && absWeek - last.absWeek < MIN_LANDING_GAP) {
+    if (lastTaper !== null && absWeek - lastTaper < MIN_LANDING_GAP) {
       refused.push({ absWeek, reason: 'too-close' });
       continue;
     }
     // Week 0 has no week before it to taper in. The race week is still built:
     // a race in the first week of the plan is still a race.
     applied.push({ absWeek, taperWeek: absWeek > 0 ? absWeek - 1 : null });
+    lastTaper = absWeek;
   }
 
   return { applied, refused };
@@ -243,7 +264,8 @@ export function fitToRace({ peakHours, annualHours, weeks, landings = [], season
   // `chosen` is already indexed by absolute week, so a landing is a straight
   // splice. Two weeks of whatever block it fell in become the tune-up race's
   // taper and race week; the weeks either side keep the labels they had.
-  for (const { absWeek, taperWeek } of planLandings({ weeks: n, landings, season }).applied) {
+  for (const { absWeek, taperWeek, taper } of planLandings({ weeks: n, landings, season }).applied) {
+    if (taper === false) continue;
     chosen[absWeek] = { block: 'Race', week: 1, recovery: false };
     if (taperWeek !== null) chosen[taperWeek] = { block: 'Taper', week: 1, recovery: false };
   }

@@ -23,7 +23,7 @@
    highest level is one of the words on it. */
 
 import { FITNESS_BANDS } from './fitness.js';
-import { AMBITIONS, DEFAULT_AMBITION } from './events.js';
+import { AMBITIONS, DEFAULT_AMBITION, TAPER_MIN_MINUTES, raceMinutes } from './events.js';
 
 const freeze = (o) => {
   for (const v of Object.values(o)) if (v && typeof v === 'object') freeze(v);
@@ -31,6 +31,18 @@ const freeze = (o) => {
 };
 
 export const PLAN_MODEL = freeze({
+  /* How much of its week a tune-up race's taper takes out, by how long the race
+     is: a share of the week's load, so the week is as hard as the build would
+     have made it less this much. Over two hours (events.js decides what is a
+     taper at all) 20 %, over three 35 %, over six 50 %. A race whose length is
+     not known gets the middle tier. */
+  taper: [
+    { over: TAPER_MIN_MINUTES, depth: 0.2 },
+    { over: 180, depth: 0.35 },
+    { over: 360, depth: 0.5 },
+  ],
+  taperUnknown: 0.35,
+
   /* Reading the athlete's own synced history as their fitness today
      (startfit.js). */
   garmin: {
@@ -78,4 +90,18 @@ export function targetCtl(raceType, ambition) {
   if (level === 'finish') return band.lo;
   if (level === 'competitive') return band.hi;
   return Math.round((band.lo + band.hi) / 2);
+}
+
+/**
+ * The share of a week's load a tune-up race's taper takes out: 0 for a race
+ * that gets no taper, then the tier its length falls in. Takes the event, so the
+ * athlete's own expected time counts as it does everywhere else.
+ */
+export function taperDepth(event) {
+  if (!event) return 0;
+  const minutes = raceMinutes(event);
+  if (minutes === null) return PLAN_MODEL.taperUnknown;
+  let depth = 0;
+  for (const tier of PLAN_MODEL.taper) if (minutes > tier.over) depth = tier.depth;
+  return depth;
 }

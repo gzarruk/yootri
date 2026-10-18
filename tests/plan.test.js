@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
   refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId, moveSession,
-  landingsOf, raceDayFor, freshWeek, isUntouchedPlan,
+  landingsOf, landingsDetail, raceDayFor, raceClosure, freshWeek, isUntouchedPlan,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -793,4 +793,96 @@ test('loadPlan drops an athlete record put on a plan', () => {
   const p = loadPlan({ ...blank(), athlete: { weightKg: 71.4, sex: 'male' } });
   assert.equal('athlete' in p, false);
   assert.deepEqual(loadPlan(p), p, 'still idempotent');
+});
+
+/* ---- A race short enough not to need a taper ------------------------------
+
+   A tune-up of two hours or less (a 10 km, a half marathon) is a hard day in
+   the build, not an event to arrive fresh for. It gets no taper week and no
+   race week; the plan clears its own day, counts its load, and trains on. */
+
+const tuneUpPlan = (raceType, tuneUp = '2027-01-26', extra = {}) => {      // a Tuesday, week 12
+  const base = newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 });
+  return {
+    ...base,
+    events: [...base.events, { id: 'ev-t', name: 'Test', date: tuneUp, kind: 'race', raceType, priority: 'secondary', ...extra }],
+  };
+};
+
+test('landingsDetail says, for each tune-up, whether it gets a taper', () => {
+  assert.deepEqual(landingsDetail(tuneUpPlan('10k')), [{ absWeek: 12, taper: false }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('half-marathon')), [{ absWeek: 12, taper: false }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('70.3')), [{ absWeek: 12, taper: true }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('olympic')), [{ absWeek: 12, taper: true }]);
+  assert.deepEqual(landingsDetail({ start: '2026-11-02', events: [] }), []);
+  assert.deepEqual(landingsDetail({}), []);
+});
+
+test('landingsOf still gives the weeks alone', () => {
+  assert.deepEqual(landingsOf(tuneUpPlan('10k')), [12]);
+});
+
+test('the athlete\'s own expected time decides whether a race gets a taper', () => {
+  assert.deepEqual(landingsDetail(tuneUpPlan('70.3', '2027-01-26', { expectedMinutes: 110 })), [{ absWeek: 12, taper: false }]);
+  assert.deepEqual(landingsDetail(tuneUpPlan('10k', '2027-01-26', { expectedMinutes: 130 })), [{ absWeek: 12, taper: true }]);
+});
+
+test('raceClosure: which day a race closes and whether it closes what follows', () => {
+  assert.deepEqual(raceClosure(tuneUpPlan('10k'), 12), { raceDay: 'Tue', raceOnly: true });
+  assert.deepEqual(raceClosure(tuneUpPlan('70.3'), 12), { raceDay: 'Tue', raceOnly: false });
+  assert.deepEqual(raceClosure(tuneUpPlan('10k'), 4), { raceDay: null, raceOnly: false });
+  const p = tuneUpPlan('10k');
+  assert.deepEqual(raceClosure(p, weekCount(p) - 1), { raceDay: 'Sun', raceOnly: false }, 'the main race always clears what follows');
+});
+
+test('two races in one week: the earlier day, and the week is cleared after it if either needs a taper', () => {
+  const p = tuneUpPlan('10k');
+  const both = { ...p, events: [...p.events, { id: 'ev-u', date: '2027-01-30', kind: 'race', raceType: '70.3', priority: 'secondary' }] };
+  assert.deepEqual(raceClosure(both, 12), { raceDay: 'Tue', raceOnly: false });
+  const two10k = { ...p, events: [...p.events, { id: 'ev-u', date: '2027-01-30', kind: 'race', raceType: '10k', priority: 'secondary' }] };
+  assert.deepEqual(raceClosure(two10k, 12), { raceDay: 'Tue', raceOnly: true });
+});
+
+test('raceDayFor is unchanged: it still just names the day', () => {
+  assert.equal(raceDayFor(tuneUpPlan('10k'), 12), 'Tue');
+});
+
+test('a 10 km tune-up changes no block of the season and clears only its own day', () => {
+  const without = refit(newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 }), {});
+  const drafted = refit(tuneUpPlan('10k'), {});
+  assert.deepEqual(drafted.season.map((w) => w.block), without.season.map((w) => w.block), 'no taper, no race week');
+  assert.deepEqual(drafted.season.map((w) => w.hours), without.season.map((w) => w.hours));
+  const week = drafted.weeks.w12;
+  assert.equal(durToMin(week.find((s) => s.day === 'Tue').dur), 0, 'the race day is clear');
+  for (const day of ['Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    assert.ok(durToMin(week.find((s) => s.day === day).dur) > 0, `${day} is still a training day`);
+  }
+});
+
+test('a 70.3 tune-up still gets its taper and race week, and still clears the rest of its week', () => {
+  const drafted = refit(tuneUpPlan('70.3'), {});
+  assert.equal(drafted.season[12].block, 'Race');
+  assert.equal(drafted.season[11].block, 'Taper');
+  for (const day of ['Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    assert.equal(durToMin(drafted.weeks.w12.find((s) => s.day === day).dur), 0, day);
+  }
+});
+
+test('freshWeek builds the same week a refit does for a short race', () => {
+  const drafted = refit(tuneUpPlan('10k'), {});
+  assert.deepEqual(freshWeek(drafted, 12), drafted.weeks.w12);
+});
+
+test('a short race in the last weeks is not refused for sitting in the main race\'s taper', () => {
+  // Nothing is overwritten, so there is nothing to refuse; the day is still cleared.
+  const p = tuneUpPlan('10k', '2027-03-09');                // week 18, Tuesday: inside the last three
+  const d = diffPlans(refit(newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 }), {}), refit(p, {}));
+  assert.equal(d.issues.find((i) => i.code === 'race-in-primary-taper'), undefined);
+  assert.equal(raceDayFor(p, 18), 'Tue');
+});
+
+test('a tapered race inside the main race\'s taper is still reported', () => {
+  const p = tuneUpPlan('70.3', '2027-03-09');
+  const base = newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 });
+  assert.ok(diffPlans(base, refit(p, {})).issues.find((i) => i.code === 'race-in-primary-taper'));
 });

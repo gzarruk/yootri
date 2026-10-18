@@ -37,7 +37,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
 | `duration.js` | `"H:MM"` ↔ minutes, the format the app already stores. |
 | `calendar.js` | Week-and-weekday ↔ real date, and the Monday-start month grid the calendar view draws. |
-| `events.js` | The athlete's events. Races carry a *priority*: one is `primary` and is the only source of the plan's race date and distance, any number are `secondary` and get a taper landed on them. Also holds the lists of distances a race may be, and what each one is called on screen. |
+| `events.js` | The athlete's events. Races carry a *priority*: one is `primary` (shown as the **A race**) and is the only source of the plan's race date and distance, any number are `secondary` (**B races**) and get a taper landed on them — if they take more than two hours (`hasTaper`). The primary also carries an `ambition` (`finish`, `intermediate`, `competitive`), and any race may carry the athlete's own `expectedMinutes`. Holds the lists of distances a race may be, what each one is called on screen, and `RACE_NOMINAL`, the typical duration and intensity of each distance (unfitted). |
 | `paces.js` | Running paces. Daniels' VDOT model over one benchmark result, and the benchmark list that holds it — the one-is-flagged shape `events.js` used before races needed three states. |
 | `activities.js` | Reading an activity export. Garmin's activity CSV, plus the arithmetic the page's TCX/GPX readers need. Total, like `portable.js`. |
 | `synced.js` | Activities synced from the Garmin bridge: the one boundary heart rate crosses (`splitSynced`), the allowlist a stored activity is held to, merging, sync windows and coverage, and the device-only heart-rate store's shape. Pure — the page fetches and stores. |
@@ -64,10 +64,14 @@ race flagged `priority: 'primary'` owns `profile.raceDate` and `profile.raceType
 moving it re-fits the season through the same draft → diff → apply flow the setup
 form uses, which is why Plan setup only *shows* the race date. `normalizeEvent`
 reads a legacy `goal: true` as `primary`, which is how that field changed with no
-schema bump — do not reintroduce `goal` as a stored field.
+schema bump — do not reintroduce `goal` as a stored field. The two names the
+athlete reads, **A race (target)** and **B race (fitness test)**, are display text
+only: the stored values stay `primary` and `secondary`. `ambition` is kept on the
+primary race alone (it goes with the priority if the race is stood down, and a new
+primary inherits the old one's), and `expectedMinutes` on any race.
 
-**A season can hold more than one race.** A race marked `secondary` is a tune-up
-inside the build: `planLandings` in `season.js` decides where it lands and
+**A season can hold more than one race.** A race marked `secondary` is a B race, a
+tune-up inside the build: `planLandings` in `season.js` decides where it lands and
 `fitToRace` splices in one **taper week** and one **race week**, taken out of
 whatever block those weeks were in. The season never gets longer for it — the
 primary's date is what decides the length. The secondary taper week is not a new
@@ -77,21 +81,38 @@ the first peak week removed. `planLandings` is the only place the rule lives —
 page, the validator and the coach tools all ask it rather than re-deriving it, so
 the refusal the athlete is shown is the same refusal the model honoured.
 
-**Nothing is scheduled on a race day or on the days after it.** `generateWeek`
-takes a `raceDay`, and `raceDayFor` in `plan.js` supplies it for any week a
-prioritised race falls in — including one the model refused a taper for, because
-the athlete is racing that day either way. A race early in the week therefore
-leaves the rest of that week clear; `tests/plan.test.js` pins the Monday case so
-it reads as a decision rather than a bug. See `../yootri-rnd/FINDINGS.md`
-(25 Aug) for the latent bug this fixed in the *primary* race week.
+**A B race of two hours or less gets no taper.** `hasTaper` (`events.js`) is the
+rule: a race longer than `TAPER_MIN_MINUTES` (120) — by the athlete's own
+`expectedMinutes` if given, else the typical time for the distance in
+`RACE_NOMINAL` — gets the taper and race week above; a shorter one (10 km, half
+marathon, sprint) is a hard day in the build. `landingsDetail` in `plan.js` hands
+`planLandings` each landing as `{ absWeek, taper }`, and a landing with
+`taper: false` changes no week of the season. A race of unknown length is
+tapered, as every tune-up always was. The Ironman row of `RACE_NOMINAL` in
+particular is a mid-pack guess; finishing times depend on the athlete.
 
-**yootri plans long-course endurance racing only, and the distance list is three
+**Nothing is scheduled on a race day or on the days after it — except after a
+short B race.** `generateWeek` takes a `raceDay`, and `raceClosure` in `plan.js`
+supplies it for any week a prioritised race falls in — including one the model
+refused a taper for, because the athlete is racing that day either way. A race
+early in the week therefore leaves the rest of that week clear; `tests/plan.test.js`
+pins the Monday case so it reads as a decision rather than a bug. The exception
+is a B race that gets no taper (above): `raceClosure` returns `raceOnly`, and
+`generateWeek` clears just that day, since the days after a 10 km are not part of
+any taper. A week with a race that needs a taper in it clears from its earliest
+race day on. See `docs/FINDINGS.md` (25 Aug) for the latent bug this fixed in the
+*primary* race week.
+
+**yootri plans endurance racing from the Olympic up, and the distance list is three
 lists because of it.** Each answers a different question:
 
-- `RACE_TYPES` — what the race a season is *built for* may be: `70.3` and
-  `ironman`. This is what a picker offers for a primary race.
+- `RACE_TYPES` — what the race a season is *built for* may be: `olympic`, `70.3`
+  and `ironman`, shortest first. This is what a picker offers for an A race.
+  Olympic came back on 18 Oct 2026 (an owner decision): the fitness bands and
+  `RACE_DEMAND` already described it, and the season is built to arrive at a
+  target. It is not the default anywhere — the wizard opens on `70.3`.
 - `KNOWN_RACE_TYPES` — what may reach `profile.raceType`, and so what a season may
-  be *sized by*: the above plus the retired `sprint` and `olympic`. Every name
+  be *sized by*: the above plus the retired `sprint`. Every name
   here has a `RACE_DEMAND` row in `generate.js`. A plan is self-contained, so a
   season already built for a sprint has to go on being sized and validated as one
   rather than falling back to the default and quietly becoming a 70.3.
@@ -110,8 +131,8 @@ and the season would be sized for a race nobody entered. `eventProblem` in
 In the page, `raceTypeOptions()` builds every distance picker from one rule: a
 record that already carries a retired distance is handed its own value back, so
 opening a panel can never silently re-aim a season, while a race being chosen now
-may only pick from the pool its priority allows. **Do not put a short distance
-back in `RACE_TYPES` or `KNOWN_RACE_TYPES`, and do not delete the retired rows
+may only pick from the pool its priority allows. **Do not put `sprint` (or a
+distance shorter than it) back in `RACE_TYPES`, and do not delete the retired row
 from `RACE_DEMAND`.**
 
 **What a distance is stored as and what it is called are two things.** The

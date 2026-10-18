@@ -74,26 +74,32 @@ test('the planned line starts from nothing, so the plan has no notion of where t
   assert.ok(planned[0] < 15, `week 1 is ${planned[0]}, the climb from zero`);
 });
 
-test('there is no ambition: it is not an event field, and a plan stores no target', () => {
+test('a plan stores no target, and nothing the wizard builds carries an ambition yet', () => {
+  // The event can hold an ambition since phase 2 (tests/events.test.js); nothing sets
+  // it and no plan stores a target until the planner is wired in (phase 4).
   const ev = normalizeEvent({ id: 'e', date: '2027-04-03', kind: 'race', raceType: 'ironman', priority: 'primary', ambition: 'competitive' });
-  assert.equal('ambition' in ev, false, 'the allowlist drops it');
+  assert.equal(ev.ambition, 'competitive');
   const { plan } = built(11.5, 'ironman');
+  assert.equal(plan.target, undefined);
   assert.equal(goalEvent(normalizeEvents(plan.events)).ambition, undefined);
 });
 
-test('every tune-up race gets a taper week, however short the race is', () => {
-  const a = { ...emptyAnswers() };
-  a.availability = week(11.5);
-  a.race = { raceType: '70.3', date: '2027-04-03', name: 'Test' };
-  a.tuneUps = [{ name: '10k', date: '2027-01-16', raceType: '10k' }];
-  const plan = buildPlanFromAnswers(a, { today: TODAY, now: 1 });
-  const race = plan.season.findIndex((w, i) => i < plan.season.length - 3 && w.block === 'Race');
-  assert.ok(race > 0, 'the 10 km has its race week');
-  assert.equal(plan.season[race - 1].block, 'Taper', 'and the week before it is a taper');
+test('a tune-up race gets a taper week only if it takes more than two hours (phase 2)', () => {
+  const plan = (raceType) => {
+    const a = { ...emptyAnswers() };
+    a.availability = week(11.5);
+    a.race = { raceType: '70.3', date: '2027-04-03', name: 'Test' };
+    a.tuneUps = [{ name: 'Tune', date: '2027-01-16', raceType }];
+    return buildPlanFromAnswers(a, { today: TODAY, now: 1 });
+  };
+  const tapered = (p) => p.season.some((w, i) => i < p.season.length - 3 && w.block === 'Taper');
+  assert.equal(tapered(plan('10k')), false, 'a 10 km is a hard day in the build');
+  assert.equal(tapered(plan('olympic')), true);
 });
 
-test('Olympic cannot be the race a season is built for', () => {
-  const a = { ...emptyAnswers(), race: { raceType: 'olympic', date: '2027-04-03', name: 'Short' } };
-  const fields = stepProblems('races', a, { today: TODAY }).map((p) => p.field);
-  assert.deepEqual(fields, ['race']);
+test('Olympic can be the race a season is built for; a sprint cannot', () => {
+  const problems = (raceType) => stepProblems('races', { ...emptyAnswers(), race: { raceType, date: '2027-04-03', name: 'Short' } },
+    { today: TODAY }).map((p) => p.field);
+  assert.deepEqual(problems('olympic'), []);
+  assert.deepEqual(problems('sprint'), ['race']);
 });

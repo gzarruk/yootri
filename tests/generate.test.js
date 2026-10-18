@@ -638,3 +638,46 @@ test('intensity is read from the zone label: the highest zone named', () => {
   assert.equal(zoneRank('—'), 0);
   assert.equal(zoneRank(undefined), 0);
 });
+
+/* ---- a race that only costs its own day ---- */
+
+test('a race that needs no taper clears its own day and nothing after it', () => {
+  const p = normalizeProfile({});
+  const { sessions } = generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceDay: 'Tue', raceOnly: true });
+  assert.equal(durToMin(sessions.find((s) => s.day === 'Tue').dur), 0, 'the race day is clear');
+  for (const day of ['Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    assert.ok(durToMin(sessions.find((s) => s.day === day).dur) > 0, `${day} is still a training day`);
+  }
+});
+
+test('the days a race closes are the only difference raceOnly makes', () => {
+  const p = normalizeProfile({});
+  const from = generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceDay: 'Tue' }).sessions;
+  const only = generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceDay: 'Tue', raceOnly: true }).sessions;
+  for (const day of ['Wed', 'Thu', 'Fri', 'Sat', 'Sun']) {
+    assert.equal(weekMinutes(from.filter((s) => s.day === day)), 0, `${day} is closed after a race that clears the rest of the week`);
+  }
+  assert.ok(weekMinutes(only) > weekMinutes(from), 'and the days left open hold more');
+});
+
+test('the week still spends its budget when only one day is closed', () => {
+  const p = normalizeProfile({});
+  const open = generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0' });
+  const only = generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceDay: 'Tue', raceOnly: true });
+  assert.ok(weekMinutes(only.sessions) >= weekMinutes(open.sessions) - 75, 'closing a day moves its minutes, it does not throw them away');
+});
+
+test('raceOnly without a race day is the week as it always was', () => {
+  const p = normalizeProfile({});
+  const before = generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0' });
+  assert.deepEqual(generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceOnly: true }), before);
+  assert.deepEqual(generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceDay: 'Blursday', raceOnly: true }), before);
+});
+
+test('a race on the last day of the week is the same whether or not it clears what follows', () => {
+  const p = normalizeProfile({});
+  assert.deepEqual(
+    generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceDay: 'Sun', raceOnly: true }),
+    generateWeek({ hours: 8, block: 'Build 1', profile: p, idPrefix: 'w0', raceDay: 'Sun' }),
+  );
+});
