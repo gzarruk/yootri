@@ -107,7 +107,7 @@ Read the R&D findings first: this changes session generation.
   experience fallback for season sizing was left out, because it would need a
   new hours-by-experience table, which is exactly the kind of unfitted default
   this project avoids — the wizard asks for recent hours instead.
-- Built without `../yootri-rnd/FINDINGS.md` to hand. Nothing tuned an existing
+- Built without `docs/FINDINGS.md` to hand. Nothing tuned an existing
   constant, but the next session with the notes should check this phase
   against them and record the long-day behaviour there.
 

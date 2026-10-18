@@ -23,7 +23,7 @@
         cutback costs a little fitness; being wrong about an increase costs an
         injury. The rules are deliberately asymmetric.
 
-   The numbers below are hand-chosen and unfitted — see ../yootri-rnd/FINDINGS.md. */
+   The numbers below are hand-chosen and unfitted — see docs/FINDINGS.md. */
 
 import { weekCompliance, getActual, actualMinutes } from './actuals.js';
 import { durToMin } from './duration.js';

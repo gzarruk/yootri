@@ -28,7 +28,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 
 | Module | Responsibility |
 | --- | --- |
-| `season.js` | The block model → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands it on a runway of N weeks, sized by `peakHours` — the athlete's own biggest week (`peakHoursFor` in `profile.js`, from their availability). The reference model's `annualHours` form survives only for the golden tests and the legacy migration. |
+| `season.js` | The block model → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands it on a runway of N weeks, sized by `peakHours` — the athlete's own biggest week (`peakHoursFor` in `profile.js`, from their availability). That is how a plan with no `target` is sized; for one with a target it supplies only the block layout and `backplan.js` sizes the weeks. The reference model's `annualHours` form survives only for the golden tests and the legacy migration. |
 | `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. |
 | `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
@@ -37,17 +37,18 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
 | `duration.js` | `"H:MM"` ↔ minutes, the format the app already stores. |
 | `calendar.js` | Week-and-weekday ↔ real date, and the Monday-start month grid the calendar view draws. |
+| `dates.js` | Calendar arithmetic in UTC day-numbers, so a daylight-saving change never loses a week. `mondayOf` is the Monday of the week *containing* a date; `nextMonday` is where a new plan starts by default (the first Monday on or after tomorrow, never the Monday already gone), and `snapToMonday` makes a start the athlete chose a Monday that is not in the past. `sayDate` is a date as a sentence reads it. |
 | `events.js` | The athlete's events. Races carry a *priority*: one is `primary` (shown as the **A race**) and is the only source of the plan's race date and distance, any number are `secondary` (**B races**) and get a taper landed on them — if they take more than two hours (`hasTaper`). The primary also carries an `ambition` (`finish`, `intermediate`, `competitive`), and any race may carry the athlete's own `expectedMinutes`. Holds the lists of distances a race may be, what each one is called on screen, and `RACE_NOMINAL`, the typical duration and intensity of each distance (unfitted). |
 | `paces.js` | Running paces. Daniels' VDOT model over one benchmark result, and the benchmark list that holds it — the one-is-flagged shape `events.js` used before races needed three states. |
 | `activities.js` | Reading an activity export. Garmin's activity CSV, plus the arithmetic the page's TCX/GPX readers need. Total, like `portable.js`. |
 | `synced.js` | Activities synced from the Garmin bridge: the one boundary heart rate crosses (`splitSynced`), the allowlist a stored activity is held to, merging, sync windows and coverage, and the device-only heart-rate store's shape. Pure — the page fetches and stores. |
 | `match.js` | Which synced activity was which planned session: same date, same discipline, closest duration. Proposes actuals; never writes one, never over the athlete's own log. |
-| `load.js` | Training load: one number per session where an hour at threshold is 100 (power, pace, swim pace, session RPE, heart rate as the fallback), and its chronic (42-day) and acute (7-day) averages. Ported from GARMIN-CLAUDE. Never stored — worked out when read. |
+| `load.js` | Training load: one number per session where an hour at threshold is 100 (power, pace, swim pace, session RPE, heart rate as the fallback), and its chronic (42-day) and acute (7-day) averages. Ported from GARMIN-CLAUDE. Worked out when read, and not stored — except the figures the planner keeps on a plan (the start fitness and the planned fitness per week, see "A plan can be built to a target"), which are never derived from heart rate. |
 | `workout.js` | A planned bike session as warm-up / main set / cool-down steps with %FTP targets (watts when `loadRefs.ftpW` is set), plus `planSyncSet`, which says what one "send to Garmin" run would do. Worked out when asked for, never stored on a session. |
-| `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; recent weekly hours are kept as the athlete's own record and size nothing. Never on a plan — see below. |
-| `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by the week the athlete gave, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
-| `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules, plus — only when the athlete ticks it — `ease`, which makes `hardestSession` easy). No coaching constant of its own, and it never reads the overnight figures. |
-| `fitness.js` | Fitness (42-day) and fatigue (7-day) training load as of today, form as their difference, and the lines the Fitness chart draws: actual (load.js), planned (an *estimate* of each planned session from its length and zone — `PLANNED.zoneIF`, unfitted) and a trend carried to race day. Derived on read, never stored. Lifts the 28 Sep exclusion of form (FINDINGS, 16 Oct); ACWR, monotony and strain stay out. Also the plan followed from today as a line (`followed`), `FITNESS_BANDS` and the illustrative race-day form range (`PLANNED.raceForm`). |
+| `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; recent weekly hours, years in the sport and the per-sport background are what `startfit.js` reads to estimate where a season starts (the figure goes on the plan, these do not); the body measurements play no part in building a plan — weight only shows FTP per kilogram and sex preselects the heart-rate formula. Never on a plan — see below. |
+| `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting on the first Monday on or after tomorrow, or the start date the athlete chose, built to the target their ambition sets from where `startFitnessFor` says they are, tune-ups landed through `refit`) and `planReview` (with the target, the start fitness's source and, when the target is out of reach, what would change that). Steps run welcome, about, background, thresholds, week, races, **ambition**, goal, review: the ambition is what the plan builds to, the goal is what the athlete wants from the race, and both stay. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
+| `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules, plus — only when the athlete ticks it — `ease`, which makes `hardestSession` easy). For a plan with a target it also re-anchors the rest of the season from the fitness at the end of the reviewed week (`actualCtlAt`) when their synced sessions say, and never lowers the target; a plan with no target keeps its sizing. No coaching constant of its own, and it never reads the overnight figures. |
+| `fitness.js` | Fitness (42-day) and fatigue (7-day) training load as of today, form as their difference, and the lines the Fitness chart draws: actual (load.js), planned (an *estimate* of each planned session from its length and zone — `PLANNED.zoneIF`, unfitted) and a trend carried to race day. Derived on read, never stored. Lifts the 28 Sep exclusion of form (FINDINGS, 16 Oct); ACWR, monotony and strain stay out. Also the plan followed from today as a line (`followed`), `plannedRace` (the planned race-day fitness, which needs no history: the line starts from `plan.target.start` when there is none), `FITNESS_BANDS` — still illustrative, and now also what a plan's target is read from — and the illustrative race-day form range (`PLANNED.raceForm`). |
 | `preparation.js` | Race preparation: a checklist of facts — fitness on race day against the distance's band, long sessions per discipline over 42 days, steady weeks among those the sync covered, race-day form. **No score and no verdict** (FINDINGS, 17 Oct); silent under three covered weeks. Derived on read, never stored; every number in `PREP` is unfitted. |
 | `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
 | `overnight.js` | Sleep and overnight heart rate from the bridge: the device-only store's shape (`normalizeNight` is an allowlist), its sync window, and `compareNights` — the last seven nights against the athlete's own four weeks before them. Describes nights, decides nothing. See below. |
@@ -187,7 +188,10 @@ this browser's own storage (`yootri_activity_hr`). The activity that goes on the
 plan carries none of it, and `normalizeSyncedActivity` is an allowlist that
 `loadPlan` also runs, so a hand-edited plan file cannot put it back. Anything
 later derived from it (training load) is computed at read time and never
-stored. Before widening what is read, read `../yootri-rnd/FINDINGS.md` (25 Aug
+stored. The start fitness a plan does keep (`plan.target`, below) is worked out
+without it — `startfit.js` and the planner take no heart-rate store, and
+`tests/startfit.test.js`, `tests/backplan.test.js` and `tests/index-html.test.js`
+pin that. Before widening what is read, read `docs/FINDINGS.md` (25 Aug
 and 28 Sep) and §9 item 4 of the private legal note.
 
 **About you is not plan content, and its cloud copy has a consent of its own.**
@@ -299,6 +303,22 @@ sessions say (`actualCtlAt`, never heart rate), and never lowers the target. The
 inputs the start was worked out from (recent hours, years in the sport, background,
 body measurements) are not stored on the plan; only the figure and its source are.
 
+The athlete's own week is a ceiling the planner never exceeds, not an input that
+sizes anything. When it cannot reach the target it **builds the best season it can
+and says so** — `feasibility.limitingFactor` is `availability` (more weeks would not
+help), `runway` (they would) or `ramp` (weeks pinned or already trained leave too
+little room) — and `planLevers` works out, by rebuilding, what would change it: a
+later race, a lower level, more hours, a shorter race. The target is never lowered
+silently, and one the athlete already exceeds is held, not eased down to. The page
+shows all of it: the wizard's ambition step and review, Plan setup, the event panel,
+a label above the week and month views, and a mark on the Fitness chart.
+`describeTarget` in `targets.js` is the one place that wording lives. It describes
+the planned training and not the athlete, promises nothing, and keeps the names of
+the three levels off the fitness surfaces — `tests/copy.test.js` holds it to that.
+Every constant behind this is unfitted (`PLAN_MODEL`); the reasoning, the figures
+and the owner's decisions are in `docs/FINDINGS.md` (18 Oct 2026, "Build the season
+backwards from a target fitness").
+
 **A plan with no target is sized by the athlete's own week, never by an annual
 figure.** There is no annual-hours setting: the biggest week of a season is all the time the
 athlete said they have (`peakHoursFor`, rounded *down* to the half hour), and the
@@ -324,19 +344,20 @@ on the way in and writes the upgrade back immediately.
 ## R&D notebooks
 
 Exploratory work on **training-load / physiology models** and **chart
-prototyping** lives outside this repo, in `../yootri-rnd/` (Python notebooks,
-deliberately not version controlled).
+prototyping** lives outside this repo, in `../yootri-rnd/` (Python notebooks and
+the reference `plan_model.py`, deliberately not version controlled).
 
 **Before changing training-load computation, session generation, validation
-thresholds, the pace model or the SVG season chart, read
-`../yootri-rnd/FINDINGS.md`.** It
+thresholds, the pace model, the planner's constants or the SVG season chart, read
+`docs/FINDINGS.md`.** It lives in this repo's `docs/` but is gitignored, so it is
+on the author's machine and not in a clone. It
 records what was tried, what the numbers said, and what was ruled out — the
 notebooks themselves are noisy and are only worth opening when a finding points
 at one. It also records which constants are unfitted guesses, which matters
 before tuning any of them.
 
 If a session concludes something worth keeping, write it back to that
-`FINDINGS.md`. It is the only durable record; there is no git history behind it.
+`docs/FINDINGS.md`. It is the only durable record; there is no git history behind it.
 
 ## Working here
 

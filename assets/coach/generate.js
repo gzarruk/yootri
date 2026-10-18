@@ -30,7 +30,7 @@ const DISC = {
 /* Share of the week each discipline takes, by block family. Hand-chosen to
    express a conventional shape — base builds aerobic volume, build trades some
    swim and strength time for run intensity, peak is bike-and-run specific.
-   Not fitted to anything; see ../yootri-rnd/FINDINGS.md. */
+   Not fitted to anything; see docs/FINDINGS.md. */
 const SPLITS = {
   Prep: { Swim: 0.25, Bike: 0.35, Run: 0.25, Strength: 0.15 },
   Base: { Swim: 0.22, Bike: 0.43, Run: 0.25, Strength: 0.1 },

@@ -17,7 +17,9 @@
    its synced activities and the references load.js already uses, and returned
    as plain numbers. Heart-rate-derived loads reach it only through `hrById`,
    which the page reads from this browser's own store, so nothing derived from
-   heart rate can land on a plan that syncs.
+   heart rate can land on a plan that syncs. (The planner does keep two figures
+   on a plan, where the season starts from and the planned fitness of each week;
+   it works them out without heart rate. See load.js.)
 
    **What is measured and what is estimated.** Actual load is load.js's,
    unchanged. A planned session has no power file and no pace, so its load is
@@ -30,7 +32,7 @@
    the zone table, the RPE assumed for planned strength work, the cap on
    adherence, and the cut-offs for what the page calls low, neutral and high
    form. The 42/7-day windows are load.js's conventional ones. See
-   ../yootri-rnd/FINDINGS.md (28 Sep and 16 Oct). */
+   docs/FINDINGS.md (28 Sep and 16 Oct). */
 
 import { parseISO, toISO, addDays } from './dates.js';
 import { dateOf, weekIndexOf } from './calendar.js';
