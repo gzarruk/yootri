@@ -194,7 +194,7 @@ test('two weeks well under plan bring the next week down to what was done', () =
 
 test('a refit with keepBefore leaves the weeks before it exactly as they were', () => {
   const p = weekly(0);
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 }, keepBefore: 3 });
+  const draft = refit(p, { profile: { ...p.profile, availability: { ...p.profile.availability, Sat: 400 } }, keepBefore: 3 });
   for (const w of [0, 1, 2]) {
     assert.deepEqual(sessionsAt(draft, w), sessionsAt(p, w), `week ${w} sessions`);
     assert.deepEqual(draft.season[w], p.season[w], `week ${w} season entry`);

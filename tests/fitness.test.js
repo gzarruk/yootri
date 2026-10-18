@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { PLANNED, FITNESS_BANDS, zoneIntensity, plannedLoad, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline } from '../assets/coach/fitness.js';
+import { PLANNED, FITNESS_BANDS, zoneIntensity, plannedLoad, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline, carry } from '../assets/coach/fitness.js';
 import { trainingLoad } from '../assets/coach/load.js';
 
 /* Fitness, fatigue and form: the 42-day and 7-day averages of training load as
@@ -234,4 +234,40 @@ test('race-day form sits below, within or above a range often used on the day', 
 test('the illustrative fitness bands live in the engine, one per race distance', () => {
   assert.deepEqual(FITNESS_BANDS.map((b) => b.key), ['olympic', '70.3', 'ironman']);
   assert.ok(FITNESS_BANDS.every((b) => b.lo < b.hi && b.name));
+});
+
+/* ---- a plan that has not started yet ---- */
+
+test('a plan that starts after today is seeded from where the athlete is today, not from zero', () => {
+  // History to Wednesday of week 4; the plan itself starts the Monday after.
+  const { activities, sync } = history();
+  const later = plan({
+    start: dayISO(28),
+    activities,
+    activitySync: sync,
+    profile: { raceDate: dayISO(28 + 6 * 7 - 1), raceType: '70.3' },
+  });
+  const r = fitnessSeries(later, { today: TODAY, thresholds: T });
+  const base = trainingLoad(activities, { today: TODAY, thresholds: T, sync });
+  // An hour of zone 2 a day is what the history was, so the line should carry on from about there.
+  assert.ok(r.weeks[0].planned > base.chronic - 1, `week 1 planned ${r.weeks[0].planned}, athlete today ${base.chronic}`);
+  assert.ok(r.weeks[0].planned < base.chronic + 12, 'and rise, not jump');
+});
+
+test('a plan that starts after today with no history still starts its line at zero', () => {
+  const later = plan({ start: dayISO(28), profile: { raceDate: dayISO(28 + 6 * 7 - 1), raceType: '70.3' } });
+  const r = fitnessSeries(later, { today: TODAY, thresholds: T });
+  assert.ok(r.weeks[0].planned < 10);
+});
+
+test('carry steps the two averages one day at a time, adding the load of each day', () => {
+  const kc = 1 - Math.exp(-1 / 42);
+  const ka = 1 - Math.exp(-1 / 7);
+  const seen = [];
+  const end = carry({ fit: 10, fat: 20 }, '2026-09-30', '2026-10-02', () => 100, (iso, s) => seen.push([iso, s.fit]));
+  assert.deepEqual(seen.map(([d]) => d), ['2026-10-01', '2026-10-02'], 'from is exclusive, to is inclusive');
+  const fit1 = 10 + kc * (100 - 10);
+  assert.ok(Math.abs(end.fit - (fit1 + kc * (100 - fit1))) < 1e-9);
+  const fat1 = 20 + ka * (100 - 20);
+  assert.ok(Math.abs(end.fat - (fat1 + ka * (100 - fat1))) < 1e-9);
 });

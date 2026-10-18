@@ -54,21 +54,28 @@ test('setSessionsAt writes without mutating the plan it was given', () => {
 
 /* Re-fitting produces a draft. Nothing is written until it is applied. */
 
+/** The plan's profile with every day's time scaled — a season is sized by the
+    week the athlete has, so this is how a test asks for a bigger one. */
+const roomier = (p, k) => ({
+  ...p.profile,
+  availability: Object.fromEntries(Object.entries(p.profile.availability).map(([d, m]) => [d, Math.round(m * k)])),
+});
+
 test('refit returns a new plan and leaves the original alone', () => {
   const p = loadPlan(v2());
   const before = JSON.parse(JSON.stringify(p));
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   assert.notDeepEqual(draft.weeks, p.weeks, 'the draft should differ');
   assert.deepEqual(p, before, 'the source plan must be untouched');
 });
 
 test('refit rebuilds the season from the new profile', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
-  assert.ok(draft.profile.annualHours === 800);
+  const draft = refit(p, { profile: roomier(p, 1.5) });
+  assert.ok(draft.profile.availability.Sat > p.profile.availability.Sat);
   assert.ok(
     weekTotals(draft).reduce((a, b) => a + b, 0) > weekTotals(p).reduce((a, b) => a + b, 0),
-    'a bigger budget should produce a bigger season',
+    'a bigger week should produce a bigger season',
   );
 });
 
@@ -82,7 +89,7 @@ test('refit honours availability, so a squeezed week cannot overflow', () => {
 
 test('refit can be scoped to a range, leaving other weeks alone', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 900 }, from: 2, to: 4 });
+  const draft = refit(p, { profile: roomier(p, 1.8), from: 2, to: 4 });
   assert.deepEqual(sessionsAt(draft, 0), sessionsAt(p, 0), 'week 0 untouched');
   assert.deepEqual(sessionsAt(draft, 7), sessionsAt(p, 7), 'week 7 untouched');
   assert.notDeepEqual(sessionsAt(draft, 3), sessionsAt(p, 3), 'week 3 refitted');
@@ -99,7 +106,7 @@ test('an unchanged draft produces an empty diff', () => {
 
 test('the diff reports per-week volume before and after', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   const d = diffPlans(p, draft);
   assert.ok(d.weeks.length > 0);
   for (const w of d.weeks) {
@@ -141,7 +148,7 @@ test('the diff carries validation issues so the UI can warn before applying', ()
 
 test('a merely questionable draft warns but does not block', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 2000 } });
+  const draft = refit(p, { profile: roomier(p, 4) });
   const d = diffPlans(p, draft);
   assert.equal(d.blocked, false);
 });
@@ -150,7 +157,7 @@ test('a merely questionable draft warns but does not block', () => {
 
 test('applyDraft returns the draft content with a fresh timestamp', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   const applied = applyDraft(p, draft, { now: 12345 });
   assert.deepEqual(applied.weeks, draft.weeks);
   assert.equal(applied.updatedAt, 12345);
@@ -159,7 +166,7 @@ test('applyDraft returns the draft content with a fresh timestamp', () => {
 
 test('applyDraft does not mutate either input', () => {
   const p = loadPlan(v2());
-  const draft = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const draft = refit(p, { profile: roomier(p, 1.5) });
   const snapP = JSON.parse(JSON.stringify(p));
   const snapD = JSON.parse(JSON.stringify(draft));
   applyDraft(p, draft, { now: 1 });
@@ -213,7 +220,7 @@ test('a per-week budget override survives a later refit', () => {
   // override recorded on the plan has to be reapplied on top of it.
   const p = loadPlan(v2());
   const pinned = { ...p, weekBudgets: { w3: 4 } };
-  const draft = refit(pinned, { profile: { ...p.profile, annualHours: 900 } });
+  const draft = refit(pinned, { profile: roomier(p, 1.8) });
   assert.equal(weekTotals(draft)[3], 240, 'week 3 should still be the pinned 4h');
   assert.notEqual(weekTotals(draft)[4], 240, 'other weeks follow the new budget');
 });
@@ -230,7 +237,7 @@ test('applying a draft keeps the conversation that happened while it was drafted
   // loses the coach's own answer. Chat is conversation state, like done and
   // actuals: it belongs to the plan being replaced, not to the proposal.
   const p = loadPlan(v2());
-  const mid = refit(p, { profile: { ...p.profile, annualHours: 800 } });
+  const mid = refit(p, { profile: roomier(p, 1.5) });
   const withChat = {
     ...p,
     chat: [{ role: 'user', content: 'more hours' }, { role: 'coach', content: 'done' }],
@@ -262,18 +269,17 @@ test('a short runway keeps the race-specific end', () => {
 
 test('newPlan inherits a profile when given one', () => {
   const mine = normalizeProfile({
-    annualHours: 620,
     availability: { ...anyDay(120), Wed: 0 },
     constraints: [{ disc: 'Swim', rule: 'maxPerWeek', value: 2 }],
   });
   const p = newPlan({ name: 'Next', startISO: '2026-08-17', raceDate: '2027-01-04', profile: mine });
-  assert.equal(p.profile.annualHours, 620);
+  assert.equal(p.season.reduce((a, w) => Math.max(a, w.hours), 0), 12, 'sized by the inherited week: 6 days of 2h');
   assert.equal(p.profile.availability.Wed, 0);
   assert.equal(p.profile.constraints.length, 1);
 });
 
 test('an inherited profile does not drag the old race date along with it', () => {
-  const mine = normalizeProfile({ annualHours: 620, raceDate: '2026-09-01', raceType: 'olympic' });
+  const mine = normalizeProfile({ raceDate: '2026-09-01', raceType: 'olympic' });
   const p = newPlan({ name: 'Next', startISO: '2026-08-17', raceDate: '2027-01-04', raceType: 'ironman', profile: mine });
   assert.equal(p.profile.raceDate, '2027-01-04');
   assert.equal(p.profile.raceType, 'ironman');
@@ -335,7 +341,7 @@ test('refit can resize a season when the race date moves', () => {
 
 test('refit keeps the season length when not told otherwise', () => {
   const p = newPlan({ name: 'A', startISO: '2026-08-17', raceDate: '2026-12-07' });
-  assert.equal(weekCount(refit(p, { profile: { ...p.profile, annualHours: 700 } })), weekCount(p));
+  assert.equal(weekCount(refit(p, { profile: roomier(p, 1.4) })), weekCount(p));
 });
 
 /* ---- Moving a session ---------------------------------------------------- */
@@ -760,7 +766,7 @@ test('anything the athlete did makes a plan touched', () => {
     'an FTP': { loadRefs: { ftpW: 250 } },
     'a pinned week': { weekBudgets: { w3: 4 } },
     'a new name': { name: 'Roth 2027' },
-    'a profile change': { profile: { ...b.profile, annualHours: 600 } },
+    'a profile change': { profile: { ...b.profile, availability: { ...b.profile.availability, Sat: 400 } } },
     'an edited session': { weeks: { ...b.weeks, w0: b.weeks.w0.map((x) => (x.id === first.id ? { ...x, dur: '0:10' } : x)) } },
     'a removed session': { weeks: { ...b.weeks, w2: b.weeks.w2.slice(1) } },
   };

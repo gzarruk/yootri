@@ -26,10 +26,9 @@
    The numbers below are hand-chosen and unfitted — see ../yootri-rnd/FINDINGS.md. */
 
 import { weekCompliance, getActual, actualMinutes } from './actuals.js';
-import { seasonFit, MIN_VARIATION_RETAINED } from './validate.js';
 import { durToMin } from './duration.js';
 import { weekCount } from './plan.js';
-import { weeklyHistory, summarizeHistory, HISTORY_DISCIPLINES } from './history.js';
+import { weeklyHistory, summarizeHistory, HISTORY_DISCIPLINES, HISTORY_THRESHOLDS } from './history.js';
 import { asRunEffort } from './synced.js';
 import { benchmarkCandidates, STANDARD_DISTANCES } from './activities.js';
 import { currentBenchmark, vdotFrom } from './paces.js';
@@ -51,24 +50,10 @@ export const THRESHOLDS = {
   overWeeks: 3,      // evidence needed to propose adding load
 };
 
-/* The rules that read synced history (history.js) rather than the plan's own
-   log. Stricter than the ones above, because history is evidence about the
-   athlete rather than about the plan: they say nothing on fewer than
-   `minCovered` synced weeks, never propose an increase, and never touch a week
-   that has already started — rebuilding a week under way could move a session
-   somebody has already logged. Hand-chosen and unfitted, like THRESHOLDS. */
-export const HISTORY_THRESHOLDS = {
-  lookback: 4,           // synced weeks read before the planned week
-  minCovered: 3,         // …of which at least this many must be covered by a sync
-  minWeeklyHours: 2,     // below this recorded average there is no baseline to plan from
-  splitDrift: 0.10,      // share points off the block's split worth a mention
-  splitMinHours: 10,     // …over at least this much recorded training
-  splitRound: 0.05,      // proposed split weights come in steps of this
-  longJump: 1.25,        // planned long session this much longer than the longest recorded…
-  longJumpMinutes: 20,   // …and at least this many minutes longer
-  bestEffortMargin: 0.5, // VDOT points a synced run must beat the current benchmark by
-  bestEffortDays: 42,    // only efforts this recent are offered
-};
+/* The bar the rules that read synced history hold it to — silent under
+   `minCovered` covered weeks, never an increase, never a week under way — is
+   defined beside that history (history.js) and re-exported here. */
+export { HISTORY_THRESHOLDS };
 
 const weekKey = (w) => `w${w}`;
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -139,30 +124,6 @@ const hoursOf = (plan, week) =>
 export function suggest(plan, { week } = {}) {
   const out = [];
   const here = Math.max(0, Math.min(Number(week) || 0, weekCount(plan) - 1));
-
-  /* --- Structural: the budget has outrun the week it has to fit in ------- */
-  const fit = seasonFit(plan.season ?? [], plan.profile ?? {});
-  if (fit && fit.retained < MIN_VARIATION_RETAINED) {
-    out.push({
-      code: 'season-flattened',
-      severity: 'warn',
-      message:
-        `Every week is being capped at the ${round1(fit.capacityMinutes / 60)}h you have, ` +
-        `so ${fit.clippedWeeks} of ${plan.season.length} weeks come out the same size and the ` +
-        `season no longer builds or tapers.` +
-        (fit.suggestedAnnualHours
-          ? ` ${fit.suggestedAnnualHours} annual hours would give it its shape back.`
-          : ''),
-      evidence: {
-        retained: round1(fit.retained * 100) / 100,
-        capacityMinutes: fit.capacityMinutes,
-        clippedWeeks: fit.clippedWeeks,
-      },
-      action: fit.suggestedAnnualHours
-        ? { tool: 'set_annual_hours', input: { hours: fit.suggestedAnnualHours } }
-        : null,
-    });
-  }
 
   /* --- Synced history. Before the week-one return: a plan's first week is
      exactly when what somebody trained before it matters most. ------------ */

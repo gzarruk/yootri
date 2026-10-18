@@ -677,3 +677,21 @@ test('the state is words, not only a colour, and comes from the engine', () => {
   assert.match(HTML, /id="garmin-state" role="status"/);
   assert.match(HTML, /<div class="row"><span>Bridge<\/span><b id="gm-state">/);
 });
+
+test('the page asks for no annual hours and says nothing about them', () => {
+  const src = withoutComments(HTML);
+  assert.doesNotMatch(src, /f-annual|estimateAnnualHours|set_annual_hours|seasonFit|annualHours/);
+  assert.doesNotMatch(HTML, /[Aa]nnual hours/);
+});
+
+/* ---- where a new plan starts ---- */
+
+test('a plan the page makes on its own starts next Monday, not the Monday before today', () => {
+  // `mondayOf(today)` is the Monday before today, which starts a plan six days
+  // in the past on a Sunday. The default is dates.js's nextMonday.
+  const line = HTML.split('\n').find((l) => /const defaultStart = /.test(l));
+  assert.ok(line, 'the page still has a defaultStart');
+  assert.match(line, /nextMonday\(/, 'defaultStart asks nextMonday');
+  assert.doesNotMatch(line, /getDay|since|-since/, 'and no longer walks back to the Monday before');
+  assert.match(HTML, /import \{[^}]*\bnextMonday\b[^}]*\} from '\.\/assets\/coach\/dates\.js'/, 'nextMonday is imported from dates.js');
+});

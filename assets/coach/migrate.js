@@ -17,7 +17,7 @@
      with a real chance of losing some. Keeping them costs nothing.
 
    - **The profile is inferred from the plan, not defaulted.** Availability is
-     the most any weekday has ever been asked to hold, and the annual budget is
+     the most any weekday has ever been asked to hold, and the season's scale is
      whatever reproduces the plan's own total volume. A migrated plan opens
      looking exactly like it did yesterday — not re-planned, and not full of
      warnings about days that were fine before. */
@@ -107,11 +107,12 @@ export function migratePlan(raw) {
 
   const profile = normalizeProfile({
     ...(src.profile ?? {}),
-    annualHours,
     availability,
   });
 
-  const season = fitToRace({ annualHours: profile.annualHours, weeks: LEGACY_TOTAL_WEEKS });
+  // The scale is only used to rebuild the season the old plan already had; the
+  // profile does not carry it.
+  const season = fitToRace({ annualHours: annualHours ?? 500, weeks: LEGACY_TOTAL_WEEKS });
 
   return {
     id: src.id,

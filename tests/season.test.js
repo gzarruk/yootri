@@ -275,3 +275,33 @@ test('a landing never damages the race the season was built for', () => {
     }
   }
 });
+
+/* ---- sized by the athlete's biggest week, not by an annual figure ---- */
+
+test('peakHours makes the season’s biggest week exactly that long', () => {
+  for (const weeks of [8, 27, 43]) {
+    const s = fitToRace({ peakHours: 10, weeks });
+    assert.equal(Math.max(...s.map((w) => w.hours)), 10, `${weeks} weeks`);
+  }
+});
+
+test('peakHours keeps the season’s shape: it builds, recovers and tapers', () => {
+  const s = fitToRace({ peakHours: 10, weeks: 43 });
+  const hours = s.map((w) => w.hours);
+  assert.ok(new Set(hours).size > 6, 'weeks must not all come out the same size');
+  assert.ok(hours[0] < hours[Math.floor(hours.length / 2)], 'a season starts below where it peaks');
+  assert.ok(s.at(-1).hours < 10, 'the race week sits below the peak');
+});
+
+test('peakHours scales with the load multiplier, so it matches an annual fit of the same shape', () => {
+  const peak = fitToRace({ peakHours: 12, weeks: 27 });
+  const maxLoad = Math.max(...peak.map((w) => w.load));
+  const annual = fitToRace({ annualHours: (12 / maxLoad) * 52, weeks: 27 });
+  assert.deepEqual(peak.map((w) => w.hours), annual.map((w) => w.hours));
+});
+
+test('a season is sized by one of peakHours or annualHours', () => {
+  assert.throws(() => fitToRace({ weeks: 10 }), /peakHours|annualHours/);
+  assert.throws(() => fitToRace({ weeks: 10, peakHours: 10, annualHours: 500 }), /peakHours|annualHours/);
+  assert.throws(() => fitToRace({ weeks: 10, peakHours: 0 }), /peakHours/);
+});

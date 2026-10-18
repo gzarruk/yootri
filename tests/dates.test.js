@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { parseISO, toISO, addDays, mondayOf, weeksUntil } from '../assets/coach/dates.js';
+import {
+  parseISO, toISO, addDays, mondayOf, weeksUntil, nextMonday, snapToMonday,
+} from '../assets/coach/dates.js';
 
 /* Week counting decides how long a season is, so it has to be exact. All of it
    is done in UTC day-numbers rather than local Date arithmetic: a season that
@@ -58,4 +60,67 @@ test('a missing race date has no answer rather than a wrong one', () => {
   assert.equal(weeksUntil('2026-08-17', null), null);
   assert.equal(weeksUntil('2026-08-17', ''), null);
   assert.equal(weeksUntil(null, '2026-09-07'), null);
+});
+
+/* Where a new plan starts. `mondayOf(today)` is the Monday *before* today, which
+   starts a plan in the past on six days of seven; a plan starts on a Monday that
+   has not happened yet. */
+
+test('nextMonday is the first Monday on or after tomorrow', () => {
+  assert.equal(nextMonday('2026-10-18'), '2026-10-19', 'Sunday: tomorrow is a Monday');
+  assert.equal(nextMonday('2026-10-17'), '2026-10-19', 'Saturday');
+  assert.equal(nextMonday('2026-10-14'), '2026-10-19', 'Wednesday');
+  assert.equal(nextMonday('2026-10-19'), '2026-10-26', 'on a Monday, the next one: today is already under way');
+  assert.equal(nextMonday('2026-10-20'), '2026-10-26', 'Tuesday');
+});
+
+test('nextMonday is never today, never in the past, and always a Monday', () => {
+  for (let i = 0; i < 400; i++) {
+    const today = toISO(addDays(parseISO('2026-01-01'), i));
+    const start = nextMonday(today);
+    assert.ok(start > today, `${today} -> ${start}`);
+    assert.equal(parseISO(start).getUTCDay(), 1, `${start} is a Monday`);
+    assert.ok(start <= toISO(addDays(parseISO(today), 7)), 'and no later than a week out');
+  }
+});
+
+test('nextMonday crosses a daylight-saving change and a year end', () => {
+  assert.equal(nextMonday('2026-10-24'), '2026-10-26');
+  assert.equal(nextMonday('2026-12-30'), '2027-01-04');
+});
+
+test('nextMonday answers null for a date it cannot read', () => {
+  assert.equal(nextMonday(''), null);
+  assert.equal(nextMonday(undefined), null);
+  assert.equal(nextMonday('soon'), null);
+});
+
+test('a chosen start snaps forward to a Monday', () => {
+  const today = '2026-10-14'; // a Wednesday
+  assert.equal(snapToMonday('2026-10-19', { today }), '2026-10-19', 'a Monday stays put');
+  assert.equal(snapToMonday('2026-10-20', { today }), '2026-10-26', 'Tuesday goes forward, not back');
+  assert.equal(snapToMonday('2026-10-25', { today }), '2026-10-26', 'Sunday goes forward to the Monday after');
+});
+
+test('a chosen start is never in the past', () => {
+  const today = '2026-10-14'; // a Wednesday
+  assert.equal(snapToMonday('2026-09-01', { today }), '2026-10-19', 'long ago: the next Monday');
+  assert.equal(snapToMonday('2026-10-12', { today }), '2026-10-19', 'this week\'s own Monday has passed');
+  assert.equal(snapToMonday(today, { today }), '2026-10-19', 'today, not a Monday: forward');
+});
+
+test('a chosen start may be today when today is a Monday', () => {
+  assert.equal(snapToMonday('2026-10-19', { today: '2026-10-19' }), '2026-10-19');
+  assert.equal(snapToMonday('2026-10-19', { today: '2026-10-20' }), '2026-10-26');
+});
+
+test('an unreadable chosen start falls back to the default', () => {
+  assert.equal(snapToMonday('', { today: '2026-10-14' }), nextMonday('2026-10-14'));
+  assert.equal(snapToMonday(undefined, { today: '2026-10-14' }), nextMonday('2026-10-14'));
+  assert.equal(snapToMonday('nonsense', { today: '2026-10-14' }), nextMonday('2026-10-14'));
+});
+
+test('snapToMonday with no today only snaps forward', () => {
+  assert.equal(snapToMonday('2026-10-14'), '2026-10-19');
+  assert.equal(snapToMonday('2026-10-19'), '2026-10-19');
 });

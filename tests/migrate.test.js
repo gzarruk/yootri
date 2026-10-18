@@ -84,7 +84,8 @@ test('the saved view is rebased onto absolute weeks', () => {
 
 test('a profile is synthesized from what the plan already asks for', () => {
   const p = migratePlan(v2Plan());
-  assert.ok(p.profile.annualHours > 0);
+  assert.equal('annualHours' in p.profile, false, 'the profile does not carry a scale any more');
+  assert.ok(p.season.every((w) => w.hours > 0), 'the season is still rebuilt at the old plan’s own volume');
   for (const d of DAYS) assert.ok(Number.isFinite(p.profile.availability[d]));
 });
 

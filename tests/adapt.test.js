@@ -233,36 +233,14 @@ test('when everything is behind, no single discipline is blamed', () => {
   assert.ok(!codes(out).includes('discipline-lagging'), 'but not blamed on one discipline');
 });
 
-/* ---- structural: a budget the athlete's week cannot absorb ---------------- */
+/* ---- structural: a season is sized by the athlete's week -------------------- */
 
-const flattened = () => newPlan({
-  name: 'Flat', startISO: '2026-01-05', now: 0,
-  profile: { annualHours: 800, availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
-});
-
-test('a season flattened by its own budget is raised without any logged training', () => {
-  // Every other rule here waits for evidence from logged weeks. This one does
-  // not need any: the evidence is the shape of the plan itself.
-  const out = suggest(flattened(), { week: 3 });
-  assert.ok(codes(out).includes('season-flattened'), `got ${codes(out)}`);
-});
-
-test('a flattened season is raised in week 1, before there is any history', () => {
-  const out = suggest(flattened(), { week: 0 });
-  assert.ok(codes(out).includes('season-flattened'), `got ${codes(out)}`);
-});
-
-test('the flattening suggestion offers the budget that would fit', () => {
-  const hit = suggest(flattened(), { week: 0 }).find((x) => x.code === 'season-flattened');
-  assert.equal(hit.action.tool, 'set_annual_hours');
-  assert.equal(hit.action.input.hours, 400);
-  assert.equal(hit.evidence.retained < 0.5, true);
-});
-
-test('a plan whose budget fits its week is not nagged about it', () => {
-  const ok = newPlan({
+test('a season sized by the athlete week is never raised as flattened', () => {
+  const p = newPlan({
     name: 'Fits', startISO: '2026-01-05', now: 0,
-    profile: { annualHours: 400, availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
+    profile: { availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
   });
-  assert.ok(!codes(suggest(ok, { week: 3 })).includes('season-flattened'));
+  for (const week of [0, 3]) {
+    assert.ok(!codes(suggest(p, { week })).includes('season-flattened'));
+  }
 });

@@ -8,7 +8,6 @@
     "schema": 3,
     "start": "2026-01-05",
     "profile": {
-      "annualHours": 450,
       "raceDate": "2026-05-24",
       "raceType": "70.3",
       "availability": {

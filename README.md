@@ -140,7 +140,7 @@ too.
 | `schema` | `3`. Older files are upgraded on the way in; the file on disk is not touched. |
 | `id`, `name` | Identity. An import always mints a **fresh** `id`, so importing your own export sits next to the original rather than replacing it. |
 | `start` | `"YYYY-MM-DD"`, the Monday week 0 begins on. Required. |
-| `profile` | Annual hours, race date and type, per-day availability in minutes, constraints, and any per-block discipline splits. |
+| `profile` | Race date and type, per-day availability in minutes (the season's biggest week), constraints, and any per-block discipline splits. |
 | `season` | One entry per week: `absWeek`, `block`, `recovery`, `load`, `hours`. This is the target curve the chart plots against. |
 | `weeks` | The sessions themselves, keyed `w0`…`w{n-1}` to match `season`. |
 | `done` | Completion flags, keyed by session id. |

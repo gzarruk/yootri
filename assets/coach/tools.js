@@ -16,12 +16,13 @@
 import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsOf, raceDayFor } from './plan.js';
 import {
   normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES, MAX_SESSIONS_PER_DAY,
+  weeklyAvailableMinutes,
 } from './profile.js';
 import { generateWeek } from './generate.js';
 import { trailingCompliance, weekCompliance } from './actuals.js';
 import { suggest } from './adapt.js';
 import { releaseState, reviewWeek, proposeNextWeek } from './review.js';
-import { seasonFit, volumeBeyondRace } from './validate.js';
+import { volumeBeyondRace } from './validate.js';
 import { durToMin } from './duration.js';
 import { paceTableFor, formatPace, ZONES } from './paces.js';
 import { planLandings, LONG_RUNWAY_WEEKS } from './season.js';
@@ -291,7 +292,7 @@ export const TOOL_DEFS = [
   {
     name: 'get_plan_summary',
     description:
-      'Overview of the whole season: number of weeks, the blocks and their lengths, planned hours per week, the athlete\'s annual hour budget and race details. Call this first to orient yourself before proposing anything.',
+      'Overview of the whole season: number of weeks, the blocks and their lengths, planned hours per week, the athlete\'s race details. Call this first to orient yourself before proposing anything.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -307,7 +308,7 @@ export const TOOL_DEFS = [
   {
     name: 'get_profile',
     description:
-      'The athlete\'s constraints: how many minutes are available each weekday, discipline rules such as "no swimming on Mondays" or a weekly session cap, per-block discipline splits, annual hours and race distance.',
+      'The athlete\'s constraints: how many minutes are available each weekday, discipline rules such as "no swimming on Mondays" or a weekly session cap, per-block discipline splits and race distance.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -396,16 +397,6 @@ export const TOOL_DEFS = [
     description:
       'The athlete\'s running paces: the benchmark result they entered or imported, the VDOT it works out to, and the target pace band for easy, threshold, interval and repetition running, in both min/km and min/mile. Use it whenever you are asked how fast to run something. These are the same numbers the athlete sees in the app, so quoting them keeps you consistent with it — and unlike your own estimate, they are derived from a result this athlete actually ran. An answer saying there is no benchmark yet is a real answer: say so and ask them to add one rather than guessing a pace.',
     input_schema: { type: 'object', properties: {}, required: [] },
-  },
-  {
-    name: 'set_annual_hours',
-    description:
-      'Change the athlete\'s annual hour budget and refit the whole season to it. This is a scale, not a total the season sums to: a typical week is roughly annual hours divided by 52.',
-    input_schema: {
-      type: 'object',
-      properties: { hours: { type: 'number', description: 'Annual training hours.' } },
-      required: ['hours'],
-    },
   },
   {
     name: 'set_availability',
@@ -604,16 +595,13 @@ const HANDLERS = {
       if (last && last.block === w.block) last.weeks++;
       else runs.push({ block: w.block, weeks: 1, startWeek: weekLabel(w.absWeek) });
     }
-    // Whether the budget actually fits the athlete's week. Without this the
-    // model has to notice for itself that annualHours and the weekly minutes
-    // below disagree, which is exactly the kind of judgement that belongs in
-    // tested code rather than in its head.
-    const fit = seasonFit(p.season, p.profile);
+    // Whether the season is out of proportion to the race. The season is sized
+    // by the athlete's own week, so this is the one judgement left to make, and
+    // it belongs in tested code rather than in the model's head.
     const beyond = volumeBeyondRace(p.season, p.profile);
 
     return ok({
       totalWeeks: weekCount(p),
-      annualHours: Math.round(p.profile.annualHours),
       raceType: p.profile.raceType,
       raceDate: p.profile.raceDate,
       startDate: p.start,
@@ -623,15 +611,12 @@ const HANDLERS = {
       // work out what a mid-season Taper and Race block are doing there.
       events: eventsOf(p).map((ev) => describeEvent(p, ev)),
       weeklyPlannedMinutes: p.season.map((w) => weekCompliance(p, w.absWeek).plannedMinutes),
-      fit: fit ? {
-        weeklyCapacityMinutes: fit.capacityMinutes,
-        variationRetained: Number(fit.retained.toFixed(3)),
-        clippedWeeks: fit.clippedWeeks,
-        suggestedAnnualHours: fit.suggestedAnnualHours,
+      fit: {
+        weeklyCapacityMinutes: weeklyAvailableMinutes(p.profile),
         // Null unless the volume is out of proportion to the race, so its
         // presence is itself the finding.
         raceDemandMultiple: beyond ? Number(beyond.multiple.toFixed(1)) : null,
-      } : null,
+      },
     });
   },
 
@@ -643,7 +628,6 @@ const HANDLERS = {
   get_profile(s) {
     const p = current(s);
     return ok({
-      annualHours: Math.round(p.profile.annualHours),
       raceType: p.profile.raceType,
       raceDate: p.profile.raceDate,
       availability: p.profile.availability,
@@ -839,14 +823,6 @@ const HANDLERS = {
 
     const { id, current: _current, ...benchmark } = table.benchmark;
     return ok({ benchmark, vdot: Number(table.vdot.toFixed(1)), zones });
-  },
-
-  set_annual_hours(s, input) {
-    const hours = Number(input.hours);
-    if (!Number.isFinite(hours) || hours <= 0) return fail('hours must be a positive number.');
-    const base = draftOf(s);
-    s.draft = refit(base, { profile: { ...base.profile, annualHours: hours }, keepBefore: trainedWeeks(s, base) });
-    return ok(`Annual hours set to ${Math.round(hours)} and the season refitted.`);
   },
 
   set_availability(s, input) {

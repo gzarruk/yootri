@@ -124,8 +124,12 @@ function plannedByDate(plan, weeks) {
  * Carry the two averages forward one day at a time from `from` (exclusive),
  * whose values are `state`, to `to` (inclusive), adding `loadOn(date)` each day.
  * Calls `each(date, state)` after every day.
+ *
+ * Exported so the planner steps its averages with the very function the chart
+ * does: a season built to arrive at a number and a chart that draws it cannot
+ * then disagree about what a day of load does.
  */
-function carry(state, from, to, loadOn, each) {
+export function carry(state, from, to, loadOn, each) {
   const kc = 1 - Math.exp(-1 / LOAD.chronicDays);
   const ka = 1 - Math.exp(-1 / LOAD.acuteDays);
   let { fit, fat } = state;
@@ -167,8 +171,12 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
 
   // Planned line: the same average, fed by the plan, starting from wherever the
   // actual one stood the day before the plan began (zero when it was not known).
+  // A plan that has not begun yet starts from where the athlete is today: the
+  // days between are not modelled, and zero would draw a plan for someone with
+  // no fitness at all.
   const dayBefore = toISO(addDays(parseISO(start), -1));
-  const seed = covers && dayBefore >= from && dayBefore <= today ? at(chronic, dayBefore) : 0;
+  const seedDay = dayBefore > today ? today : dayBefore;
+  const seed = covers && seedDay >= from ? at(chronic, seedDay) : 0;
   const plannedChronic = new Map();
   carry({ fit: seed, fat: 0 }, dayBefore, dateOf(start, N - 1, 'Sun'), (iso) => planned.byDate[iso] ?? 0,
     (iso, s) => plannedChronic.set(iso, s.fit));
