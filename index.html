@@ -972,15 +972,6 @@
   .legal b { color: var(--color-text); font-weight: 500; }
   .legal-about { font-size: .82rem; line-height: 1.65; margin: 0;
     color: color-mix(in srgb, var(--color-text) 70%, transparent); }
-  .np-modes { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; margin: .3rem 0 0; }
-  .np-mode { text-align: left; padding: .6rem .75rem; border-radius: 10px; cursor: pointer;
-    background: transparent; color: inherit; font: inherit;
-    border: 1px solid color-mix(in srgb, var(--color-text) 16%, transparent); }
-  .np-mode.on { border-color: var(--color-accent);
-    background: color-mix(in srgb, var(--color-accent) 16%, transparent); }
-  .np-mode b { display: block; font-size: .84rem; margin-bottom: .15rem; }
-  .np-mode span { font-size: .74rem; line-height: 1.4;
-    color: color-mix(in srgb, var(--color-text) 62%, transparent); }
   .np-len { font-size: .78rem; margin: .7rem 0 0;
     color: color-mix(in srgb, var(--color-text) 66%, transparent); }
   .np-check { display: flex; gap: .5rem; align-items: flex-start; font-size: .78rem; margin-top: .8rem; }
@@ -1063,9 +1054,6 @@
     .pnl-act { flex-wrap: wrap; gap: .5rem; }
     .pnl-act .btn { flex: 1 1 auto; min-height: 40px; }
     .pnl-act .spacer { flex-basis: 100%; order: 10; }
-
-    /* The wizard's two modes stack rather than halving their own width. */
-    .np-modes { grid-template-columns: 1fr; }
 
     /* Chat needs the height back that the panel chrome took. */
     .chat-log { max-height: 52vh; }
@@ -1181,7 +1169,7 @@
           <p class="im-sub" id="subtitle"></p>
         </div>
         <div class="more-wrap">
-          <button type="button" class="btn btn-secondary btn-icon" id="plan-more" aria-haspopup="menu" aria-expanded="false" aria-controls="more-pop" aria-label="Plan actions: rename, duplicate, export, delete"><i class="ic i-dots" aria-hidden="true"></i></button>
+          <button type="button" class="btn btn-secondary btn-icon" id="plan-more" aria-haspopup="menu" aria-expanded="false" aria-controls="more-pop" aria-label="Plan actions: rename, export, delete"><i class="ic i-dots" aria-hidden="true"></i></button>
           <div id="more-pop"></div>
         </div>
       </div>
@@ -1420,7 +1408,7 @@
   } from './assets/coach/actuals.js';
   import { minToDur } from './assets/coach/duration.js';
   import { createSession, sessionDiff, callTool, adviceCall } from './assets/coach/tools.js';
-  import { newPlan, FALLBACK_WEEKS, mintPlanId } from './assets/coach/plan.js';
+  import { newPlan, mintPlanId } from './assets/coach/plan.js';
   import {
     exportEnvelope, readPlanFile, adoptImported, summarizePlan,
   } from './assets/coach/portable.js';
@@ -1734,7 +1722,8 @@
   function renderHeader() {
     const name = (plan && plan.name) || 'My plan';
     els.planTitleText.textContent = name;
-    $('plan-sw-name').textContent = name;
+    // The untouched stand-in is not a plan the athlete made, so it is not named.
+    $('plan-sw-name').textContent = currentPlanUntouched() ? 'Not set up yet' : name;
     $('m-plan-name').textContent = name;
     document.title = 'yootri — ' + name;
     const info = weekInfo(state.week);
@@ -2547,133 +2536,22 @@
     if (state.page === 'biometrics' && (!bioDirty || bioPlanId !== plan.id)) renderBiometrics();
   }
 
-  /* =========================================================================
-     New plan — a clean canvas that does not disturb the old one.
-
-     Plans are separate records, so this never touches the season you already
-     have: its weeks, completions and logs stay exactly as they are, and the
-     plan switcher goes back to it whenever you want. What is inherited is the
-     *profile* — your availability, constraints and splits — because a new race
-     does not mean a new life. The previous race date is deliberately not
-     carried over.
-     ========================================================================= */
-
-  let npMode = 'fitted';
-
-  // A new season starts this week, not on whatever Monday the current plan
-  // happened to start — that may be months in the past.
-  function npWeeks() {
-    const race = $('np-race')?.value || null;
-    return weeksUntil(defaultStart(), race) ?? FALLBACK_WEEKS;
-  }
-
-  function npRenderLength() {
-    const el = $('np-len');
-    if (!el) return;
-    const race = $('np-race')?.value;
-    const n = npWeeks();
-    el.innerHTML = race
-      ? 'That is a <b>' + n + '-week</b> run-in. The season is built backwards from race week, so the taper lands on it.'
-      : 'No race date — defaulting to <b>' + FALLBACK_WEEKS + ' weeks</b>. You can set a date later in Plan setup.';
-  }
-
-  function openNewPlanPanel() {
-    npMode = 'fitted';
-    // A new plan is a new race, so a retired distance is not carried across
-    // even when the plan being copied from is built for one.
-    const opts = raceTypeOptions(plan.profile.raceType, { keepRetired: false });
-    const replacing = currentPlanUntouched();
-    const carried = [
-      state.benchmarks.length && 'your running result',
-      plan.loadRefs && 'FTP and CSS',
-      (plan.activities || []).length && 'synced Garmin activities',
-    ].filter(Boolean);
-
-    panelShell(
-      '<h2>New plan</h2>' +
-      (replacing
-        ? '<p class="pnl-sub">This takes the place of the starter plan yootri made on your first visit — ' +
-          'nothing has been done with that one yet.</p>'
-        : '<p class="pnl-sub">A separate season. "' + esc(plan.name || 'your current plan') +
-          '" keeps its weeks, its completed sessions and its logs — switch back any time from the plan switcher.</p>') +
-      '<div class="pnl-grid">' +
-        field('Name', '<input type="text" class="input" id="np-name" value="' +
-          esc(replacing ? 'My season' : 'My plan ' + (plans.length + 1)) + '" />') +
-        field('Race date', '<input type="date" class="input" id="np-race" />') +
-        field('Race distance', '<select class="input" id="np-type">' + opts + '</select>') +
-      '</div>' +
-      '<p class="np-len" id="np-len"></p>' +
-      '<div class="pnl-sec">' +
-        '<span class="pnl-sub" style="display:block">How should it start?</span>' +
-        '<div class="np-modes" id="np-modes">' +
-          '<button type="button" class="np-mode on" data-mode="fitted">' +
-            '<b>Fitted season</b><span>A full periodised plan sized to the run-in — blocks, recovery weeks and a taper landing on race day.</span></button>' +
-          '<button type="button" class="np-mode" data-mode="empty">' +
-            '<b>Empty calendar</b><span>Every week blank. Add sessions yourself, or ask the coach to fill specific weeks.</span></button>' +
-        '</div>' +
-        '<label class="np-check"><input type="checkbox" id="np-inherit" checked />' +
-          '<span>Use my current availability, constraints and discipline splits. Uncheck to start from defaults.</span></label>' +
-        (carried.length
-          ? '<p class="pnl-hint">Comes with you either way: ' + esc(carried.join(', ')) + '.</p>'
-          : '') +
-      '</div>' +
-      '<div class="pnl-act">' +
-        '<button type="button" class="btn btn-ghost" id="np-cancel">Cancel</button>' +
-        '<button type="button" class="btn btn-primary" id="np-create">Create plan</button>' +
-      '</div>',
-    );
-
-    npRenderLength();
-    $('np-cancel').addEventListener('click', closePanel);
-    $('np-race').addEventListener('change', npRenderLength);
-    $('np-race').addEventListener('input', npRenderLength);
-    $('np-modes').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-mode]');
-      if (!b) return;
-      npMode = b.dataset.mode;
-      $('np-modes').querySelectorAll('.np-mode').forEach((x) => x.classList.toggle('on', x === b));
-    });
-    $('np-create').addEventListener('click', createNewPlan);
-    $('np-name').focus();
-  }
-
-  function createNewPlan() {
-    const race = $('np-race').value || null;
-    const created = newPlan({
-      name: $('np-name').value.trim() || 'My plan ' + (plans.length + 1),
-      startISO: defaultStart(),
-      raceDate: race,
-      raceType: $('np-type').value,
-      profile: $('np-inherit').checked ? plan.profile : undefined,
-      // What the athlete has done and measured comes along whatever the
-      // checkbox says: it is a fact about them, not a preference about the
-      // week, and a new race does not make last month's 10 km any slower.
-      benchmarks: state.benchmarks,
-      activities: plan.activities,
-      activitySync: plan.activitySync,
-      loadRefs: plan.loadRefs,
-      mode: npMode,
-      now: now(),
-    });
-    closePanel();
-    const replaced = dropIfUntouched();
-    addPlan(created);
-    setStatus('Created "' + (created.name || 'plan') + '" · ' + created.season.length + ' weeks' +
-      (replaced ? ' · in place of the starter plan' : ''));
-  }
+  const replacedNote = (name) => (name === null ? ' · in place of the starter plan' : ' · replacing "' + name + '"');
 
   /* The page is never without a plan, so a first visit makes a stand-in "My
-     plan". Creating or importing a real season replaces it instead of leaving
-     an unused copy in the plan list (and in the cloud). Only a plan nobody has
-     touched qualifies — see isUntouchedPlan. Returns whether one was dropped. */
-  function dropIfUntouched() {
-    if (!currentPlanUntouched()) return false;
-    const id = plan.id;
-    plans = plans.filter((x) => x.id !== id);
+     plan". There is one plan to show: creating or importing a season replaces
+     whatever is stored, rather than leaving a list of old seasons (and their
+     copies in the cloud). Nothing is cleared until the athlete finishes — a
+     wizard or an import that is cancelled never gets here. Returns the name of
+     the plan that was replaced, or null when it was only the untouched
+     stand-in (see isUntouchedPlan). */
+  function clearPlans() {
+    const replaced = currentPlanUntouched() ? null : (plan.name || 'your plan');
+    const ids = plans.map((x) => x.id);
+    plans = [];
     saveIndex(plans);
-    remove(planKey(id));
-    cloudDelete(id);
-    return true;
+    ids.forEach((id) => { remove(planKey(id)); cloudDelete(id); });
+    return replaced;
   }
 
   /* =========================================================================
@@ -4036,14 +3914,6 @@
      Plans: create / switch / rename / duplicate / delete
      ========================================================================= */
 
-  function switchPlan(id) {
-    const p = loadPlanLocal(id);
-    if (!p) return;
-    setCurrentId(id);
-    adoptPlan(p);
-    renderAll();
-  }
-
   function addPlan(p) {
     savePlanLocal(p);
     plans.push({ id: p.id, name: p.name });
@@ -4067,14 +3937,6 @@
     renderStatus();
   }
 
-  function duplicatePlan(name) {
-    const copy = JSON.parse(JSON.stringify(plan));
-    copy.id = 'p-' + uid4();
-    copy.name = name;
-    copy.updatedAt = now();
-    addPlan(copy);
-  }
-
   /* Deleting a plan throws away a whole season, so it stays recoverable for a
      short window: the full plan object is stashed and re-pushed on undo. The
      cloud write is a setDoc at a fixed id, so restoring recreates it exactly. */
@@ -4095,10 +3957,12 @@
     clearUndo();
     pendingUndo = { plan: doomed, index: plans.findIndex((x) => x.id === id), wasCurrent: currentId() === id };
 
-    plans = plans.filter((x) => x.id !== id);
+    // One plan is shown, so deleting it starts over: nothing stored is left to
+    // surface as "the current plan" in its place.
+    const gone = plans.map((x) => x.id);
+    plans = [];
     saveIndex(plans);
-    remove(planKey(id));
-    cloudDelete(id);
+    gone.forEach((g) => { remove(planKey(g)); cloudDelete(g); });
     if (!plans.length) {
       const p = blankPlan('My plan');
       savePlanLocal(p);
@@ -4278,8 +4142,9 @@
 
     panelShell(
       '<h2>Import plan</h2>' +
-      '<p class="pnl-sub">This is what the file contains. Nothing is written until you import it, ' +
-        'and "' + esc(plan.name || 'your current plan') + '" stays as it is.</p>' +
+      '<p class="pnl-sub">This is what the file contains. Nothing is written until you import it' +
+        (currentPlanUntouched()
+          ? '.' : ', and then "' + esc(plan.name || 'your current plan') + '" is replaced by it. Export that one first if you want a copy.') + '</p>' +
       (res.upgraded
         ? '<p class="pnl-hint">This file was written by an older version of yootri. It has been ' +
           'brought up to date on the way in — the file itself is not changed.</p>'
@@ -4333,10 +4198,9 @@
       name: String(typed || '').trim() || fallback,
     });
     closePanel();
-    const replaced = dropIfUntouched();
+    const replaced = clearPlans();
     addPlan(p);
-    setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' +
-      (replaced ? ' · in place of the starter plan' : ''));
+    setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' + replacedNote(replaced));
   }
 
   /* ---- Weekly release -----------------------------------------------------
@@ -4633,7 +4497,7 @@
       return '<h2>Start a new season</h2>' +
         '<p class="pnl-sub">The questions are the same as the first time, already filled in with what yootri knows — check them, ' +
           'change what has changed, and choose the race. ' +
-          (currentPlanUntouched() ? '' : '“' + esc(plan.name) + '” stays as it is; the new season is a separate plan you can switch between.') + '</p>' +
+          (currentPlanUntouched() ? '' : '“' + esc(plan.name) + '” is replaced when you finish. Export it first from the plan’s … menu if you want a copy.') + '</p>' +
         (known.length ? '<span class="pnl-sub" style="display:block">Already known</span><ul class="wiz-list">' +
           known.map((k) => '<li>' + esc(k) + '</li>').join('') + '</ul>' : '') +
         (gaps.length ? '<span class="pnl-sub" style="display:block;margin-top:.6rem">Worth adding this time</span><ul class="wiz-list">' +
@@ -4887,7 +4751,7 @@
       if (hasHealthConsent()) await pushAthlete();
     }
 
-    const replaced = dropIfUntouched();
+    const replaced = clearPlans();
     addPlan(built);
     remove(WIZ_KEY);
     markOriented();
@@ -4895,7 +4759,7 @@
     state.view = 'week';
     select(0);
     renderAll();
-    setStatus('Created "' + built.name + '" · ' + weekCount(built) + ' weeks' + (replaced ? ' · in place of the starter plan' : ''));
+    setStatus('Created "' + built.name + '" · ' + weekCount(built) + ' weeks' + replacedNote(replaced));
 
     const week = sessionsAt(built, 0).filter((x) => x.disc !== 'Rest');
     panelShell(
@@ -6504,39 +6368,7 @@
     setStatus('Logged ' + picked.length + ' session' + (picked.length === 1 ? '' : 's') + ' from Garmin');
   }
 
-  /* ---- Small dialogs (name entry / confirm) reusing the modal styles ---- */
-
-  function nameDialog(title, initial, okLabel) {
-    return new Promise((resolve) => {
-      els.dialogRoot.innerHTML =
-        '<div class="modal-backdrop" id="nd-backdrop">' +
-          '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="nd-title" style="width: min(400px, 100%);">' +
-            '<div class="dialog-head"><h3 id="nd-title">' + esc(title) + '</h3>' +
-              '<button type="button" class="btn btn-icon btn-ghost" data-nd="cancel" aria-label="Close"><i class="ic i-x"></i></button></div>' +
-            '<div class="field"><label for="nd-input">Name</label><input type="text" class="input" id="nd-input" value="' + esc(initial || '') + '" maxlength="60" /></div>' +
-            '<div class="dialog-foot" style="justify-content: flex-end;">' +
-              '<span class="right"><button type="button" class="btn btn-secondary" data-nd="cancel">Cancel</button>' +
-              '<button type="button" class="btn btn-primary" data-nd="ok">' + esc(okLabel || 'Save') + '</button></span>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      const input = els.dialogRoot.querySelector('#nd-input');
-      input.focus();
-      input.select();
-      const close = (val) => { els.dialogRoot.innerHTML = ''; els.dialogRoot.onclick = null; resolve(val); };
-      els.dialogRoot.onclick = (e) => {
-        if (e.target.id === 'nd-backdrop') return close(null);
-        const b = e.target.closest('[data-nd]');
-        if (!b) return;
-        if (b.dataset.nd === 'cancel') close(null);
-        else close(input.value.trim() || null);
-      };
-      input.onkeydown = (e) => {
-        if (e.key === 'Enter') close(input.value.trim() || null);
-        else if (e.key === 'Escape') close(null);
-      };
-    });
-  }
+  /* ---- Small dialogs (confirm) reusing the modal styles ---- */
 
   function confirmDialog(title, message, okLabel) {
     return new Promise((resolve) => {
@@ -6593,21 +6425,15 @@
      ========================================================================= */
 
   async function runPlanAction(act, id) {
-    if (act === 'switch') { if (id !== plan.id) switchPlan(id); return; }
     if (act === 'rename') return startRename();
     if (act === 'export') return exportPlan();
     if (act === 'import') return openImportPanel(null);
     if (act === 'release') return toggleRelease();
-    if (act === 'blank') return openNewPlanPanel();
     if (act === 'new') {
       return openWizard();
-    } else if (act === 'dup') {
-      const name = await nameDialog('Duplicate plan', (plan.name || 'Plan') + ' copy', 'Duplicate');
-      if (name) duplicatePlan(name);
     } else if (act === 'delete') {
-      if (plans.length <= 1) return;
       const ok = await confirmDialog('Delete plan',
-        'Delete "' + (plan.name || 'this plan') + '"? This removes it from this device' + (authUser ? ' and the cloud' : '') + '.', 'Delete');
+        'Delete "' + (plan.name || 'this plan') + '"? This removes it from this device' + (authUser ? ' and the cloud' : '') + ' and starts you over.', 'Delete');
       if (ok) deletePlan(plan.id);
     }
   }
@@ -6683,22 +6509,15 @@
     if (id === 'more-pop') {
       return '<div class="pop" role="menu" aria-label="Plan actions">' +
         popRow('rename', 'i-pencil', 'Rename') +
-        popRow('dup', 'i-copy', 'Duplicate') +
         popRow('export', 'i-download', 'Export this plan') +
         popRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +
         '<div class="pop-sep" role="separator"></div>' +
-        popRow('delete', 'i-trash', 'Delete plan', { danger: true, disabled: plans.length <= 1 }) +
+        popRow('delete', 'i-trash', 'Delete plan', { danger: true }) +
       '</div>';
     }
-    return '<div class="pop" role="menu" aria-label="Plans"><div class="pop-list">' +
-      plans.map((e) => {
-        const cur = plan && e.id === plan.id;
-        return '<button type="button" role="menuitemradio" aria-checked="' + (cur ? 'true' : 'false') + '" class="pop-item" data-pm="switch" data-id="' + esc(e.id) + '">' +
-          '<i class="ic i-check" aria-hidden="true"' + (cur ? '' : ' style="visibility: hidden;"') + '></i><span>' + esc(e.name) + '</span></button>';
-      }).join('') + '</div>' +
-      '<div class="pop-sep" role="separator"></div>' +
-      popRow('new', 'i-plus', 'New season…') +
-      popRow('blank', 'i-plus', 'Blank plan…') +
+    // One plan, not a list of them: what is here is how to start or replace it.
+    return '<div class="pop" role="menu" aria-label="Plan">' +
+      popRow('new', 'i-plus', currentPlanUntouched() ? 'Set up your season…' : 'Start a new season…') +
       popRow('import', 'i-upload', 'Import plan…') +
     '</div>';
   }

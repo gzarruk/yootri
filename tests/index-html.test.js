@@ -365,28 +365,26 @@ function fnBody(name) {
   return src.slice(open + 1);
 }
 
-test('a new plan starts this week and keeps what the athlete measured', () => {
-  const body = fnBody('createNewPlan');
-  assert.match(body, /startISO:\s*defaultStart\(\)/, 'not the current plan’s start, which may be months ago');
-  for (const field of ['benchmarks', 'activities', 'activitySync', 'loadRefs']) {
-    assert.match(body, new RegExp(`\\b${field}:`), `${field} is no longer carried into a new plan`);
-  }
-  assert.doesNotMatch(fnBody('npWeeks'), /state\.start/);
-});
-
 test('Reset week builds the week the way a re-fit does', () => {
   // freshWeek carries the race day; generateWeek called directly would not.
   assert.match(HTML, /const freshSessions = \(w\) => freshWeek\(/);
 });
 
-test('creating or importing a season replaces the untouched stand-in', () => {
-  for (const fn of ['createNewPlan', 'doImport']) {
+test('creating or importing a season replaces whatever is stored, and only once it is finished', () => {
+  for (const fn of ['doImport', 'finishWizard']) {
     const body = fnBody(fn);
-    const drop = body.indexOf('dropIfUntouched()');
-    assert.ok(drop !== -1, `${fn} no longer replaces the stand-in`);
-    assert.ok(drop < body.indexOf('addPlan('), `${fn} must drop the stand-in before adopting the new plan`);
+    const drop = body.indexOf('clearPlans()');
+    assert.ok(drop !== -1, `${fn} no longer replaces the stored plan`);
+    assert.ok(drop < body.indexOf('addPlan('), `${fn} must clear the old plan before adopting the new one`);
   }
-  assert.match(fnBody('dropIfUntouched'), /cloudDelete\(/, 'a stand-in already uploaded goes from the cloud too');
+  assert.match(fnBody('clearPlans'), /cloudDelete\(/, 'a plan already uploaded goes from the cloud too');
+});
+
+test('the plan menu is one plan, not a list of them', () => {
+  const menu = fnBody('popHtml');
+  assert.doesNotMatch(menu, /plans\.map|data-pm="switch"|menuitemradio/);
+  assert.doesNotMatch(withoutComments(HTML), /function (switchPlan|duplicatePlan|openNewPlanPanel)\b/);
+  assert.doesNotMatch(fnBody('runPlanAction'), /'(switch|blank|dup)'/);
 });
 
 test('the untouched check is the engine’s, wherever the page asks it', () => {
@@ -500,7 +498,7 @@ test('the wizard saves through the same doors as everything else', () => {
   // The account copy only under both consents, the plan through addPlan after
   // the stand-in is dropped — the order every new plan follows.
   assert.match(body, /hasSyncConsent\(\)[\s\S]*pushAthlete\(\)/);
-  const drop = body.indexOf('dropIfUntouched()');
+  const drop = body.indexOf('clearPlans()');
   assert.ok(drop !== -1 && drop < body.indexOf('addPlan(built)'));
 });
 
