@@ -218,3 +218,37 @@ test('an activity only heart rate could score is left out of the figure, not sco
   assert.equal(b.ctl, a.ctl);
   assert.ok(b.scoredShare < a.scoredShare, 'but it does count against how much of the time could be scored');
 });
+
+/* ---- the athlete's fitness at a date in the past ---- */
+
+import { actualCtlAt, startNote } from '../assets/coach/startfit.js';
+
+test('the fitness a synced history gives at a date it covers, as the review re-anchors from', () => {
+  const r = actualCtlAt({ ...base, date: '2026-10-04' });
+  assert.ok(r);
+  assert.ok(Math.abs(r.ctl - 64) < 1, `a steady 64 a day reads about 64, got ${r.ctl}`);
+  assert.equal(r.scoredShare, 1);
+});
+
+test('there is no figure for a date the sync does not reach, or reached only just before', () => {
+  assert.equal(actualCtlAt({ ...base, date: '2026-10-20' }), null, 'after the last synced day');
+  assert.equal(actualCtlAt({ ...base, date: '2026-08-25' }), null, 'a week into the sync: too little to read a level from');
+  assert.equal(actualCtlAt({ date: '2026-10-04', loadRefs: FTP, activities: [] }), null, 'no sync at all');
+});
+
+test('history that mostly cannot be scored gives no figure for a date either', () => {
+  assert.equal(actualCtlAt({ ...base, date: '2026-10-04', activities: everyDay('2026-08-17', '2026-10-11', { normPowerW: undefined }) }), null);
+});
+
+test('heart rate is not read for a date in the past any more than for today', () => {
+  const hrOnly = { id: 'garmin:hr', source: 'garmin', date: '2026-10-02', disc: 'Bike', durationS: 7200 };
+  assert.equal(actualCtlAt({ ...base, date: '2026-10-04', activities: [...base.activities, hrOnly] }).ctl, actualCtlAt({ ...base, date: '2026-10-04' }).ctl);
+});
+
+test('a stored start is described in words, from what is stored and nothing else', () => {
+  assert.match(startNote({ source: 'garmin', coveredWeeks: 6 }), /6 weeks of your synced sessions/);
+  assert.match(startNote({ source: 'estimate' }), /estimate/i);
+  assert.match(startNote({ source: 'entered' }), /entered/i);
+  assert.equal(startNote({ source: 'heart-rate' }), '');
+  assert.equal(startNote(null), '');
+});

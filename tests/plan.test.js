@@ -5,7 +5,7 @@ import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
   refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId, moveSession,
   landingsOf, landingsDetail, raceDayFor, raceClosure, freshWeek, isUntouchedPlan,
-  carryOver, upcomingEvents,
+  carryOver, upcomingEvents, normalizeTarget,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -915,4 +915,247 @@ test('a tapered race inside the main race\'s taper is still reported', () => {
   const p = tuneUpPlan('70.3', '2027-03-09');
   const base = newPlan({ name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: 'ironman', now: 1 });
   assert.ok(diffPlans(base, refit(p, {})).issues.find((i) => i.code === 'race-in-primary-taper'));
+});
+
+/* ---- the target a plan was built to ---------------------------------------
+   `plan.target` records what a season was built to arrive with and what it was
+   built from: the target fitness, the fitness the athlete started at and where
+   that came from, and whether the target could be reached. Added without a
+   schema bump, like `events` and `release`; an old plan has none and loads as it
+   always did. Heart rate is nowhere in it: it syncs and exports with the plan. */
+
+const goodTarget = () => ({
+  ctl: 75,
+  start: { ctl: 52.4, source: 'estimate', asOf: '2026-10-18', coveredWeeks: 0 },
+  feasibility: { feasible: true, status: 'build', targetCtl: 75, achievableCtl: 75.1, shortfall: 0, limitingFactor: null },
+});
+
+test('a target is kept as it was written', () => {
+  assert.deepEqual(normalizeTarget(goodTarget()), goodTarget());
+});
+
+test('a target is cleaned: numbers to a tenth, unknown fields dropped', () => {
+  const t = normalizeTarget({
+    ctl: 75.04, extra: 'x', start: { ctl: 52.449, source: 'garmin', asOf: '2026-10-18', coveredWeeks: 5.0, scoredShare: 0.83333, hr: 150 },
+    feasibility: { feasible: false, status: 'build', targetCtl: 115, achievableCtl: 64.349, shortfall: 50.651, limitingFactor: 'availability', levers: { hours: 16 } },
+  });
+  assert.equal(t.ctl, 75);
+  assert.deepEqual(t.start, { ctl: 52.4, source: 'garmin', asOf: '2026-10-18', coveredWeeks: 5, scoredShare: 0.833 });
+  assert.deepEqual(t.feasibility, { feasible: false, status: 'build', targetCtl: 115, achievableCtl: 64.3, shortfall: 50.7, limitingFactor: 'availability' });
+  assert.equal('extra' in t, false);
+});
+
+test('a target that cannot be used is no target, and nothing throws', () => {
+  for (const bad of [null, undefined, 5, 'x', [], {}, { ctl: 75 }, { start: { ctl: 50, source: 'estimate' } },
+    { ctl: 0, start: { ctl: 50, source: 'estimate' } }, { ctl: 999, start: { ctl: 50, source: 'estimate' } },
+    { ctl: 75, start: { ctl: -3, source: 'estimate' } }, { ctl: 75, start: { ctl: 50, source: 'heart-rate' } },
+    { ctl: 75, start: { ctl: 'lots', source: 'estimate' } }, { ctl: 'high', start: { ctl: 50, source: 'estimate' } }]) {
+    assert.equal(normalizeTarget(bad), undefined, JSON.stringify(bad));
+  }
+});
+
+test('a bad feasibility record is dropped and the rest kept', () => {
+  const t = normalizeTarget({ ...goodTarget(), feasibility: { feasible: 'yes', status: 'maybe' } });
+  assert.equal('feasibility' in t, false);
+  assert.equal(t.ctl, 75);
+  const odd = normalizeTarget({ ...goodTarget(), feasibility: { ...goodTarget().feasibility, limitingFactor: 'weather' } });
+  assert.equal(odd.feasibility.limitingFactor, null, 'a factor nobody defined is no factor');
+});
+
+test('a start that says nothing of where it came from is read as no more than that', () => {
+  const t = normalizeTarget({ ctl: 75, start: { ctl: 50, source: 'entered', asOf: 'yesterday', coveredWeeks: -2 } });
+  assert.deepEqual(t.start, { ctl: 50, source: 'entered' });
+});
+
+test('loadPlan keeps a good target, drops a bad one, and loading twice changes nothing', () => {
+  const base = newPlan({ name: 'T', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: '70.3', now: 1 });
+  const withTarget = { ...base, target: goodTarget() };
+  const once = loadPlan(withTarget);
+  assert.deepEqual(once.target, goodTarget());
+  assert.deepEqual(loadPlan(once), once);
+  const bad = loadPlan({ ...base, target: { ctl: 'lots' } });
+  assert.equal('target' in bad, false);
+  const handEdited = loadPlan({ ...base, target: { ...goodTarget(), start: { ...goodTarget().start, avgHr: 150, hrById: { a: 1 } } } });
+  assert.equal(JSON.stringify(handEdited).includes('avgHr'), false, 'nothing from heart rate can be put back by hand');
+  assert.equal(JSON.stringify(handEdited).includes('hrById'), false);
+});
+
+test('an old plan loads with no target, exactly as before', () => {
+  const old = newPlan({ name: 'Old', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: '70.3', now: 1 });
+  assert.equal('target' in old, false);
+  assert.equal('target' in loadPlan(old), false);
+  assert.deepEqual(loadPlan(old), old);
+});
+
+test('a plan with a target is not the untouched stand-in', () => {
+  const stand = newPlan({ name: 'My plan', startISO: '2026-11-02', now: 1 });
+  assert.equal(isUntouchedPlan(stand), true);
+  assert.equal(isUntouchedPlan({ ...stand, target: goodTarget() }), false);
+});
+
+/* ---- building a season to a target ----------------------------------------
+
+   A plan with a `target` is sized by backplan.js: from where the athlete starts
+   to what the race calls for, inside their week. A plan with none — every plan
+   made before this — is sized as it always was until somebody upgrades it, and
+   only Plan setup, a change of race and the wizard do. */
+
+import { fitnessSeries } from '../assets/coach/fitness.js';
+import { targetCtl as targetFor } from '../assets/coach/targets.js';
+import { goalEvent as mainRace, normalizeEvents as cleanEvents } from '../assets/coach/events.js';
+
+const START_FIT = { ctl: 50, source: 'estimate', asOf: '2026-10-18', coveredWeeks: 0 };
+const TWELVE_HOURS = { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 };
+const targetPlan = (over = {}) => newPlan({
+  name: 'Season', startISO: '2026-10-19', raceDate: '2027-03-27', raceType: '70.3', ambition: 'intermediate',
+  startFitness: START_FIT, profile: { availability: TWELVE_HOURS }, now: 1, ...over,
+});
+const legacyPlan = () => newPlan({
+  name: 'Old', startISO: '2026-10-19', raceDate: '2027-03-27', raceType: '70.3', profile: { availability: TWELVE_HOURS }, now: 1,
+});
+const raceRead = (p) => fitnessSeries(p, { today: '2026-10-18' }).plannedRace.fit;
+
+test('a new plan built to a target records it, and arrives at it', () => {
+  const p = targetPlan();
+  assert.equal(p.target.ctl, 75, 'the middle of the 70.3 band');
+  assert.deepEqual(p.target.start, START_FIT);
+  assert.equal(p.target.feasibility.feasible, true);
+  assert.equal(mainRace(cleanEvents(p.events)).ambition, 'intermediate');
+  assert.ok(p.season.every((w) => Number.isFinite(w.ctl)), 'with the fitness it plans for at the end of every week');
+  assert.ok(Math.abs(raceRead(p) - 75) <= 2, `race-day fitness reads ${raceRead(p)}`);
+});
+
+test('the same plan with no start fitness is built the way every plan always was', () => {
+  const p = legacyPlan();
+  assert.equal('target' in p, false);
+  assert.ok(p.season.every((w) => !('ctl' in w)));
+  assert.equal(mainRace(cleanEvents(p.events)).ambition, undefined);
+});
+
+test('an ambition, not a start fitness, is not a target: there is nothing to build up from', () => {
+  const p = newPlan({ name: 'S', startISO: '2026-10-19', raceDate: '2027-03-27', raceType: '70.3', ambition: 'finish', now: 1 });
+  assert.equal('target' in p, false);
+  assert.equal(mainRace(cleanEvents(p.events)).ambition, 'finish', 'but the athlete\'s choice is kept');
+});
+
+test('a distance the chart has no band for is built the old way, with no target', () => {
+  const p = newPlan({ name: 'S', startISO: '2026-10-19', raceDate: '2026-12-20', raceType: 'sprint', startFitness: START_FIT, now: 1 });
+  assert.equal('target' in p, false);
+});
+
+test('a higher ambition on the same plan is a bigger season', () => {
+  const total = (a) => targetPlan({ ambition: a }).season.reduce((sum, w) => sum + w.hours, 0);
+  assert.ok(total('finish') < total('intermediate') && total('intermediate') < total('competitive'));
+});
+
+test('refit re-sizes a plan with a target from the target, and leaves the stored plan alone', () => {
+  const p = targetPlan();
+  const before = JSON.stringify(p);
+  const drafted = refit(p, { profile: { ...p.profile, availability: { ...TWELVE_HOURS, Sat: 120 } } });
+  assert.equal(JSON.stringify(p), before);
+  assert.notDeepEqual(drafted.season.map((w) => w.hours), p.season.map((w) => w.hours));
+  assert.equal(drafted.target.ctl, 75);
+  assert.deepEqual(drafted.target.start, START_FIT, 'it starts from the same place');
+});
+
+test('a plan with less time than its target needs is built the best it can be, and says so', () => {
+  const p = targetPlan({ raceType: 'ironman', ambition: 'competitive', profile: { availability: { Mon: 0, Tue: 60, Wed: 60, Thu: 60, Fri: 60, Sat: 120, Sun: 90 } } });
+  assert.equal(p.target.feasibility.feasible, false);
+  assert.equal(p.target.feasibility.limitingFactor, 'availability');
+  assert.ok(p.target.feasibility.achievableCtl < p.target.ctl);
+  assert.ok(Math.abs(raceRead(p) - p.target.feasibility.achievableCtl) < 1, 'what it says it reaches is what the line reads');
+});
+
+test('refit leaves a plan with no target sized as it always was', () => {
+  const p = legacyPlan();
+  const drafted = refit(p, {});
+  assert.equal('target' in drafted, false);
+  assert.deepEqual(drafted.season, p.season);
+  assert.ok(drafted.season.every((w) => !('ctl' in w)));
+});
+
+test('only asking to upgrade, with a start fitness, gives a plan with no target one', () => {
+  const p = legacyPlan();
+  const up = refit(p, { upgrade: true, start: START_FIT });
+  assert.equal(up.target.ctl, 75, 'an intermediate target, the default');
+  assert.equal(mainRace(cleanEvents(up.events)).ambition, 'intermediate', 'written down, so the athlete sees it in what they apply');
+  assert.ok(up.season.every((w) => Number.isFinite(w.ctl)));
+  assert.equal('target' in refit(p, { upgrade: true }), false, 'with nothing to start from there is nothing to build up from');
+  assert.equal('target' in refit(p, { start: START_FIT }), false, 'and a start fitness alone is not a request');
+});
+
+test('upgrading keeps the ambition the athlete already gave the race', () => {
+  const p = legacyPlan();
+  p.events = p.events.map((e) => ({ ...e, ambition: 'competitive' }));
+  assert.equal(refit(p, { upgrade: true, start: START_FIT }).target.ctl, targetFor('70.3', 'competitive'));
+});
+
+test('weeks already trained come back exactly as they were, and the rest is built from where they ended', () => {
+  const p = targetPlan();
+  const keep = 5;
+  const drafted = refit(p, { keepBefore: keep });
+  for (let w = 0; w < keep; w++) {
+    assert.equal(JSON.stringify(drafted.season[w]), JSON.stringify(p.season[w]), `week ${w + 1} season entry`);
+    assert.equal(JSON.stringify(drafted.weeks[`w${w}`]), JSON.stringify(p.weeks[`w${w}`]), `week ${w + 1} sessions`);
+  }
+  const fitter = refit(p, { keepBefore: keep, anchorCtl: p.season[keep - 1].ctl + 12 });
+  const hours = (d) => d.season.slice(keep, -3).reduce((a, w) => a + w.hours, 0);
+  assert.notEqual(hours(fitter), hours(drafted), 'a different fitness at the end of week 5 is a different rest of the season');
+  assert.ok(Math.abs(fitter.target.feasibility.achievableCtl - 75) <= 2, 'and it still arrives');
+});
+
+test('a pinned week is built to its pin, and the weeks after it make up for it', () => {
+  const p = targetPlan();
+  const drafted = refit({ ...p, weekBudgets: { w8: 4 } }, {});
+  assert.equal(drafted.season[8].hours, 4);
+  assert.equal(durToMin(drafted.weeks.w8[0].dur) >= 0, true);
+  assert.ok(Math.abs(drafted.target.feasibility.achievableCtl - 75) <= 2, 'one light week is made up');
+});
+
+test('weeks that are still just what the generator made follow a re-size; a week somebody edited does not', () => {
+  const p = targetPlan();
+  const edited = moveSession(p, { id: p.weeks.w12[1].id, toWeek: 12, day: 'Wed' });
+  const drafted = refit(edited, {
+    profile: { ...p.profile, availability: { ...TWELVE_HOURS, Sat: 150 } }, from: 6, to: 6, keepBefore: 6,
+  });
+  assert.notEqual(drafted.season[12].hours, p.season[12].hours, 'the re-size did change the edited week\'s hours, so leaving it is a choice');
+  assert.deepEqual(drafted.weeks.w12, edited.weeks.w12, 'the edited week stays as the athlete left it');
+  assert.notEqual(drafted.season[10].hours, p.season[10].hours);
+  assert.deepEqual(drafted.weeks.w10, freshWeek(drafted, 10), 'an untouched later week follows the new season');
+  assert.notDeepEqual(drafted.weeks.w10, p.weeks.w10);
+  for (let w = 0; w < 6; w++) assert.deepEqual(drafted.weeks[`w${w}`], p.weeks[`w${w}`], 'and the trained weeks do not move');
+});
+
+test('moving the main race re-sizes the season to the new date', () => {
+  const p = targetPlan();
+  const events = p.events.map((e) => (e.priority === 'primary' ? { ...e, date: '2027-04-24' } : e));
+  const drafted = refit({ ...p, events }, { profile: { ...p.profile, raceDate: '2027-04-24' }, weeks: 27 });
+  assert.equal(weekCount(drafted), 27);
+  assert.equal(drafted.season.at(-1).block, 'Race');
+  assert.ok(Math.abs(drafted.target.feasibility.achievableCtl - 75) <= 2);
+});
+
+test('a plan with a target that loses its main race is sized the old way, and drops the target', () => {
+  const p = targetPlan();
+  const drafted = refit({ ...p, events: [] }, { profile: { ...p.profile, raceDate: null } });
+  assert.equal('target' in drafted, false, 'a target nothing is aimed at would only mislead');
+});
+
+test('a draft with a target applies with it, and its season keeps its fitness', () => {
+  const p = targetPlan();
+  const drafted = refit(p, { profile: { ...p.profile, availability: { ...TWELVE_HOURS, Sat: 120 } } });
+  const applied = applyDraft(p, drafted, { now: 5 });
+  assert.deepEqual(applied.target, drafted.target);
+  assert.deepEqual(applied.season.map((w) => w.ctl), drafted.season.map((w) => w.ctl));
+});
+
+test('nothing derived from heart rate is on a plan built to a target', () => {
+  const text = JSON.stringify(targetPlan());
+  for (const re of [/avgHr/i, /maxHr/i, /heart/i, /hrById/i, /trimp/i]) assert.doesNotMatch(text, re);
+});
+
+test('the planned fitness line starts where the plan was built from', () => {
+  const p = targetPlan({ startFitness: { ...START_FIT, ctl: 70 } });
+  const line = fitnessSeries(p, { today: '2026-10-18' }).weeks;
+  assert.ok(line[0].planned > 60, `week 1 is ${line[0].planned}: from 70, not from nothing`);
 });

@@ -503,3 +503,10 @@ test('a race costs its nominal hours at its nominal intensity, squared, ×100', 
   assert.ok(raceLoad({ ...ev, raceType: 'ironman' }) > raceLoad({ ...ev, raceType: '70.3' }));
   assert.equal(raceLoad({ kind: 'race', raceType: null }), null, 'an unknown distance has no load to count');
 });
+
+test('the seeded main race can carry an ambition', () => {
+  const seeded = seedEventsFromProfile({ raceDate: '2027-04-03', raceType: '70.3' }, { id: 'ev-seed', ambition: 'competitive' });
+  assert.equal(seeded[0].ambition, 'competitive');
+  assert.equal('ambition' in seedEventsFromProfile({ raceDate: '2027-04-03', raceType: '70.3' }, { id: 'ev-seed' })[0], false);
+  assert.equal('ambition' in seedEventsFromProfile({ raceDate: '2027-04-03', raceType: '70.3' }, { id: 'ev-seed', ambition: 'fast' })[0], false);
+});

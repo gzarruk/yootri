@@ -286,6 +286,38 @@ test('the first week of a plan is a week of training, whatever block the runway 
   }
 });
 
+test('the first week is held to a tenth above what the athlete trains now', () => {
+  // From a fitness of 20 an ordinary hour's load is about 2.5 hours a week, so with the
+  // three-hour floor the first week is at most 3.3: the season does not open on seven.
+  const inp = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 30, startCtl: 20 });
+  const r = planSeason(inp);
+  assert.ok(r.season[0].hours <= 3.3 + 1e-9, `week 1 is ${r.season[0].hours} h`);
+  assert.ok(r.season[0].hours >= 2.5, 'and it is not less than they do now');
+  const fitter = planSeason(input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 30, startCtl: 60 }));
+  assert.ok(fitter.season[0].hours > r.season[0].hours, 'a fitter athlete opens on more');
+  assert.ok(fitter.season[0].hours <= 60 * 7 * 60 / PLAN_MODEL.estimate.loadPerHour / 60 * 1.1 + 0.1);
+});
+
+test('a caller that knows what the athlete trains now can say so', () => {
+  const inp = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 30, startCtl: 20 });
+  const big = planSeason({ ...inp, baselineMinutes: 600 });                      // ten hours a week, at a low fitness
+  assert.ok(big.season[0].hours > planSeason(inp).season[0].hours);
+  assert.ok(big.season[0].hours <= 11 + 1e-9);
+});
+
+test('nobody is given a week of nothing to open on', () => {
+  const r = planSeason(input({ startCtl: 0, weeks: 30 }));
+  assert.ok(r.season[0].hours >= PLAN_MODEL.ramp.minWeekMinutes / 60 - 0.01);
+});
+
+test('a runway too short to build safely from where the athlete is says so, and a longer one would do', () => {
+  const short = input({ raceType: '70.3', ambition: 'competitive', hours: 17, weeks: 16, startCtl: 20 });
+  const f = planSeason(short).feasibility;
+  assert.equal(f.feasible, false);
+  assert.equal(f.limitingFactor, 'runway');
+  assert.equal(planSeason(input({ raceType: '70.3', ambition: 'competitive', hours: 17, weeks: 52, startCtl: 20 })).feasibility.feasible, true);
+});
+
 /* ---- tune-up races ---- */
 
 const withTuneUp = (over) => ({ id: 't', name: 'T', kind: 'race', priority: 'secondary', ...over });
@@ -378,6 +410,26 @@ test('a pinned week is built to its pin, and a pin that puts the target out of r
   assert.equal(r.feasibility.feasible, false);
   assert.equal(r.feasibility.limitingFactor, 'ramp', 'the pins, not the hours or the date, are what is in the way');
   assert.equal(free.feasibility.feasible, true);
+});
+
+test('a week pinned down to a recovery week\'s size is one, and the weeks after it come back to where they were', () => {
+  const inp = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 24, startCtl: 50 });
+  const free = planSeason(inp);
+  const light = planSeason({ ...inp, weekBudgets: { w10: 3 } });
+  assert.equal(light.season[10].hours, 3);
+  assert.equal(light.season[10].recovery, true, 'a pinned light week is an easy week');
+  assert.ok(light.season[11].hours >= free.season[11].hours - 1, 'the next week is not held to ten per cent above the pin');
+  assert.equal(light.feasibility.feasible, true);
+  const p = assemble(inp, light);
+  const issues = validateSeason(light.season.map((w) => ({ ...w, sessions: p.weeks[`w${w.absWeek}`] })), { profile: inp.profile });
+  assert.deepEqual(issues.map((i) => i.code), [], 'and the validator has nothing to say about it');
+});
+
+test('a pinned week bigger than that is a loading week like any other', () => {
+  const inp = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 24, startCtl: 50 });
+  const heavy = planSeason({ ...inp, weekBudgets: { w10: 11 } });
+  assert.equal(heavy.season[10].hours, 11);
+  assert.equal(heavy.season[10].recovery, false);
 });
 
 /* ---- what to do about a target that cannot be reached ---- */

@@ -342,3 +342,62 @@ test('a plan file carrying an athlete record comes back without it', () => {
   assert.equal(back.ok, true);
   assert.equal('athlete' in back.plan, false);
 });
+
+/* ---- the target travels with the plan ---- */
+
+test('a plan with a target survives an export and an import unchanged', () => {
+  const p = { ...fullPlan(), target: {
+    ctl: 98,
+    start: { ctl: 61.2, source: 'garmin', asOf: '2026-01-04', coveredWeeks: 6, scoredShare: 0.9 },
+    feasibility: { feasible: true, status: 'build', targetCtl: 98, achievableCtl: 98, shortfall: 0, limitingFactor: null },
+  } };
+  const back = readPlanFile(wrote(p));
+  assert.equal(back.ok, true);
+  assert.deepEqual(back.plan.target, p.target);
+  assert.deepEqual(adoptImported(back.plan, { id: 'p-new', now: 2 }).target, p.target);
+});
+
+test('a plan file with a damaged target still imports, without the target', () => {
+  const p = { ...fullPlan(), target: { ctl: 'lots', start: 7 } };
+  const back = readPlanFile(wrote(p));
+  assert.equal(back.ok, true);
+  assert.equal('target' in back.plan, false);
+});
+
+test('per-week fitness on the season goes through an export and an import', () => {
+  const p = fullPlan();
+  p.season = p.season.map((w, i) => ({ ...w, ctl: 40 + i }));
+  const back = readPlanFile(wrote(p));
+  assert.deepEqual(back.plan.season.map((w) => w.ctl), p.season.map((w) => w.ctl));
+});
+
+/* ---- plans made before targets ---- */
+
+test('the example plan and a plan made before targets load, export and re-import unchanged', () => {
+  const text = readFileSync(new URL('../assets/example-plan.json', import.meta.url), 'utf8');
+  const example = readPlanFile(text).plan;
+  assert.equal('target' in example, false);
+  assert.deepEqual(loadPlan(example), example, 'loading it again changes nothing');
+  const out = readPlanFile(wrote(example));
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.plan, example, 'an export and an import give back the same plan');
+  assert.ok(out.plan.season.every((w) => !('ctl' in w)), 'and no fitness has been invented for its weeks');
+
+  const old = fullPlan();
+  assert.equal('target' in old, false);
+  const back = readPlanFile(wrote(old)).plan;
+  assert.deepEqual(back.season, old.season);
+  assert.equal('target' in back, false);
+});
+
+test('a re-fit that is not an upgrade sizes an old plan the way it always did, with no target and no fitness', async () => {
+  const { refit } = await import('../assets/coach/plan.js');
+  const { fitToRace } = await import('../assets/coach/season.js');
+  const { peakHoursFor } = await import('../assets/coach/profile.js');
+  const old = { ...fullPlan(), weekBudgets: {} };
+  const drafted = refit(old, {});
+  assert.equal('target' in drafted, false);
+  assert.ok(drafted.season.every((w) => !('ctl' in w)));
+  const legacy = fitToRace({ peakHours: peakHoursFor(drafted.profile), weeks: weekCount(old), landings: [] });
+  assert.deepEqual(drafted.season.map((w) => [w.block, w.hours]), legacy.map((w) => [w.block, w.hours]));
+});

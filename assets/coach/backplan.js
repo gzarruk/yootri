@@ -33,7 +33,10 @@
       the Fitness chart draws, so the chart and the plan cannot disagree. The
       average is then carried day by day with `fitness.js`'s own `carry`, and
       each week starts from where the last one actually ended.
-   5. Each week also stays inside the athlete's own week, and inside the
+   5. The first week is held to a tenth above what the athlete trains now,
+      worked out from where they start, so a season never opens with a jump the
+      weekly review's own rule would pull back.
+   6. Each week also stays inside the athlete's own week, and inside the
       validator's volume steps (a loading week may be 10 % above the last one in
       its block, a new block 25 % above the last block's hardest week), so a
       season it builds is one the validator has nothing to say about.
@@ -278,7 +281,10 @@ function buildPass(ctx, preTail) {
       // week, and no more than the validator's volume step allows.
       const step = sameBlockMinutes !== null ? MAX_RAMP : (prevBlockPeak !== null ? MAX_BLOCK_STEP : Infinity);
       const base = sameBlockMinutes !== null ? sameBlockMinutes : prevBlockPeak;
-      const stepCap = base === null || base === undefined ? Infinity : Math.floor((base * step) / STEP) * STEP;
+      let stepCap = base === null || base === undefined ? Infinity : Math.floor((base * step) / STEP) * STEP;
+      // The first week of the season has no week before it in the plan: it is
+      // held to what the athlete does now.
+      if (lastLoadMinutes === null && i === keep) stepCap = Math.min(stepCap, Math.floor((ctx.baselineMinutes * MAX_RAMP) / STEP) * STEP);
       const cap = Math.min(availability, stepCap);
       const asked = trajectoryLoad();
       minutes = minutesForLoad(week, L.block, closure, asked, cap);
@@ -295,12 +301,18 @@ function buildPass(ctx, preTail) {
     const g = week(minutes, L.block, closure.raceDay, closure.raceOnly);
     ideal = idealNext ?? afterWeek(ideal, g.load);
     const next = advance(ctl, i, g.byDay);
+    // A week the athlete pinned down to a recovery week's size or less is one:
+    // the weeks after it come back to where they were, not 10 % at a time from
+    // there, which is what the validator would otherwise ask of them.
+    const light = Number.isFinite(pinned) && loadingKind && lastLoadMinutes !== null
+      && minutes <= lastLoadMinutes * DEFAULT_SEASON.recovery + STEP;
+    const easy = L.recovery || light;
     entries.push({
-      block: L.block, week: L.week, recovery: L.recovery, absWeek: i, load: 0,
+      block: L.block, week: L.week, recovery: easy, absWeek: i, load: 0,
       hours: round3(minutes / 60), ctl: round1(next),
     });
-    track(i, L.block, g.minutes, loadingKind);
-    if (loadingKind) { lastLoadMinutes = minutes; lastLoadMultiplier = L.multiplier; lastLoad = g.load; }
+    track(i, L.block, g.minutes, loadingKind && !light);
+    if (loadingKind && !light) { lastLoadMinutes = minutes; lastLoadMultiplier = L.multiplier; lastLoad = g.load; }
     ctl = next;
   }
 
@@ -365,6 +377,13 @@ function solveCore(input) {
     N, labels, tailStart, keep, c0: anchor, week: weekModel(profile), closures, extra,
     pins: input.weekBudgets ?? {}, frozen, depths, start, raceDate,
     availability: Math.floor(weeklyAvailableMinutes(profile) / STEP) * STEP || STEP,
+    // What the athlete trains now, in minutes a week: the time that holds their
+    // starting fitness at an ordinary hour's load, unless the caller knows better.
+    baselineMinutes: Math.max(
+      PLAN_MODEL.ramp.minWeekMinutes,
+      Number.isFinite(input.baselineMinutes) ? input.baselineMinutes
+        : (c0Start * 7 * 60) / PLAN_MODEL.estimate.loadPerHour,
+    ),
   };
 
   const tol = PLAN_MODEL.tolerance;

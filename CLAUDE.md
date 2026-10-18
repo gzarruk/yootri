@@ -54,7 +54,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `targets.js` | What a season is built to arrive with. `PLAN_MODEL` is the **one frozen table of unfitted coaching constants** for the target-driven planner (ramp, tolerance, taper tiers, the start-fitness estimate); `targetCtl(raceType, ambition)` reads a target off `FITNESS_BANDS`; `taperDepth` gives the share of a week a tune-up's taper takes out. Kept out of `fitness.js` on purpose: the copy test holds that file to a stricter word list, and `competitive` is on it. |
 | `startfit.js` | `startFitness`: the athlete's chronic training load today, from an entered figure, their synced sessions (power, pace, swim pace and session effort only — never heart rate) or an estimate from recent weekly hours, years in the sport and per-sport level. Body measurements play no part. |
 | `races.js` | Where a plan's races fall: `landingsOf`, `landingsDetail`, `raceDayFor`, `raceClosure`, and `plannedRaceLoads` (what each tune-up adds to its day). Split out of `plan.js`, which hands them back, so the planner can read them without importing the plan. |
-| `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness: even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`. Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `planLevers` works out, by rebuilding, what would make it reachable. Pure. Not yet called by `refit`/`newPlan`. |
+| `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness: even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`. Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `planLevers` works out, by rebuilding, what would make it reachable. Pure. `refit` and `newPlan` call it for a plan that has a `target` (see below). |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
@@ -280,8 +280,27 @@ weeks before it keep their sessions *and* their planned hours. Plan setup, race
 changes and every coach tool pass the week today falls in; with no date (a coach
 session without `today`) the whole season refits as before.
 
-**A season is sized by the athlete's own week, never by an annual figure.** There
-is no annual-hours setting: the biggest week of a season is all the time the
+**A plan can be built to a target.** `plan.target = { ctl, start, feasibility }` —
+another field added without a schema bump — records the chronic training load the
+season was built to arrive with on race day (read off `FITNESS_BANDS` through the
+race's `ambition`, `targets.js`), where the athlete started from and where that
+figure came from (`startfit.js`: an entered figure, their synced sessions, or an
+estimate from recent hours), and whether the planner (`backplan.js`) could reach
+it. `season[].ctl` is the planned fitness at the end of each week. `refit` and
+`newPlan` size such a plan with the planner; the weeks before `keepBefore` come
+back byte for byte, pinned `weekBudgets` are fixed inputs, and a later week that is
+still exactly what the generator made follows a re-size while one the athlete
+edited does not. **Only Plan setup, a change of race and the wizard upgrade a plan
+with no target** (`refit({ upgrade: true, start })`): the weekly review and the
+coach's week-level tools leave a plan's sizing as they found it, so one week's
+change never quietly re-sizes a season. The weekly release re-anchors a plan with a
+target from the athlete's fitness at the end of the reviewed week when their synced
+sessions say (`actualCtlAt`, never heart rate), and never lowers the target. The
+inputs the start was worked out from (recent hours, years in the sport, background,
+body measurements) are not stored on the plan; only the figure and its source are.
+
+**A plan with no target is sized by the athlete's own week, never by an annual
+figure.** There is no annual-hours setting: the biggest week of a season is all the time the
 athlete said they have (`peakHoursFor`, rounded *down* to the half hour), and the
 block model shapes every other week from it, so a season cannot outrun the week
 it has to fit in and cannot flatten. `normalizeProfile` is an allowlist, so an old

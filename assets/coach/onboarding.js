@@ -13,17 +13,19 @@
    ever reaches the second. */
 
 import { DAYS, DEFAULT_PROFILE, normalizeProfile } from './profile.js';
-import { newPlan, refit, weekCount, sessionsAt, landingsDetail, isUntouchedPlan } from './plan.js';
+import { newPlan, refit, weekCount, sessionsAt, landingsDetail, isUntouchedPlan, leversFor } from './plan.js';
 import { planLandings, LONG_RUNWAY_WEEKS } from './season.js';
 import { nextMonday, snapToMonday, weeksUntil, parseISO } from './dates.js';
 import {
-  RACE_TYPES, SECONDARY_RACE_TYPES, normalizeEvent, normalizeEvents, goalEvent, secondaryRaces, raceTypeLabel,
+  RACE_TYPES, SECONDARY_RACE_TYPES, AMBITIONS, DEFAULT_AMBITION, normalizeEvent, normalizeEvents, goalEvent, secondaryRaces,
+  raceTypeLabel,
 } from './events.js';
 import { normalizeBenchmarks, currentBenchmark, upsertBenchmark, vdotFrom } from './paces.js';
 import { normalizeLoadRefs } from './load.js';
 import { normalizeAthlete, isEmptyAthlete } from './athlete.js';
 import { trainingHistory } from './history.js';
 import { HISTORY_THRESHOLDS } from './adapt.js';
+import { startFitness } from './startfit.js';
 import { validateSeason } from './validate.js';
 import { durToMin } from './duration.js';
 
@@ -165,9 +167,12 @@ export function stepProblems(step, a, { today } = {}) {
       break;
     }
     case 'background': {
-      // Optional: the season is sized by the week on the next step, not by this.
+      // Where the season starts from is worked out from this (startfit.js), unless
+      // the athlete types their own figure or their synced sessions say.
       if (given(a.recentWeeklyHours) && (!(Number(a.recentWeeklyHours) > 0) || !keeps('recentWeeklyHours', a.recentWeeklyHours))) {
         out.push(problem('recentWeeklyHours', 'Hours a week is between 0.5 and 40.'));
+      } else if (!given(a.recentWeeklyHours) && !given(a.startCtlEntered)) {
+        out.push(problem('recentWeeklyHours', 'Give the hours a week you train now: the season is built up from where you are.'));
       }
       if (given(a.yearsInSport) && !keeps('yearsInSport', a.yearsInSport)) out.push(problem('yearsInSport', 'Years in triathlon is a whole number.'));
       if (given(a.longestRideMin) && !keeps('longestRideMin', a.longestRideMin)) out.push(problem('longestRideMin', 'That longest ride could not be used.'));
@@ -232,6 +237,12 @@ export function stepProblems(step, a, { today } = {}) {
       });
       break;
     }
+    case 'review': {
+      if (given(a.startCtlEntered) && !(Number.isFinite(Number(a.startCtlEntered)) && Number(a.startCtlEntered) >= 0 && Number(a.startCtlEntered) <= 200)) {
+        out.push(problem('startCtlEntered', 'Fitness is a number from 0 to 200.'));
+      }
+      break;
+    }
     case 'goal': {
       if (a.goal === 'time' && normalizeAthlete({ goal: 'time', goalTime: a.goalTime }).goalTime === undefined) {
         out.push(problem('goalTime', 'A time goal needs the time, like 5:30.'));
@@ -284,9 +295,11 @@ const sameResult = (bm, r) => bm && r
 /**
  * The season these answers describe, as a new plan — not saved, not adopted.
  *
- * It starts on the Monday `startOf` gives and ends on the main race. Its biggest week is the
- * time the athlete said they have (profile.js `peakHoursFor`), and tune-ups are
- * landed through the same refit the calendar uses. With `base` — the plan a returning athlete is leaving — the history and
+ * It starts on the Monday `startOf` gives and ends on the main race. It is built
+ * backwards from the fitness the race calls for at the level of ambition the athlete
+ * chose (backplan.js), from where they start (startfit.js), inside the time they
+ * said they have; tune-ups are landed through the same refit the calendar uses.
+ * With `base` — the plan a returning athlete is leaving — the history and
  * the settings the wizard does not ask about come along: synced activities,
  * earlier running results, discipline splits, the week shape and any other
  * constraints.
@@ -325,6 +338,22 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
   const name = String(a.planName ?? '').trim() || String(a.race.name ?? '').trim()
     || `${raceTypeLabel(raceType)} ${yearOf(a.race.date)}`;
 
+  const loadRefs = normalizeLoadRefs({ ftpW: a.ftpW, cssSecPer100m: a.cssSecPer100m });
+  // Where the season starts from: the figure the athlete typed, their synced
+  // sessions or an estimate from their recent hours (startfit.js). With none of
+  // the three there is nothing to build up from and the season is sized as it
+  // was before targets.
+  const start = startFitness({
+    today,
+    activities: base?.activities,
+    activitySync: base?.activitySync,
+    benchmarks,
+    loadRefs,
+    athlete: athleteFromAnswers(a, { now }),
+    entered: a.startCtlEntered,
+  });
+  const { note: _note, ...startInfo } = start;
+
   let plan = newPlan({
     name,
     startISO,
@@ -334,7 +363,9 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
     benchmarks,
     activities: base?.activities,
     activitySync: base?.activitySync,
-    loadRefs: normalizeLoadRefs({ ftpW: a.ftpW, cssSecPer100m: a.cssSecPer100m }),
+    loadRefs,
+    ambition: AMBITIONS.includes(a.ambition) ? a.ambition : DEFAULT_AMBITION,
+    startFitness: start.ctl === null ? undefined : startInfo,
     id,
     now,
   });
@@ -361,7 +392,7 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
  * issues — an `error` among them blocks the plan from being created, the same
  * rule an Apply follows.
  */
-export function planReview(plan) {
+export function planReview(plan, { levers = false } = {}) {
   const weeks = plan.season.map((w) => ({ ...w, sessions: sessionsAt(plan, w.absWeek) }));
   const issues = validateSeason(weeks, {
     profile: plan.profile,
@@ -376,6 +407,12 @@ export function planReview(plan) {
     firstWeekMinutes: firstWeek.reduce((sum, s) => sum + durToMin(s.dur), 0),
     issues,
     blocked: issues.some((i) => i.level === 'error'),
+    // What the season was built to arrive with, and whether it can: for the review
+    // to say plainly. Null for a plan sized the old way.
+    target: plan.target ?? null,
+    // What would make an unreachable target reachable, worked out by rebuilding
+    // the season each way — a second or so, so only when asked for.
+    levers: levers ? leversFor(plan) : null,
   };
 }
 

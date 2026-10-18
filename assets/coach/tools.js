@@ -13,7 +13,8 @@
    Reads operate on the draft when one exists, so the model can see the
    consequences of its own pending changes before proposing them. */
 
-import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsDetail, raceClosure } from './plan.js';
+import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsDetail, raceClosure, leversFor } from './plan.js';
+import { startFitness, startNote } from './startfit.js';
 import {
   normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES, MAX_SESSIONS_PER_DAY,
   weeklyAvailableMinutes,
@@ -34,7 +35,7 @@ import { loadThresholds, activityLoad, trainingLoad } from './load.js';
 import {
   EVENT_KINDS, EVENT_PRIORITIES, RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES,
   STORABLE_RACE_TYPES, raceTypeLabel, normalizeEvents, upsertEvent, removeEvent,
-  goalEvent, raceFieldsOf, hasTaper, believableMinutes,
+  goalEvent, raceFieldsOf, hasTaper, believableMinutes, AMBITIONS,
 } from './events.js';
 
 const clone = (x) => structuredClone(x);
@@ -97,6 +98,41 @@ const trainedWeeks = (s, base) => {
   const w = s.today ? weekIndexOf(base.start, s.today) : null;
   return Number.isInteger(w) && w > 0 ? Math.min(w, weekCount(base)) : 0;
 };
+
+/* Whether a draft's target can be reached, in a sentence the model can pass on,
+   or nothing when there is nothing to say. Plain: a target that cannot be
+   reached is not softened, and the athlete is offered a choice, never a promise. */
+function targetNote(plan) {
+  const t = plan?.target;
+  const f = t?.feasibility;
+  if (!f) return '';
+  if (f.status === 'hold') {
+    return `The athlete is already at or above the fitness this race calls for (${t.ctl}), so the season holds it rather than building.`;
+  }
+  if (f.feasible) return '';
+  const why = {
+    availability: 'the time available each week',
+    runway: 'the weeks left before the race',
+    ramp: 'the weeks that are pinned or already trained',
+  }[f.limitingFactor] ?? 'the plan as it stands';
+  return `The target fitness of ${t.ctl} cannot be reached: the best this plan can do is about ${f.achievableCtl}, ` +
+    `${f.shortfall} short. What stands in the way is ${why}. Say so plainly and offer a different goal, ` +
+    'more time or the best the plan can do; do not imply the target will be met.';
+}
+
+/* Where a plan with no target could start from, for a change that upgrades it:
+   only the athlete's own synced sessions, since a coach session has no About
+   you to estimate from. Nothing otherwise, and the plan is left as it was. */
+function upgradeStart(s, base) {
+  if (base.target || !s.today) return undefined;
+  const r = startFitness({
+    today: s.today, activities: base.activities, activitySync: base.activitySync,
+    benchmarks: base.benchmarks, loadRefs: base.loadRefs,
+  });
+  if (r.source !== 'garmin') return undefined;
+  const { note: _note, ...info } = r;
+  return info;
+}
 
 /* Week numbering, and the one place it is translated.
 
@@ -237,10 +273,13 @@ function writeEvents(s, base, next, lead) {
   // The runway only moves when there is a race to aim it at. With none, the
   // weeks already built stay as they are — they have already been trained.
   const weeks = race.raceDate ? weeksUntil(base.start, race.raceDate) : null;
+  // A change of race is one of the changes that sizes a plan to a target.
   const draft = refit({ ...base, events }, {
     profile,
     keepBefore: trainedWeeks(s, base),
     ...(Number.isFinite(weeks) && weeks > 0 ? { weeks } : {}),
+    upgrade: true,
+    start: upgradeStart(s, base),
   });
   s.draft = draft;
 
@@ -256,6 +295,11 @@ function writeEvents(s, base, next, lead) {
   if (!race.raceDate) {
     said.push('There is no race the season is built around now, so it keeps its current length.');
   }
+  if (draft.target && !base.target) {
+    said.push(`This also sized the rest of the season to a target fitness of ${draft.target.ctl}, from where the athlete's synced sessions put them.`);
+  }
+  const note = targetNote(draft);
+  if (note) said.push(note);
   return { draft, said };
 }
 
@@ -570,6 +614,11 @@ export const TOOL_DEFS = [
           type: 'integer',
           description: "How long the athlete expects the race to take them, in minutes (20 to 1200). Optional: without it the usual time for the distance is used. A race of more than two hours gets a taper week; a shorter one is a hard day in the build and only clears its own day.",
         },
+        ambition: {
+          type: 'string',
+          enum: [...AMBITIONS],
+          description: "Only for the race the season is built around ('primary'): what the athlete wants from it. It sets the fitness the season is built to arrive with. Optional: without it the middle level is used.",
+        },
       },
       required: ['date'],
     },
@@ -599,6 +648,26 @@ export const TOOL_DEFS = [
       },
       required: ['event_id', 'priority'],
     },
+  },
+  {
+    name: 'set_event_details',
+    description:
+      "Change what an event says about itself without moving it: the ambition of the race the season is built around (it sets the fitness the season is built to arrive with, and re-sizes the season to it), and how long the athlete expects a race to take them (it decides whether a tune-up gets a taper week). Call get_events first for the id.",
+    input_schema: {
+      type: 'object',
+      properties: {
+        event_id: { type: 'string', description: 'From get_events.' },
+        ambition: { type: 'string', enum: [...AMBITIONS], description: 'Only for the race the season is built around.' },
+        expected_minutes: { type: 'integer', description: 'Minutes the athlete expects the race to take, 20 to 1200.' },
+      },
+      required: ['event_id'],
+    },
+  },
+  {
+    name: 'get_target',
+    description:
+      "What the season was built to arrive with and whether it can be reached: the target fitness (chronic training load, a number worked out from the athlete's sessions that describes their training and not them), where the athlete's starting figure came from, whether the target can be reached with the time they have and the weeks that are left, how far short it falls if not, and what would change that. Use it before saying anything about whether the plan will be enough for the race; say what it shows, and when it cannot be reached say so plainly and offer a choice.",
+    input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'remove_event',
@@ -637,6 +706,8 @@ const HANDLERS = {
       // work out what a mid-season Taper and Race block are doing there.
       events: eventsOf(p).map((ev) => describeEvent(p, ev)),
       weeklyPlannedMinutes: p.season.map((w) => weekCompliance(p, w.absWeek).plannedMinutes),
+      // What the season was built to arrive with, or null for one sized the original way.
+      target: p.target ?? null,
       fit: {
         weeklyCapacityMinutes: weeklyAvailableMinutes(p.profile),
         // Null unless the volume is out of proportion to the race, so its
@@ -860,7 +931,7 @@ const HANDLERS = {
     const base = draftOf(s);
     const availability = { ...base.profile.availability, [input.day]: Math.round(mins) };
     s.draft = refit(base, { profile: { ...base.profile, availability }, keepBefore: trainedWeeks(s, base) });
-    return ok(`${input.day} set to ${Math.round(mins)} minutes and the season refitted.`);
+    return ok([`${input.day} set to ${Math.round(mins)} minutes and the season refitted.`, targetNote(s.draft)].filter(Boolean).join(' '));
   },
 
   set_week_budget(s, input) {
@@ -869,10 +940,23 @@ const HANDLERS = {
     const hours = Number(input.hours);
     if (!Number.isFinite(hours) || hours < 0) return fail('hours must be zero or more.');
 
-    const draft = clone(base);
     // Pin it on the plan, not just on the resolved season, so a later refit in
     // the same turn does not quietly undo it.
-    draft.weekBudgets = { ...(draft.weekBudgets ?? {}), [weekKey(week)]: hours };
+    const pinned = { ...base, weekBudgets: { ...(base.weekBudgets ?? {}), [weekKey(week)]: hours } };
+
+    if (base.target) {
+      // A plan built to a target re-sizes around the pin: the weeks after it make
+      // up for it where they can, and the target says if they cannot.
+      s.draft = refit(clone(pinned), { from: week, to: week, keepBefore: Math.min(trainedWeeks(s, base), week) });
+      return ok([
+        `Week ${weekLabel(week)} pinned to ${hours} hours and rebuilt; the weeks after it are re-sized around it, and the pin is kept through later changes.`,
+        targetNote(s.draft),
+        s.draft.target?.feasibility && !s.draft.target.feasibility.feasible && Object.keys(s.draft.weekBudgets ?? {}).length
+          ? 'The pinned weeks are part of why.' : '',
+      ].filter(Boolean).join(' '));
+    }
+
+    const draft = clone(pinned);
     draft.season = draft.season.map((w) => (w.absWeek === week ? { ...w, hours } : w));
     rebuild(draft, week, week);
     s.draft = draft;
@@ -1051,6 +1135,10 @@ const HANDLERS = {
       date: input.date, kind, raceType, priority, expectedMinutes: input.expected_minutes,
     });
     if (wrong) return fail(wrong);
+    if (input.ambition !== undefined) {
+      if (!AMBITIONS.includes(input.ambition)) return fail(`"${input.ambition}" is not an ambition. Use one of: ${AMBITIONS.join(', ')}.`);
+      if (priority !== 'primary') return fail('An ambition belongs to the race the season is built around. Make it primary, or leave the ambition out.');
+    }
 
     const ev = {
       id: mintEventId(),
@@ -1060,6 +1148,7 @@ const HANDLERS = {
       raceType,
       priority: asPriority(priority),
       ...(input.expected_minutes !== undefined && input.expected_minutes !== null ? { expectedMinutes: input.expected_minutes } : {}),
+      ...(input.ambition !== undefined ? { ambition: input.ambition } : {}),
     };
     const { draft, said } = writeEvents(s, base, upsertEvent(eventsOf(base), ev),
       `Added ${ev.name || 'an event'} on ${ev.date}.`);
@@ -1103,6 +1192,77 @@ const HANDLERS = {
 
     const note = landingNote(draft, findEvent(draft, ev.id));
     return ok([...said, note].filter(Boolean).join(' '));
+  },
+
+  set_event_details(s, input) {
+    const base = draftOf(s);
+    const ev = findEvent(base, input.event_id);
+    if (!ev) return fail(`No event "${input.event_id}" on this calendar. Call get_events first.`);
+    const hasAmbition = input.ambition !== undefined;
+    const hasTime = input.expected_minutes !== undefined;
+    if (!hasAmbition && !hasTime) return fail('Nothing to change: give an ambition, an expected time, or both.');
+    if (hasAmbition) {
+      if (!AMBITIONS.includes(input.ambition)) return fail(`"${input.ambition}" is not an ambition. Use one of: ${AMBITIONS.join(', ')}.`);
+      if (ev.priority !== 'primary') return fail('An ambition belongs to the race the season is built around, and this is not it.');
+    }
+    if (hasTime) {
+      const wrong = eventProblem(base, { kind: ev.kind, expectedMinutes: input.expected_minutes });
+      if (wrong) return fail(wrong);
+    }
+
+    const next = {
+      ...ev,
+      ...(hasAmbition ? { ambition: input.ambition } : {}),
+      ...(hasTime ? { expectedMinutes: input.expected_minutes } : {}),
+    };
+    const what = [
+      hasAmbition ? `aimed at the ${input.ambition} level` : '',
+      hasTime ? `expected to take ${input.expected_minutes} minutes` : '',
+    ].filter(Boolean).join(' and ');
+    const { draft, said } = writeEvents(s, base, upsertEvent(eventsOf(base), next),
+      `${ev.name || 'The event'} on ${ev.date} is now ${what}.`);
+    const parts = [...said];
+    if (hasAmbition && draft.target) parts.push(`The season is now built to a target fitness of ${draft.target.ctl}.`);
+    if (hasTime) parts.push(landingNote(draft, findEvent(draft, ev.id)));
+    return ok(parts.filter(Boolean).join(' '));
+  },
+
+  get_target(s) {
+    const p = current(s);
+    const t = p.target;
+    if (!t) {
+      return ok({
+        targetFitness: null,
+        about: 'This season was not built to a target: it is sized by the time the athlete has. Plan setup in the app can set one.',
+      });
+    }
+    const f = t.feasibility;
+    const main = goalEvent(eventsOf(p));
+    const reachable = f ? f.feasible : null;
+    const levers = f && !f.feasible ? leversFor(p) : null;
+    const out = {
+      about: 'Fitness here is chronic training load: the 42-day average of training load, where an hour at threshold is 100. ' +
+        'The target is what the season is built to arrive with on race day, taper included. It describes training, not the athlete.',
+      targetFitness: t.ctl,
+      ambition: main?.ambition ?? null,
+      raceType: p.profile.raceType,
+      raceDate: p.profile.raceDate,
+      startedFrom: { fitness: t.start.ctl, how: startNote(t.start), asOf: t.start.asOf ?? null },
+      reachable,
+      ...(f ? { status: f.status, reachesAbout: f.achievableCtl, shortfall: f.shortfall, limitedBy: f.limitingFactor } : {}),
+      levers: levers ? {
+        raceDate: levers.raceDate ? { weeks: levers.raceDate.weeks, date: levers.raceDate.raceDate } : null,
+        ambition: levers.ambition ? { ambition: levers.ambition.ambition, targetFitness: levers.ambition.targetCtl } : null,
+        hours: levers.hours ? { weeklyHours: levers.hours.weeklyHours } : null,
+        distance: levers.distance ? { raceType: levers.distance.raceType, ambition: levers.distance.ambition, targetFitness: levers.distance.targetCtl } : null,
+      } : null,
+    };
+    if (reachable === false) {
+      out.advice = 'The target cannot be reached as things stand. Say so plainly. Offer the athlete a choice: a different goal ' +
+        '(a lower level, or a shorter race), more time (a later date, or more hours a week), or the best this plan can do. ' +
+        'Never imply the target will be met.';
+    }
+    return ok(out);
   },
 
   remove_event(s, input) {

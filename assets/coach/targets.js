@@ -49,7 +49,15 @@ export const PLAN_MODEL = freeze({
      inside the validator's own volume steps, which bind first at low fitness.
      `floor` is the slowest climb worth making: below it the gap is tiny and
      the athlete holds where they are until it is time to start. */
-  ramp: { max: 7, floor: 1 },
+  ramp: {
+    max: 7,
+    floor: 1,
+    // The first week of a season is held to a tenth above what the athlete trains
+    // now — the time that holds their fitness at an ordinary hour's load
+    // (`estimate.loadPerHour`) — and never below this many minutes, so someone
+    // starting from nothing is not given a week of none.
+    minWeekMinutes: 180,
+  },
 
   /* How close to the target a built season counts as having landed, in points
      of fitness on race day. */

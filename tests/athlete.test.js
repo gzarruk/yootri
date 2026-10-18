@@ -91,7 +91,7 @@ test('an empty side never wipes out the other', () => {
 test('a blank athlete and a blank plan are missing the things that shape a plan first', () => {
   const gaps = athleteGaps({}, newPlan({ name: 'My plan', startISO: '2026-10-05' }));
   const used = gaps.filter((g) => g.used).map((g) => g.key);
-  assert.deepEqual(used.slice(0, 4), ['race', 'runResult', 'ftp', 'css']);
+  assert.deepEqual(used.slice(0, 5), ['race', 'recentWeeklyHours', 'runResult', 'ftp', 'css']);
   for (const g of gaps) {
     assert.ok(g.label && g.why, `${g.key} says what it is and why it is asked`);
   }
@@ -119,7 +119,8 @@ test('a field is only claimed to be used when something reads it', () => {
   assert.equal(byKey.birthYear.used, false);
   assert.match(byKey.birthYear.why, /not used for planning yet/i);
   assert.equal(byKey.weightKg.used, true);
-  assert.equal(byKey.recentWeeklyHours.used, false, 'nothing sizes a season from it any more');
+  assert.equal(byKey.recentWeeklyHours.used, true, 'where a season\'s fitness starts from, when synced sessions cannot say');
+  assert.equal(byKey.longest.used, false, 'nothing reads the longest ride and run yet');
 });
 
 /* ---- wattsPerKg ---- */
@@ -128,4 +129,17 @@ test('watts per kilogram needs both numbers', () => {
   assert.equal(wattsPerKg(240, 61.3), 3.92);
   assert.equal(wattsPerKg(240, undefined), null);
   assert.equal(wattsPerKg(undefined, 61.3), null);
+});
+
+test('recent hours, years in the sport and background are now used, and say what for', () => {
+  const gaps = athleteGaps({}, null);
+  for (const key of ['recentWeeklyHours', 'yearsInSport', 'levels']) {
+    const g = gaps.find((x) => x.key === key);
+    assert.ok(g, key);
+    assert.equal(g.used, true, `${key} is read now`);
+    assert.match(g.why, /start|fitness/i, `${key} says what it is for`);
+  }
+  for (const key of ['longest', 'pool', 'goal', 'birthYear']) {
+    assert.equal(gaps.find((x) => x.key === key)?.used, false, `${key} is still not used`);
+  }
 });
