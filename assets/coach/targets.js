@@ -43,6 +43,18 @@ export const PLAN_MODEL = freeze({
   ],
   taperUnknown: 0.35,
 
+  /* How fast fitness may be built (backplan.js). `max` is the most chronic
+     training load a loading week may add, a figure often quoted as the top of
+     what is sustainable for a few weeks; the planner also keeps each week
+     inside the validator's own volume steps, which bind first at low fitness.
+     `floor` is the slowest climb worth making: below it the gap is tiny and
+     the athlete holds where they are until it is time to start. */
+  ramp: { max: 7, floor: 1 },
+
+  /* How close to the target a built season counts as having landed, in points
+     of fitness on race day. */
+  tolerance: 2,
+
   /* Reading the athlete's own synced history as their fitness today
      (startfit.js). */
   garmin: {

@@ -19,9 +19,9 @@ import { durToMin } from './duration.js';
 
 const MIN_SESSION = 20;
 const MAX_SESSION = 6 * 60;
-const MAX_RAMP = 1.1; // classic 10%/week guidance
+export const MAX_RAMP = 1.1; // classic 10%/week guidance
 const MAX_LOADING_RUN = 4; // consecutive hard weeks before recovery is overdue
-const MAX_BLOCK_STEP = 1.25; // a new block may re-step, but not double
+export const MAX_BLOCK_STEP = 1.25; // a new block may re-step, but not double
 // How far a peak week may exceed the race-specific work its distance calls for.
 // A season is sized by the athlete's own biggest week, so this is what stops an
 // athlete with a genuinely empty diary being handed a 57-hour week for a sprint.
