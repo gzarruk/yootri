@@ -1007,3 +1007,39 @@ test('moving a tune-up keeps what the athlete told us about it', () => {
   const ev = parse(call(s, 'get_events')).events.find((e) => e.name === 'Lisbon');
   assert.equal(ev.expectedMinutes, 110);
 });
+
+/* ---- a sprint is not a race a season is built around any more ---- */
+
+test('the coach cannot make a sprint the race a season is built around', () => {
+  const s = createSession(racePlan());
+  const r = call(s, 'add_event', tuneUp({ name: 'Sprint', race_type: 'sprint', priority: 'primary' }));
+  assert.equal(r.isError, true);
+  assert.match(r.content, /Olympic/, 'it says what a season can be built around');
+  assert.match(r.content, /secondary/, 'and what to do with the sprint instead');
+  assert.equal(s.draft, null, 'a rejected call leaves no draft behind');
+});
+
+test('nor can it promote a sprint that is already on the calendar', () => {
+  const s = createSession(racePlan());
+  call(s, 'add_event', tuneUp({ name: 'Sprint', race_type: 'sprint' }));
+  const r = call(s, 'set_event_priority', { event_id: idOf(s, 'Sprint'), priority: 'primary' });
+  assert.equal(r.isError, true);
+  assert.equal(s.draft.profile.raceType, 'ironman', 'the season is still built for the ironman');
+});
+
+test('a sprint is still fine as a B race', () => {
+  const s = createSession(racePlan());
+  const r = call(s, 'add_event', tuneUp({ name: 'Sprint', race_type: 'sprint' }));
+  assert.equal(r.isError, false);
+});
+
+test('a season already built for a sprint goes on being edited', () => {
+  // A plan is self-contained: the race it was built for keeps its distance.
+  const old = newPlan({ name: 'Old', startISO: '2026-11-02', raceDate: '2027-01-24', raceType: 'sprint', now: 1 });
+  const s = createSession(old);
+  const moved = call(s, 'move_event', { event_id: idOf(s, 'Race day'), date: '2027-02-07' });
+  assert.equal(moved.isError, false);
+  assert.equal(s.draft.profile.raceType, 'sprint', 'and it is still sized as a sprint');
+  const again = call(s, 'set_event_priority', { event_id: idOf(s, 'Race day'), priority: 'primary' });
+  assert.equal(again.isError, false, 'saying it is the main race again changes nothing');
+});
