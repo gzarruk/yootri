@@ -152,7 +152,7 @@ test('the preview says how long the season is and where tune-ups land', () => {
 });
 
 test('a tune-up inside the main race taper is reported, not hidden', () => {
-  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: '10k' }] }), { today: TODAY });
+  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: 'marathon' }] }), { today: TODAY });
   assert.equal(r.landings.refused[0].reason, 'in-primary-taper');
 });
 
@@ -200,12 +200,21 @@ test('thresholds and the run result go on the plan, body measurements do not', (
 
 test('tune-ups are on the calendar with their taper landed', () => {
   const p = buildPlanFromAnswers(
-    filled({ tuneUps: [{ name: 'Half', date: '2027-03-07', raceType: 'half-marathon' }] }),
+    filled({ tuneUps: [{ name: 'Marathon', date: '2027-03-07', raceType: 'marathon' }] }),
     { today: TODAY, now: 1 },
   );
   const tune = secondaryRaces(normalizeEvents(p.events));
   assert.equal(tune.length, 1);
   assert.ok(p.season.some((w) => w.block === 'Taper'), 'a taper week was spliced in for it');
+});
+
+test('a tune-up of two hours or less is on the calendar with no taper', () => {
+  const p = buildPlanFromAnswers(
+    filled({ tuneUps: [{ name: 'Half', date: '2027-03-07', raceType: 'half-marathon' }] }),
+    { today: TODAY, now: 1 },
+  );
+  assert.equal(secondaryRaces(normalizeEvents(p.events)).length, 1);
+  assert.ok(!p.season.some((w) => w.block === 'Taper'), 'a half marathon is a hard day in the build');
 });
 
 test('a returning athlete keeps their history, splits and other results', () => {
@@ -339,4 +348,24 @@ test('when the athlete picked the start, it is the start that is wrong, not the 
 test('a start date that is not a date is said so', () => {
   const p = stepProblems('races', filled({ startDate: 'next week' }), { today: TODAY });
   assert.deepEqual(p.map((x) => x.field), ['startDate']);
+});
+
+/* ---- tune-ups that need no taper ---- */
+
+test('the preview says a short tune-up gets no taper, and does not refuse it for sitting in the main race\'s', () => {
+  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: '10k' }] }), { today: TODAY });
+  assert.deepEqual(r.landings.refused, [], 'nothing is overwritten, so nothing is turned down');
+  assert.equal(r.landings.applied[0].taper, false);
+});
+
+test('the preview still turns a tune-up with a taper away when it sits inside the main race\'s', () => {
+  const r = racePreview(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: 'marathon' }] }), { today: TODAY });
+  assert.equal(r.landings.refused[0].reason, 'in-primary-taper');
+});
+
+test('the review reports a refused taper, not a short race', () => {
+  const short = buildPlanFromAnswers(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: '10k' }] }), { today: TODAY, now: 1 });
+  assert.equal(planReview(short).issues.some((i) => i.code === 'race-in-primary-taper'), false);
+  const long = buildPlanFromAnswers(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: 'marathon' }] }), { today: TODAY, now: 1 });
+  assert.equal(planReview(long).issues.some((i) => i.code === 'race-in-primary-taper'), true);
 });

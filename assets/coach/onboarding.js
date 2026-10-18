@@ -13,7 +13,7 @@
    ever reaches the second. */
 
 import { DAYS, DEFAULT_PROFILE, normalizeProfile } from './profile.js';
-import { newPlan, refit, weekCount, sessionsAt, landingsOf, isUntouchedPlan } from './plan.js';
+import { newPlan, refit, weekCount, sessionsAt, landingsDetail, isUntouchedPlan } from './plan.js';
 import { planLandings, LONG_RUNWAY_WEEKS } from './season.js';
 import { nextMonday, snapToMonday, weeksUntil, parseISO } from './dates.js';
 import {
@@ -247,7 +247,7 @@ export function racePreview(a, { today, now = 0 } = {}) {
   const startISO = startOf(a, { today });
   const weeks = a.race?.date ? weeksUntil(startISO, a.race.date) : null;
   if (!weeks) return { startISO, weeks: null, landings: { applied: [], refused: [] }, longRunway: false };
-  const landings = planLandings({ weeks, landings: landingsOf({ start: startISO, events: tuneUpEvents(a, now) }) });
+  const landings = planLandings({ weeks, landings: landingsDetail({ start: startISO, events: tuneUpEvents(a, now) }) });
   return { startISO, weeks, landings, longRunway: weeks > LONG_RUNWAY_WEEKS };
 }
 
@@ -341,7 +341,7 @@ export function planReview(plan) {
   const weeks = plan.season.map((w) => ({ ...w, sessions: sessionsAt(plan, w.absWeek) }));
   const issues = validateSeason(weeks, {
     profile: plan.profile,
-    refusedLandings: planLandings({ weeks: weekCount(plan), landings: landingsOf(plan) }).refused,
+    refusedLandings: planLandings({ weeks: weekCount(plan), landings: landingsDetail(plan) }).refused,
   });
   const firstWeek = sessionsAt(plan, 0);
   return {

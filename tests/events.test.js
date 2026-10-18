@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES, STORABLE_RACE_TYPES,
   raceTypeLabel, EVENT_KINDS, EVENT_PRIORITIES,
+  AMBITIONS, RACE_NOMINAL, TAPER_MIN_MINUTES, raceMinutes, hasTaper, raceLoad,
   normalizeEvent, normalizeEvents, upsertEvent, removeEvent,
   goalEvent, secondaryRaces, eventsByDate, raceFieldsOf, seedEventsFromProfile,
 } from '../assets/coach/events.js';
@@ -257,12 +258,19 @@ test('every distance a season can be sized by is one it sizes differently', () =
   assert.ok(KNOWN_RACE_TYPES.every((t) => raceDemandMinutes(t) > 0));
 });
 
-test('only the long-course distances are offered for the race the season is built on', () => {
-  // yootri plans long-course endurance racing. A sprint or an olympic is raced
-  // off a season built for one of these, not off a season of its own.
-  assert.deepEqual(RACE_TYPES, ['70.3', 'ironman']);
+test('the race a season is built on is an olympic, a 70.3 or an ironman; a sprint is not offered', () => {
+  // A sprint is raced off a season built for one of these, not off a season of
+  // its own. Olympic came back as a race a season can be built for (18 Oct 2026),
+  // because the fitness bands and the demand table already described it.
+  assert.deepEqual([...RACE_TYPES].sort(), ['70.3', 'ironman', 'olympic']);
   assert.ok(!RACE_TYPES.includes('sprint'));
-  assert.ok(!RACE_TYPES.includes('olympic'));
+});
+
+test('the shortest distance is not the one a picker starts on', () => {
+  // The wizard once opened on RACE_TYPES[0]. Whatever order the pickers show
+  // them in, a long-course race is still the default and nobody starts on Olympic by accident.
+  assert.equal(RACE_TYPES.at(-1), 'ironman');
+  assert.ok(RACE_TYPES.indexOf('olympic') < RACE_TYPES.indexOf('70.3'), 'shortest first, as a list of distances reads');
 });
 
 test('a secondary race may be a distance no season is built for', () => {
@@ -289,8 +297,9 @@ test('the wider list never widens what a season can be sized by', () => {
 test('a race already built for a retired distance keeps it', () => {
   // Plans are self-contained: retiring a distance must not reach back into a
   // season somebody is midway through and re-read it as a 70.3.
-  for (const retired of ['sprint', 'olympic']) {
+  for (const retired of ['sprint']) {
     assert.ok(KNOWN_RACE_TYPES.includes(retired));
+    assert.ok(!RACE_TYPES.includes(retired));
     assert.equal(
       normalizeEvent({ id: 'e', date: '2027-07-25', kind: 'race', raceType: retired }).raceType,
       retired,
@@ -355,4 +364,142 @@ test('an event that cannot be stored leaves the list as it was', () => {
   const list = normalizeEvents([cascais]);
   assert.deepEqual(upsertEvent(list, { id: 'ev-2', date: 'someday' }), list);
   assert.deepEqual(upsertEvent(list, null), list);
+});
+
+/* ---- ambition ---- */
+
+const racePrimary = (over = {}) => ({ id: 'ev-a', date: '2027-04-03', kind: 'race', raceType: '70.3', priority: 'primary', ...over });
+
+test('the three ambitions are the ones targets.js knows', () => {
+  assert.deepEqual([...AMBITIONS], ['finish', 'intermediate', 'competitive']);
+});
+
+test('the main race keeps a valid ambition', () => {
+  for (const ambition of AMBITIONS) assert.equal(normalizeEvent(racePrimary({ ambition })).ambition, ambition);
+});
+
+test('a race with no ambition has none; the default is read where it is needed, not written here', () => {
+  assert.equal('ambition' in normalizeEvent(racePrimary()), false);
+});
+
+test('an ambition that is not one is dropped, not guessed at', () => {
+  for (const ambition of ['hard', '', null, 3, 'FINISH', {}]) {
+    assert.equal('ambition' in normalizeEvent(racePrimary({ ambition })), false, String(ambition));
+  }
+});
+
+test('only the main race has an ambition', () => {
+  assert.equal('ambition' in normalizeEvent(racePrimary({ priority: 'secondary', ambition: 'finish' })), false);
+  assert.equal('ambition' in normalizeEvent(racePrimary({ priority: null, ambition: 'finish' })), false);
+  assert.equal('ambition' in normalizeEvent({ id: 'x', date: '2027-04-03', kind: 'other', priority: 'primary', ambition: 'finish' }), false);
+});
+
+test('a main race demoted for its distance loses the ambition with the priority', () => {
+  const ev = normalizeEvent(racePrimary({ raceType: 'marathon', ambition: 'competitive' }));
+  assert.equal(ev.priority, 'secondary');
+  assert.equal('ambition' in ev, false);
+});
+
+test('of two main races the later one is stood down, and takes its ambition with it', () => {
+  const list = normalizeEvents([
+    racePrimary({ id: 'a', date: '2027-04-03', ambition: 'finish' }),
+    racePrimary({ id: 'b', date: '2027-09-01', ambition: 'competitive' }),
+  ]);
+  assert.equal(list[0].ambition, 'finish');
+  assert.equal(list[1].priority, 'secondary');
+  assert.equal('ambition' in list[1], false);
+});
+
+test('a legacy goal flag reads as a main race with no ambition', () => {
+  const ev = normalizeEvent({ id: 'g', date: '2027-04-03', kind: 'race', raceType: '70.3', goal: true });
+  assert.equal(ev.priority, 'primary');
+  assert.equal('ambition' in ev, false);
+});
+
+test('a new main race takes over the ambition of the one it replaces, unless it brings its own', () => {
+  const before = [racePrimary({ id: 'old', date: '2027-04-03', ambition: 'competitive' })];
+  const inherits = upsertEvent(before, racePrimary({ id: 'new', date: '2027-09-01', raceType: 'ironman' }));
+  assert.equal(inherits.find((e) => e.id === 'new').ambition, 'competitive', 'a change of race is not a change of mind');
+  assert.equal('ambition' in inherits.find((e) => e.id === 'old'), false, 'the old one is a tune-up now');
+  const own = upsertEvent(before, racePrimary({ id: 'new', date: '2027-09-01', raceType: 'ironman', ambition: 'finish' }));
+  assert.equal(own.find((e) => e.id === 'new').ambition, 'finish');
+});
+
+test('editing the main race in place keeps its ambition if the edit does not say', () => {
+  const before = [racePrimary({ ambition: 'competitive' })];
+  const edited = upsertEvent(before, racePrimary({ name: 'Renamed' }));
+  assert.equal(edited[0].ambition, 'competitive');
+  assert.equal(edited[0].name, 'Renamed');
+});
+
+test('a race that is not made the main race does not collect an ambition', () => {
+  const before = [racePrimary({ ambition: 'competitive' })];
+  const next = upsertEvent(before, { id: 'tune', date: '2027-01-17', kind: 'race', raceType: '10k', priority: 'secondary' });
+  assert.equal('ambition' in next.find((e) => e.id === 'tune'), false);
+  assert.equal(next.find((e) => e.id === 'ev-a').ambition, 'competitive');
+});
+
+/* ---- how long a race takes, and so what it asks of the build ---- */
+
+test('every distance that can be written down has a nominal duration and intensity', () => {
+  for (const t of STORABLE_RACE_TYPES) {
+    const row = RACE_NOMINAL[t];
+    assert.ok(row, t);
+    assert.ok(row.minutes >= 20 && row.minutes <= 1200, `${t} minutes`);
+    assert.ok(row.intensity > 0.4 && row.intensity < 1.1, `${t} intensity`);
+  }
+  assert.ok(Object.isFrozen(RACE_NOMINAL) && Object.values(RACE_NOMINAL).every(Object.isFrozen));
+});
+
+test('a longer race is nominally slower: shorter distances, shorter durations', () => {
+  const m = (t) => RACE_NOMINAL[t].minutes;
+  assert.ok(m('10k') < m('half-marathon') && m('half-marathon') < m('marathon'));
+  assert.ok(m('sprint') < m('olympic') && m('olympic') < m('70.3') && m('70.3') < m('ironman'));
+});
+
+test('a race is as long as the athlete says it will take them, or else the nominal time', () => {
+  const ev = { kind: 'race', raceType: '70.3' };
+  assert.equal(raceMinutes(ev), RACE_NOMINAL['70.3'].minutes);
+  assert.equal(raceMinutes({ ...ev, expectedMinutes: 400 }), 400);
+  assert.equal(raceMinutes({ kind: 'race' }), null, 'no distance, no time');
+  assert.equal(raceMinutes(null), null);
+});
+
+test('the athlete\'s own expected time is kept when it is believable and dropped when it is not', () => {
+  const at = (expectedMinutes) => normalizeEvent({ id: 'x', date: '2027-01-17', kind: 'race', raceType: '70.3', priority: 'secondary', expectedMinutes });
+  assert.equal(at(330).expectedMinutes, 330);
+  assert.equal(at('330').expectedMinutes, 330, 'typed into a box');
+  assert.equal(at(330.4).expectedMinutes, 330, 'whole minutes');
+  for (const bad of [0, 5, 19, 1201, -30, 'long', null, NaN, '', true]) {
+    assert.equal('expectedMinutes' in at(bad), false, String(bad));
+  }
+  assert.equal('expectedMinutes' in normalizeEvent({ id: 'x', date: '2027-01-17', kind: 'other', expectedMinutes: 90 }), false, 'only a race has a time');
+});
+
+test('a taper is built for a race of more than two hours, and for no shorter one', () => {
+  const race = (raceType, expectedMinutes) => ({ kind: 'race', raceType, priority: 'secondary', ...(expectedMinutes ? { expectedMinutes } : {}) });
+  assert.equal(TAPER_MIN_MINUTES, 120);
+  for (const t of ['10k', 'half-marathon', 'sprint']) assert.equal(hasTaper(race(t)), false, t);
+  for (const t of ['olympic', 'marathon', 'swimrun', '70.3', 'ironman']) assert.equal(hasTaper(race(t)), true, t);
+});
+
+test('the athlete\'s own time moves a race across the two-hour line, and exactly two hours has no taper', () => {
+  assert.equal(hasTaper({ kind: 'race', raceType: '70.3', expectedMinutes: 120 }), false);
+  assert.equal(hasTaper({ kind: 'race', raceType: '70.3', expectedMinutes: 121 }), true);
+  assert.equal(hasTaper({ kind: 'race', raceType: '10k', expectedMinutes: 125 }), true, 'a slow 10 km');
+  assert.equal(hasTaper({ kind: 'race', raceType: '70.3', expectedMinutes: 100 }), false, 'a very fast 70.3');
+});
+
+test('a race whose length nobody knows is tapered, as every tune-up always was', () => {
+  assert.equal(hasTaper({ kind: 'race', raceType: null, priority: 'secondary' }), true);
+  assert.equal(hasTaper({ kind: 'race', priority: 'secondary' }), true);
+});
+
+test('a race costs its nominal hours at its nominal intensity, squared, ×100', () => {
+  const ev = { kind: 'race', raceType: '10k', priority: 'secondary' };
+  const { minutes, intensity } = RACE_NOMINAL['10k'];
+  assert.equal(raceLoad(ev), Math.round((minutes / 60) * intensity ** 2 * 1000) / 10);
+  assert.equal(raceLoad({ ...ev, expectedMinutes: 120 }), Math.round(2 * intensity ** 2 * 1000) / 10, 'the athlete\'s own time counts');
+  assert.ok(raceLoad({ ...ev, raceType: 'ironman' }) > raceLoad({ ...ev, raceType: '70.3' }));
+  assert.equal(raceLoad({ kind: 'race', raceType: null }), null, 'an unknown distance has no load to count');
 });

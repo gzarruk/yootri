@@ -36,6 +36,7 @@ import { parseISO, toISO, addDays } from './dates.js';
 import { dateOf, weekIndexOf } from './calendar.js';
 import { durToMin } from './duration.js';
 import { LOAD, dailyLoads, ewma } from './load.js';
+import { normalizeEvents, secondaryRaces, raceLoad } from './events.js';
 
 export const PLANNED = Object.freeze({
   // One intensity (a share of threshold) for each zone, evenly spaced so that
@@ -103,10 +104,19 @@ const EMPTY = Object.freeze({
 });
 const empty = () => ({ ...EMPTY, missing: [], weeks: [] });
 
-/** The planned estimate for every date the plan has a session on. */
+/** The planned estimate for every date the plan has a session on, and for the
+    day of each tune-up race inside it: a race clears its day of training, so
+    without its own load the line would read the athlete as resting on it and
+    run low from then on. The race the season is built for is not counted: the
+    plan is the way to it, and the line stops at the day it arrives. */
 function plannedByDate(plan, weeks) {
   const byDate = {};
   let unestimated = 0;
+  const last = dateOf(plan.start, weeks - 1, 'Sun');
+  for (const ev of secondaryRaces(normalizeEvents(plan.events))) {
+    const load = raceLoad(ev);
+    if (load !== null && ev.date >= plan.start && ev.date <= last) byDate[ev.date] = (byDate[ev.date] ?? 0) + load;
+  }
   for (let w = 0; w < weeks; w++) {
     const sessions = plan.weeks?.[`w${w}`];
     for (const s of Array.isArray(sessions) ? sessions : []) {

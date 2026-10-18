@@ -368,9 +368,12 @@ function reconcile(placed, remaining, target) {
  *                                 key so ids are unique across a whole plan
  * @param {string} [opts.raceDay]  weekday a race falls on this week; nothing is
  *                                 scheduled on it or after it
+ * @param {boolean} [opts.raceOnly] the race is short enough to be a hard day in
+ *                                 the build, not an event to arrive fresh for:
+ *                                 only `raceDay` itself is cleared, not what follows
  * @returns {{sessions: object[], budgetMinutes: number, plannedMinutes: number, shortfallMinutes: number}}
  */
-export function generateWeek({ hours, block, profile, idPrefix = 'w', raceDay = null }) {
+export function generateWeek({ hours, block, profile, idPrefix = 'w', raceDay = null, raceOnly = false }) {
   const family = blockFamily(block);
   const budgetMinutes = Math.max(0, Math.round((Number(hours) || 0) * 60));
 
@@ -383,7 +386,9 @@ export function generateWeek({ hours, block, profile, idPrefix = 'w', raceDay = 
      calendar, and entering it as a twelve-hour session would trip the
      single-session ceiling and distort every volume total on the chart. */
   const raceIndex = DAYS.indexOf(raceDay);
-  const closedDays = raceIndex < 0 ? [] : DAYS.slice(raceIndex);
+  // A short race (a 10 km fitness test) clears its own day only: the days after
+  // it are not part of any taper, so they stay training days.
+  const closedDays = raceIndex < 0 ? [] : raceOnly ? [DAYS[raceIndex]] : DAYS.slice(raceIndex);
 
   // The shape table decides how the week falls across its days; availability is
   // only the ceiling that shape is clipped to. `targetMinutes` is what the

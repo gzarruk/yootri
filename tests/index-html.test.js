@@ -695,3 +695,21 @@ test('a plan the page makes on its own starts next Monday, not the Monday before
   assert.doesNotMatch(line, /getDay|since|-since/, 'and no longer walks back to the Monday before');
   assert.match(HTML, /import \{[^}]*\bnextMonday\b[^}]*\} from '\.\/assets\/coach\/dates\.js'/, 'nextMonday is imported from dates.js');
 });
+
+/* ---- A and B races ---- */
+
+test('races are called A and B on screen, and stored as primary and secondary', () => {
+  assert.match(HTML, /PRIORITY_LABELS = \{ primary: 'A race \(target\)', secondary: 'B race \(fitness test\)' \}/);
+  assert.match(HTML, /<option value="primary"/, 'the stored value is still primary');
+  assert.match(HTML, /<option value="secondary"/, 'and secondary');
+  assert.doesNotMatch(HTML, /value="a"|value="b"|priority: 'A'|priority: 'B'|'A race'\s*:|'B race'\s*:/, 'no stored key was renamed');
+});
+
+test('the event panel keeps what it does not show when a race is edited', () => {
+  const body = HTML.slice(HTML.indexOf('function saveEventFromPanel'), HTML.indexOf('function saveEventFromPanel') + 900);
+  assert.match(body, /\.\.\.\(state\.events\.find\(\(x\) => x\.id === id\) \|\| \{\}\)/, 'the saved event starts from the one being edited');
+});
+
+test('the wizard does not open on the shortest main race just because it is first in the list', () => {
+  assert.doesNotMatch(HTML, /(?<!SECONDARY_)RACE_TYPES\[0\]/);
+});
