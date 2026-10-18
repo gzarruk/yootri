@@ -93,8 +93,9 @@ test('every step of a well-filled wizard has nothing to say', () => {
   for (const step of STEPS) assert.deepEqual(stepProblems(step, filled(), { today: TODAY }), [], step);
 });
 
-test('recent weekly hours are the one background answer the plan cannot do without', () => {
-  const p = stepProblems('background', filled({ recentWeeklyHours: undefined }), { today: TODAY });
+test('recent weekly hours are optional, but a nonsense figure is refused', () => {
+  assert.deepEqual(stepProblems('background', filled({ recentWeeklyHours: undefined }), { today: TODAY }), []);
+  const p = stepProblems('background', filled({ recentWeeklyHours: 90 }), { today: TODAY });
   assert.deepEqual(p.map((x) => x.field), ['recentWeeklyHours']);
 });
 
@@ -164,13 +165,11 @@ test('the plan starts this Monday and ends on the main race', () => {
   assert.equal(p.profile.raceType, '70.3');
 });
 
-test('the first weeks open near what the athlete trains now', () => {
-  for (const hours of [5, 8, 12]) {
-    const p = buildPlanFromAnswers(filled({ recentWeeklyHours: hours }), { today: TODAY, now: 1 });
-    const opening = p.season.slice(0, 4);
-    const mean = opening.reduce((a, w) => a + w.hours, 0) / opening.length;
-    assert.ok(Math.abs(mean - hours) <= 0.5, `${hours} h a week opens at ${mean} h`);
-  }
+test('the biggest week is the time the athlete said they have', () => {
+  const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
+  const week = Object.values(emptyAnswers().availability).reduce((a, b) => a + b, 0);
+  assert.equal(Math.max(...p.season.map((w) => w.hours)), Math.floor(week / 30) / 2);
+  assert.equal('annualHours' in p.profile, false);
 });
 
 test('the week, the long days and the cap reach the profile', () => {

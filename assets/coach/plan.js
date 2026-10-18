@@ -10,7 +10,7 @@
    the previous plan object is still intact. */
 
 import { migratePlan } from './migrate.js';
-import { normalizeProfile } from './profile.js';
+import { normalizeProfile, peakHoursFor } from './profile.js';
 import { fitToRace, planLandings } from './season.js';
 import { generateWeek } from './generate.js';
 import { validateSeason } from './validate.js';
@@ -241,7 +241,7 @@ export function freshWeek(plan, absWeek) {
  *
  * @param {object} plan
  * @param {object} [opts]
- * @param {object} [opts.profile] replacement profile (annual hours, availability, splits…)
+ * @param {object} [opts.profile] replacement profile (availability, splits…)
  * @param {number} [opts.from]    first week to regenerate (default: all)
  * @param {number} [opts.to]      last week to regenerate, inclusive
  * @param {number} [opts.keepBefore] weeks before this one are kept exactly as
@@ -257,7 +257,7 @@ export function refit(plan, { profile, from = 0, to = Infinity, weeks, keepBefor
   // a caller passes one: the race date has not moved just because the hours did,
   // but when it *has* moved the runway genuinely changes.
   draft.season = fitToRace({
-    annualHours: draft.profile.annualHours,
+    peakHours: peakHoursFor(draft.profile),
     weeks: Number.isFinite(weeks) && weeks > 0 ? Math.round(weeks) : weekCount(plan),
     // Tune-up races come out of the block they fall in. Read off the draft, so
     // a caller that changed the events and the profile in one go gets both.
@@ -487,7 +487,7 @@ export function newPlan({
   const dated = { start: startISO, events };
 
   const weeks = weeksUntil(startISO, raceDate) ?? FALLBACK_WEEKS;
-  const season = fitToRace({ annualHours: base.annualHours, weeks, landings: landingsOf(dated) });
+  const season = fitToRace({ peakHours: peakHoursFor(base), weeks, landings: landingsOf(dated) });
 
   const built = {};
   for (const w of season) {

@@ -1398,10 +1398,10 @@
     buildPlanFromAnswers, planReview, isReturning,
   } from './assets/coach/onboarding.js';
   import {
-    normalizeAthlete, mergeAthletes, athleteGaps, estimateAnnualHours, wattsPerKg, isEmptyAthlete,
+    normalizeAthlete, mergeAthletes, athleteGaps, wattsPerKg, isEmptyAthlete,
     SEXES, LEVELS, SPORTS as ATHLETE_SPORTS,
   } from './assets/coach/athlete.js';
-  import { normalizeProfile, resolveWeekShape, SPREAD_MODES } from './assets/coach/profile.js';
+  import { normalizeProfile, resolveWeekShape, SPREAD_MODES, peakHoursFor } from './assets/coach/profile.js';
   import { dayBudgets } from './assets/coach/shape.js';
   import {
     STATUSES, getActual, setActual, actualMinutes, weekCompliance, seasonActuals,
@@ -1413,7 +1413,7 @@
     exportEnvelope, readPlanFile, adoptImported, summarizePlan,
   } from './assets/coach/portable.js';
   import {
-    validateSeason, seasonFit, volumeBeyondRace, MIN_VARIATION_RETAINED,
+    validateSeason, volumeBeyondRace,
   } from './assets/coach/validate.js';
   import { fitToRace, planLandings, LONG_RUNWAY_WEEKS } from './assets/coach/season.js';
   import { weeksUntil } from './assets/coach/dates.js';
@@ -3410,7 +3410,6 @@
       '<h2>Plan setup</h2>' +
       '<p class="pnl-sub">Fit the season to the time you actually have. Nothing changes until you review it.</p>' +
       '<div class="pnl-grid">' +
-        field('Annual hours', '<input type="number" class="input" id="f-annual" min="50" max="2000" step="10" value="' + Math.round(p.annualHours) + '" />') +
         field('Race date', '<span class="pnl-derived" id="f-race">' + goalEventLabel() + '</span>') +
         field('Race distance', '<select class="input" id="f-race-type">' + opts + '</select>') +
         field('Max swims / week', '<input type="number" class="input" id="f-swimcap" min="0" max="7" step="1" value="' + (swimCap ?? '') + '" placeholder="no limit" />') +
@@ -3419,7 +3418,7 @@
         ? '<p class="pnl-hint">About you says you have no pool and no open water. Set <b>Max swims / week</b> to 0 ' +
           'if you cannot swim at all, and the swim time goes to the other sports.</p>'
         : '') +
-      '<p class="pnl-hint">Annual hours is a <b>scale</b>, not a total this plan adds up to. A typical week is annual ÷ 52, and a season covers only part of the year — this one prescribes <b>' +
+      '<p class="pnl-hint">The season builds up to your biggest week — the time you have each day, below, added up — and tapers from it. It prescribes <b>' +
         (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
       '<p class="pnl-hint fit-warn" id="f-fit"></p>' +
       '<div class="pnl-sec">' +
@@ -3464,10 +3463,10 @@
 
     // Say it while the number is being typed, not after a preview. The season
     // keeps its current length here (previewRefit does not pass `weeks`), so
-    // only the budget and the available time can move the fit.
+    // only the available time can move the fit.
     const refresh = () => { renderFitHint(); renderShapeHint(); };
     refresh();
-    $('f-annual').addEventListener('input', refresh);
+    els.panelRoot.querySelectorAll('[data-day]').forEach((i) => i.addEventListener('input', refresh));
     $('f-race-type').addEventListener('change', refresh);
     $('f-shape-on').addEventListener('change', refresh);
     $('f-spread').addEventListener('change', refresh);
@@ -3490,7 +3489,6 @@
     });
     return normalizeProfile({
       ...plan.profile,
-      annualHours: Number($('f-annual').value) || plan.profile.annualHours,
       raceType: $('f-race-type').value,
       availability,
       weekShape: { enabled: $('f-shape-on').value !== 'off', spread: $('f-spread').value, pins },
@@ -3508,7 +3506,7 @@
     const el = $('f-shape');
     if (!el) return;
     const profile = setupProfile();
-    const season = fitToRace({ annualHours: profile.annualHours, weeks: totalWeeks() });
+    const season = fitToRace({ peakHours: peakHoursFor(profile), weeks: totalWeeks() });
     const peak = season.reduce((a, w) => (w.hours > a.hours ? w : a), season[0]);
     const budgets = dayBudgets({ budgetMinutes: Math.round(peak.hours * 60), profile }).perDay;
 
@@ -3523,37 +3521,23 @@
         'Leave a day blank to follow the recommended distribution; type a number to fix it.';
   }
 
-  /* Would the hours being typed actually periodise inside the week being typed?
-     Pure arithmetic over the season model — no sessions are generated for this. */
+  /* Is the week being typed out of proportion to the race? The season is sized
+     by that week, so this is the one thing left to say. Pure arithmetic over the
+     season model — no sessions are generated for this. */
   function renderFitHint() {
     const el = $('f-fit');
     if (!el) return;
 
     const profile = setupProfile();
-    const annualHours = profile.annualHours;
     const raceType = profile.raceType;
-    const season = fitToRace({ annualHours, weeks: totalWeeks() });
-
-    // Two ways the numbers can be wrong, and they are mutually exclusive by
-    // construction: either the budget outruns the week, or the week is roomy
-    // enough to absorb a budget the race never called for.
-    const fit = seasonFit(season, profile);
-    if (fit && fit.retained < MIN_VARIATION_RETAINED) {
-      el.innerHTML = 'That is more than this week can absorb: <b>' + fit.clippedWeeks + ' of ' +
-        totalWeeks() + '</b> weeks would be capped at the same ceiling, so the season stops ' +
-        'building and tapering.' +
-        (fit.suggestedAnnualHours
-          ? ' Around <b>' + fit.suggestedAnnualHours + ' hours</b> would fit.'
-          : '');
-      return;
-    }
+    const season = fitToRace({ peakHours: peakHoursFor(profile), weeks: totalWeeks() });
 
     const beyond = volumeBeyondRace(season, profile);
     if (beyond) {
       el.innerHTML = 'The hardest week would reach <b>' + fmtTotal(beyond.peakMinutes) +
         '</b> of training for ' + esc(raceTypeLabel(raceType) || 'this race') + ' — about <b>' +
         Math.round(beyond.multiple) + '×</b> what the distance itself calls for. ' +
-        'Check the race distance and the hours are both right.';
+        'Check the race distance and the time you have each day are both right.';
       return;
     }
 
@@ -4157,7 +4141,7 @@
         fact('Starts', esc(fmtLongDate(s.start))) +
         fact('Length', s.weeks + ' week' + (s.weeks === 1 ? '' : 's')) +
         fact('Race', esc(raceTypeLabel(s.raceType) || '—') + (s.raceDate ? ' · ' + esc(fmtLongDate(s.raceDate)) : '')) +
-        fact('Annual budget', s.annualHours ? Math.round(s.annualHours) + ' h' : '—') +
+        fact('Biggest week', s.peakHours ? fmtTotal(Math.round(s.peakHours * 60)) : '—') +
         fact('Planned volume', esc(fmtTotal(s.plannedMinutes) || '0m')) +
         fact('Your history', esc(history)) +
       '</dl>' +
@@ -4529,7 +4513,7 @@
     background() {
       const a = wiz.answers;
       return '<h2>Your training</h2>' +
-        '<p class="pnl-sub">Where you are starting from. The first weeks of the season are sized on your recent hours, so they start close to what you already do.</p>' +
+        '<p class="pnl-sub">Where you are starting from. Optional — it is kept as your own record; the season is sized by the week you give on a later step.</p>' +
         '<div class="pnl-grid">' +
           field('Hours a week, lately', wnum('wz-hours', a.recentWeeklyHours, 'min="0.5" max="40" step="0.5" placeholder="e.g. 7"')) +
           field('Years in triathlon', wnum('wz-years', a.yearsInSport, 'min="0" max="80"')) +
@@ -4568,7 +4552,7 @@
       const a = wiz.answers;
       const dayOpts = DAYS.map((d) => [d, d]);
       return '<h2>Your week</h2>' +
-        '<p class="pnl-sub">The most you could train on each day, in minutes. A day at 0 is a rest day. This is the ceiling, not what every week will hold.</p>' +
+        '<p class="pnl-sub">The most you could train on each day, in minutes. A day at 0 is a rest day. Your biggest week is these days added up: the season builds up to it and tapers from it, and no week goes past it.</p>' +
         '<div class="pnl-days">' +
           DAYS.map((d) => '<label>' + d + '<input type="number" class="input" data-wzday="' + d + '" min="0" max="600" step="15" value="' +
             (a.availability?.[d] || 0) + '" /></label>').join('') +
@@ -4818,9 +4802,6 @@
     const gaps = athleteGaps(a, plan).filter((g) => g.used);
     const canKeep = cloudReady() && authUser && hasSyncConsent();
     const wkg = wattsPerKg(plan.loadRefs?.ftpW, a.weightKg);
-    const est = estimateAnnualHours({
-      recentWeeklyHours: a.recentWeeklyHours, weeks: weekCount(plan), landings: landingsOf(plan),
-    });
 
     const sel = (id, value, options) => '<select class="input" id="' + id + '"><option value="">—</option>' +
       options.map(([v, label]) => '<option value="' + esc(v) + '"' + (value === v ? ' selected' : '') + '>' +
@@ -4862,12 +4843,8 @@
           sel('ab-lv-' + sp, a.levels?.[sp], LEVELS.map((l) => [l, LEVEL_LABELS[l]])))).join('') +
       '</div>' +
       '<p class="pnl-hint">' +
-        (est
-          ? 'To open this plan’s ' + weekCount(plan) + ' weeks near ' + esc(a.recentWeeklyHours) +
-            ' h a week, set Plan setup’s annual hours to about <b>' + est + '</b>; this plan uses ' +
-            esc(plan.profile.annualHours) + '. (Annual hours is a scale, not a yearly total.) '
-          : 'Hours a week lately sizes a season so it starts close to what you already do. ') +
-        'The rest of this section is not used for planning yet.</p>' +
+        'Nothing in this section is used for planning yet: your season is sized by the time you have each day, in Plan setup. ' +
+        'Hours a week lately is kept as your own record.</p>' +
 
       '<h3 class="pnl-h3">Equipment and goal</h3>' +
       '<div class="pnl-grid">' +

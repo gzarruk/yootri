@@ -21,7 +21,7 @@ import {
 } from './events.js';
 import { normalizeBenchmarks, currentBenchmark, upsertBenchmark, vdotFrom } from './paces.js';
 import { normalizeLoadRefs } from './load.js';
-import { normalizeAthlete, isEmptyAthlete, estimateAnnualHours } from './athlete.js';
+import { normalizeAthlete, isEmptyAthlete } from './athlete.js';
 import { trainingHistory } from './history.js';
 import { HISTORY_THRESHOLDS } from './adapt.js';
 import { validateSeason } from './validate.js';
@@ -128,9 +128,9 @@ export function stepProblems(step, a, { today } = {}) {
       break;
     }
     case 'background': {
-      if (!given(a.recentWeeklyHours) || !(Number(a.recentWeeklyHours) > 0) || !keeps('recentWeeklyHours', a.recentWeeklyHours)) {
-        out.push(problem('recentWeeklyHours',
-          'Say roughly how many hours a week you have trained lately, between 0.5 and 40. It is what the first weeks are sized on.'));
+      // Optional: the season is sized by the week on the next step, not by this.
+      if (given(a.recentWeeklyHours) && (!(Number(a.recentWeeklyHours) > 0) || !keeps('recentWeeklyHours', a.recentWeeklyHours))) {
+        out.push(problem('recentWeeklyHours', 'Hours a week is between 0.5 and 40.'));
       }
       if (given(a.yearsInSport) && !keeps('yearsInSport', a.yearsInSport)) out.push(problem('yearsInSport', 'Years in triathlon is a whole number.'));
       if (given(a.longestRideMin) && !keeps('longestRideMin', a.longestRideMin)) out.push(problem('longestRideMin', 'That longest ride could not be used.'));
@@ -234,10 +234,9 @@ const sameResult = (bm, r) => bm && r
 /**
  * The season these answers describe, as a new plan — not saved, not adopted.
  *
- * It starts this Monday and ends on the main race. Its annual hours are the
- * figure that opens the season near the athlete's recent weekly hours
- * (athlete.js), and tune-ups are landed through the same refit the calendar
- * uses. With `base` — the plan a returning athlete is leaving — the history and
+ * It starts this Monday and ends on the main race. Its biggest week is the
+ * time the athlete said they have (profile.js `peakHoursFor`), and tune-ups are
+ * landed through the same refit the calendar uses. With `base` — the plan a returning athlete is leaving — the history and
  * the settings the wizard does not ask about come along: synced activities,
  * earlier running results, discipline splits, the week shape and any other
  * constraints.
@@ -249,12 +248,7 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
   const startISO = mondayOf(today);
   const raceType = a.race.raceType;
   const tune = tuneUpEvents(a, now);
-  const weeks = weeksUntil(startISO, a.race.date);
   const baseProfile = base ? normalizeProfile(base.profile) : null;
-
-  const annualHours = estimateAnnualHours({
-    recentWeeklyHours: a.recentWeeklyHours, weeks, landings: landingsOf({ start: startISO, events: tune }),
-  }) ?? baseProfile?.annualHours ?? DEFAULT_PROFILE.annualHours;
 
   const constraints = (baseProfile?.constraints ?? [])
     .filter((c) => !(c.disc === 'Swim' && c.rule === 'maxPerWeek'));
@@ -265,7 +259,6 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
   const profile = {
     ...(baseProfile?.splits ? { splits: baseProfile.splits } : {}),
     ...(baseProfile?.weekShape ? { weekShape: baseProfile.weekShape } : {}),
-    annualHours,
     availability: a.availability,
     constraints,
     longDays: { Bike: a.longRideDay, Run: a.longRunDay },

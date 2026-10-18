@@ -677,3 +677,9 @@ test('the state is words, not only a colour, and comes from the engine', () => {
   assert.match(HTML, /id="garmin-state" role="status"/);
   assert.match(HTML, /<div class="row"><span>Bridge<\/span><b id="gm-state">/);
 });
+
+test('the page asks for no annual hours and says nothing about them', () => {
+  const src = withoutComments(HTML);
+  assert.doesNotMatch(src, /f-annual|estimateAnnualHours|set_annual_hours|seasonFit|annualHours/);
+  assert.doesNotMatch(HTML, /[Aa]nnual hours/);
+});

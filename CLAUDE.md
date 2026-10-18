@@ -28,7 +28,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 
 | Module | Responsibility |
 | --- | --- |
-| `season.js` | Annual hours → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands the block model on a runway of N weeks. |
+| `season.js` | The block model → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands it on a runway of N weeks, sized by `peakHours` — the athlete's own biggest week (`peakHoursFor` in `profile.js`, from their availability). The reference model's `annualHours` form survives only for the golden tests and the legacy migration. |
 | `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. |
 | `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
@@ -44,8 +44,8 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `match.js` | Which synced activity was which planned session: same date, same discipline, closest duration. Proposes actuals; never writes one, never over the athlete's own log. |
 | `load.js` | Training load: one number per session where an hour at threshold is 100 (power, pace, swim pace, session RPE, heart rate as the fallback), and its chronic (42-day) and acute (7-day) averages. Ported from GARMIN-CLAUDE. Never stored — worked out when read. |
 | `workout.js` | A planned bike session as warm-up / main set / cool-down steps with %FTP targets (watts when `loadRefs.ftpW` is set), plus `planSyncSet`, which says what one "send to Garmin" run would do. Worked out when asked for, never stored on a session. |
-| `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; `estimateAnnualHours` sizes a season so it opens near recent weekly hours. Never on a plan — see below. |
-| `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by `estimateAnnualHours`, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
+| `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; recent weekly hours are kept as the athlete's own record and size nothing. Never on a plan — see below. |
+| `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by the week the athlete gave, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
 | `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules, plus — only when the athlete ticks it — `ease`, which makes `hardestSession` easy). No coaching constant of its own, and it never reads the overnight figures. |
 | `fitness.js` | Fitness (42-day) and fatigue (7-day) training load as of today, form as their difference, and the lines the Fitness chart draws: actual (load.js), planned (an *estimate* of each planned session from its length and zone — `PLANNED.zoneIF`, unfitted) and a trend carried to race day. Derived on read, never stored. Lifts the 28 Sep exclusion of form (FINDINGS, 16 Oct); ACWR, monotony and strain stay out. Also the plan followed from today as a line (`followed`), `FITNESS_BANDS` and the illustrative race-day form range (`PLANNED.raceForm`). |
 | `preparation.js` | Race preparation: a checklist of facts — fitness on race day against the distance's band, long sessions per discipline over 42 days, steady weeks among those the sync covered, race-day form. **No score and no verdict** (FINDINGS, 17 Oct); silent under three covered weeks. Derived on read, never stored; every number in `PREP` is unfitted. |
@@ -243,6 +243,15 @@ until there is a season of real data.
 weeks before it keep their sessions *and* their planned hours. Plan setup, race
 changes and every coach tool pass the week today falls in; with no date (a coach
 session without `today`) the whole season refits as before.
+
+**A season is sized by the athlete's own week, never by an annual figure.** There
+is no annual-hours setting: the biggest week of a season is all the time the
+athlete said they have (`peakHoursFor`, rounded *down* to the half hour), and the
+block model shapes every other week from it, so a season cannot outrun the week
+it has to fit in and cannot flatten. `normalizeProfile` is an allowlist, so an old
+plan or file carrying `annualHours` loads cleanly and the stored `season` keeps
+its weeks until a refit re-sizes it. `volumeBeyondRace` is the one sanity check
+left: an empty diary against a short race. See `docs/FINDINGS.md` (18 Oct).
 
 **The page shows one plan.** There is no plan list: the switcher button names the
 current plan and its menu starts a new season or imports one. Doing either

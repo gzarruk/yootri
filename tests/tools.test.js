@@ -44,7 +44,7 @@ test('get_plan_summary describes the season without dumping every session', () =
   const s = createSession(basePlan());
   const out = parse(call(s, 'get_plan_summary'));
   assert.equal(out.totalWeeks, 16);
-  assert.ok(out.annualHours > 0);
+  assert.equal('annualHours' in out, false, 'no annual figure is shown any more');
   assert.ok(Array.isArray(out.blocks) && out.blocks.length > 0);
   assert.ok(!JSON.stringify(out).includes('"zone"'), 'summary should stay compact');
 });
@@ -89,15 +89,15 @@ test('a write tool never touches the stored plan', () => {
   const plan = basePlan();
   const snapshot = JSON.parse(JSON.stringify(plan));
   const s = createSession(plan);
-  call(s, 'set_annual_hours', { hours: 800 });
+  call(s, 'set_availability', { day: 'Sat', minutes: 360 });
   assert.deepEqual(s.plan, snapshot, 'the stored plan must be untouched');
   assert.ok(s.draft, 'the change should land in a draft');
 });
 
 test('reads reflect pending changes, so the model can see its own work', () => {
   const s = createSession(basePlan());
-  call(s, 'set_annual_hours', { hours: 900 });
-  assert.equal(parse(call(s, 'get_profile')).annualHours, 900);
+  call(s, 'set_availability', { day: 'Sat', minutes: 360 });
+  assert.equal(parse(call(s, 'get_profile')).availability.Sat, 360);
 });
 
 test('set_availability changes one day and refits around it', () => {
@@ -279,42 +279,32 @@ test('a suggested tool call is handed back in the numbering the tools accept', (
   }
 });
 
-test('get_plan_summary states whether the budget fits the athlete week', () => {
-  // Left to itself the model would have to spot that annualHours and
-  // weeklyPlannedMinutes disagree. The conclusion belongs in tested code.
-  const flat = newPlan({
-    name: 'Flat', startISO: '2026-01-05', now: 0,
-    profile: { annualHours: 800, availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
-  });
-  const out = parse(call(createSession(flat), 'get_plan_summary'));
-  assert.ok(out.fit, 'the summary carries a fit reading');
-  assert.equal(out.fit.weeklyCapacityMinutes, 690);
-  assert.equal(out.fit.suggestedAnnualHours, 400);
-  assert.ok(out.fit.variationRetained < 0.1);
-});
-
-test('a plan whose budget fits says so rather than going quiet', () => {
-  const ok = newPlan({
+test('get_plan_summary reports the week the season is sized by', () => {
+  const p = newPlan({
     name: 'Fits', startISO: '2026-01-05', now: 0,
-    profile: { annualHours: 400, availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
+    profile: { availability: { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 } },
   });
-  const out = parse(call(createSession(ok), 'get_plan_summary'));
-  assert.equal(out.fit.variationRetained, 1);
+  const out = parse(call(createSession(p), 'get_plan_summary'));
+  assert.equal(out.fit.weeklyCapacityMinutes, 690);
+  assert.equal(Math.max(...out.weeklyPlannedMinutes), 690, 'the biggest week is the week they have');
+  for (const gone of ['suggestedAnnualHours', 'variationRetained', 'clippedWeeks']) {
+    assert.equal(gone in out.fit, false, gone);
+  }
 });
 
 test('get_plan_summary says when the volume outstrips the race', () => {
   const big = { Mon: 600, Tue: 600, Wed: 600, Thu: 600, Fri: 600, Sat: 600, Sun: 600 };
   const out = parse(call(createSession(newPlan({
     name: 'Overkill', startISO: '2026-01-05', now: 0,
-    profile: { annualHours: 2000, raceType: 'sprint', availability: big },
+    profile: { raceType: 'sprint', availability: big },
   })), 'get_plan_summary'));
-  assert.equal(Math.round(out.fit.raceDemandMultiple), 24);
+  assert.equal(Math.round(out.fit.raceDemandMultiple), 29);
 });
 
 test('a plan in proportion to its race reports no multiple to worry about', () => {
   const out = parse(call(createSession(newPlan({
     name: 'Sane', startISO: '2026-01-05', now: 0,
-    profile: { annualHours: 500, raceType: '70.3' },
+    profile: { raceType: '70.3' },
   })), 'get_plan_summary'));
   assert.equal(out.fit.raceDemandMultiple, null);
 });
@@ -844,7 +834,6 @@ test('a coach change reshapes the weeks to come, not the weeks already trained',
   const plan = basePlan();
   const today = dateOf(plan.start, 3, 'Wed');   // week 4 as the athlete counts
   for (const [tool, input] of [
-    ['set_annual_hours', { hours: 900 }],
     ['set_availability', { day: 'Sat', minutes: 120 }],
     ['set_session_preferences', { max_sessions_per_day: 1 }],
   ]) {
@@ -861,7 +850,7 @@ test('a coach change reshapes the weeks to come, not the weeks already trained',
 test('without a date the coach still refits the whole season, as before', () => {
   const plan = basePlan();
   const s = createSession(plan);
-  call(s, 'set_annual_hours', { hours: 900 });
+  call(s, 'set_availability', { day: 'Sat', minutes: 360 });
   assert.notDeepEqual(s.draft.weeks.w0, plan.weeks.w0);
 });
 

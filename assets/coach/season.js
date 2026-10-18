@@ -1,15 +1,22 @@
 /* Generative weekly-volume model — a JS port of ../yootri-rnd/plan_model.py.
    That file is the reference implementation; tests/season.test.js pins this port
    to its numbers. Change the shape here only alongside a finding written back to
-   ../yootri-rnd/FINDINGS.md.
+   docs/FINDINGS.md.
 
    The model is generative rather than fitted. Weekly volume is:
 
-       annual / 52 * multiplier(block, week)
+       base * multiplier(block, week)
 
-   so `annual` is a *scale*, not a total the season sums to — the default blocks
-   cover 27 of 52 weeks and spend ~56% of the budget. Never present the sum of a
-   season as an annual figure. */
+   `base` is what the athlete's availability sets: `fitToRace({ peakHours })`
+   picks it so the season's biggest week is `peakHours` long, which is the most
+   the athlete said they could train. Nothing is clipped, so a season can never
+   outrun the week it has to fit in.
+
+   The reference model's own sizing, `annual / 52`, is still here as
+   `weeklyHours` and `fitToRace({ annualHours })`, for the golden tests and the
+   legacy migration only. `annual` there is a *scale*, not a total the season sums
+   to — the default blocks cover 27 of 52 weeks and spend ~56% of the budget.
+   Nothing the athlete sees asks for it any more. */
 
 export const WEEKS_PER_YEAR = 52;
 
@@ -208,11 +215,15 @@ export function planLandings({ weeks, landings = [], season = DEFAULT_SEASON } =
 
     Returns plain data — a plan stores this once rather than recomputing it, so a
     later change to the model never silently reshapes an athlete's saved season. */
-export function fitToRace({ annualHours, weeks, landings = [], season = DEFAULT_SEASON }) {
+export function fitToRace({ peakHours, annualHours, weeks, landings = [], season = DEFAULT_SEASON }) {
   const n = Number(weeks);
   if (!Number.isInteger(n) || n < 1) {
     throw new Error(`a season needs at least one week; got ${JSON.stringify(weeks)}`);
   }
+  if ((peakHours === undefined) === (annualHours === undefined)) {
+    throw new Error('size a season by exactly one of peakHours or annualHours');
+  }
+  if (peakHours !== undefined && !(peakHours > 0)) throw new Error('peakHours must be > 0');
 
   const full = expand(season);
   let chosen;
@@ -237,6 +248,11 @@ export function fitToRace({ annualHours, weeks, landings = [], season = DEFAULT_
     if (taperWeek !== null) chosen[taperWeek] = { block: 'Taper', week: 1, recovery: false };
   }
 
+  // The season's biggest multiplier lands on `peakHours`; everything else keeps
+  // its proportion. The annual form is the same thing with the base given.
+  const loads = chosen.map((e) => multiplier(e.block, e.week, season));
+  const annual = annualHours ?? (peakHours / Math.max(...loads)) * WEEKS_PER_YEAR;
+
   return chosen.map((e, i) => ({
     ...e,
     absWeek: i,
@@ -244,8 +260,8 @@ export function fitToRace({ annualHours, weeks, landings = [], season = DEFAULT_
     // to know whether a week is genuinely hard, and that cannot be inferred
     // reliably from volume — in a flat season half the weeks sit below the mean
     // by construction. A load at or above 1.0 is at or above a flat average week.
-    load: multiplier(e.block, e.week, season),
-    hours: weeklyHours(annualHours, e.block, e.week, season),
+    load: loads[i],
+    hours: weeklyHours(annual, e.block, e.week, season),
   }));
 }
 

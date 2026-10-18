@@ -19,13 +19,11 @@
    never holds a number the athlete did not give.
 
    What reads it today is deliberately small, and `athleteGaps` says so to the
-   athlete rather than implying more: recent weekly hours size a new season
-   (`estimateAnnualHours`), weight turns FTP into watts per kilogram, and sex is
+   athlete rather than implying more: weight turns FTP into watts per kilogram, and sex is
    the default heart-rate formula for training load. Everything else is kept
    for the onboarding steps that come next, and is labelled as not used for
    planning yet. */
 
-import { fitToRace, WEEKS_PER_YEAR } from './season.js';
 import { goalEvent } from './events.js';
 import { normalizeBenchmarks } from './paces.js';
 import { normalizeLoadRefs } from './load.js';
@@ -43,10 +41,6 @@ export const ATHLETE_FIELDS = [
   'recentWeeklyHours', 'longestRideMin', 'longestRunMin', 'equipment',
   'goal', 'goalTime', 'updatedAt',
 ];
-
-/* The bounds Plan setup's own annual-hours field accepts. */
-const MIN_ANNUAL = 50;
-const MAX_ANNUAL = 2000;
 
 const isObj = (x) => x !== null && typeof x === 'object' && !Array.isArray(x);
 
@@ -127,8 +121,7 @@ const GAPS = [
   { key: 'race', label: 'Your main race', used: true, plan: true,
     why: 'Decides how long the season is and where it peaks.',
     missing: (a, p) => !goalEvent(p.events) },
-  { key: 'recentWeeklyHours', label: 'Hours a week you train now', used: true,
-    why: 'Sizes a new season so it starts close to what you already do.',
+  { key: 'recentWeeklyHours', label: 'Hours a week you train now', used: false, why: NOT_YET,
     missing: (a) => a.recentWeeklyHours === undefined },
   { key: 'runResult', label: 'A recent running result', used: true, plan: true,
     why: 'Sets the paces on every run.',
@@ -170,33 +163,6 @@ export function athleteGaps(athlete, plan = null) {
   return GAPS
     .filter((g) => (g.plan ? plan && g.missing(a, plan) : g.missing(a, plan)))
     .map(({ key, label, why, used }) => ({ key, label, why, used }));
-}
-
-/**
- * The annual-hours figure that opens a season of `weeks` at roughly the hours
- * a week the athlete trains now, or null when there is nothing to anchor it.
- *
- * Annual hours are a scale, not a total (season.js): the hours a week opens at
- * depend on which blocks the runway keeps. So this asks the season model
- * rather than assuming a ratio — it fits the runway once at a known scale and
- * reads off the opening month. A month rather than a week because a runway
- * can open on a recovery week, and anchoring on that would put the next week
- * well above what the athlete has been doing.
- *
- * Rounded to 10 h and held to what Plan setup accepts.
- */
-export function estimateAnnualHours({ recentWeeklyHours, weeks, landings = [] } = {}) {
-  const recent = Number(recentWeeklyHours);
-  const n = Math.round(Number(weeks));
-  if (!(recent > 0) || !(n >= 1)) return null;
-
-  const SCALE = 100 * WEEKS_PER_YEAR;   // one hour a week of "annual" scale, ×100 for rounding headroom
-  const opening = fitToRace({ annualHours: SCALE, weeks: n, landings }).slice(0, 4);
-  const perUnit = opening.reduce((a, w) => a + w.hours, 0) / opening.length / 100;
-  if (!(perUnit > 0)) return null;
-
-  const annual = Math.round((recent * WEEKS_PER_YEAR) / perUnit / 10) * 10;
-  return Math.min(MAX_ANNUAL, Math.max(MIN_ANNUAL, annual));
 }
 
 /** FTP over body weight, to two decimals, or null when either is missing. */

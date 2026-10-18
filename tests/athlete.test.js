@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  normalizeAthlete, mergeAthletes, athleteGaps, estimateAnnualHours, wattsPerKg, isEmptyAthlete,
+  normalizeAthlete, mergeAthletes, athleteGaps, wattsPerKg, isEmptyAthlete,
   SEXES, LEVELS, ATHLETE_FIELDS,
 } from '../assets/coach/athlete.js';
 import { fitToRace } from '../assets/coach/season.js';
@@ -91,7 +91,7 @@ test('an empty side never wipes out the other', () => {
 test('a blank athlete and a blank plan are missing the things that shape a plan first', () => {
   const gaps = athleteGaps({}, newPlan({ name: 'My plan', startISO: '2026-10-05' }));
   const used = gaps.filter((g) => g.used).map((g) => g.key);
-  assert.deepEqual(used.slice(0, 4), ['race', 'recentWeeklyHours', 'runResult', 'ftp']);
+  assert.deepEqual(used.slice(0, 4), ['race', 'runResult', 'ftp', 'css']);
   for (const g of gaps) {
     assert.ok(g.label && g.why, `${g.key} says what it is and why it is asked`);
   }
@@ -119,36 +119,7 @@ test('a field is only claimed to be used when something reads it', () => {
   assert.equal(byKey.birthYear.used, false);
   assert.match(byKey.birthYear.why, /not used for planning yet/i);
   assert.equal(byKey.weightKg.used, true);
-  assert.equal(byKey.recentWeeklyHours.used, true);
-});
-
-/* ---- estimateAnnualHours ---- */
-
-test('the estimate starts a season close to what the athlete trains now', () => {
-  // Anchored on the opening month rather than on week 1 alone: a runway can
-  // open on a recovery week, and anchoring on that would put the week after it
-  // half as much again above what the athlete has been doing.
-  for (const weeks of [1, 4, 16, 27, 40]) {
-    for (const recent of [4, 8, 12.5]) {
-      const annual = estimateAnnualHours({ recentWeeklyHours: recent, weeks });
-      const opening = fitToRace({ annualHours: annual, weeks }).slice(0, 4);
-      const mean = opening.reduce((a, w) => a + w.hours, 0) / opening.length;
-      assert.ok(Math.abs(mean - recent) <= 0.5, `${weeks} weeks at ${recent} h opens at ${mean} h (annual ${annual})`);
-    }
-  }
-});
-
-test('the estimate is a round number inside what Plan setup accepts', () => {
-  const a = estimateAnnualHours({ recentWeeklyHours: 8, weeks: 16 });
-  assert.equal(a % 10, 0);
-  assert.equal(estimateAnnualHours({ recentWeeklyHours: 0.2, weeks: 30 }), 50);
-  assert.equal(estimateAnnualHours({ recentWeeklyHours: 40, weeks: 1 }), 2000);
-});
-
-test('there is no estimate without recent training to anchor it', () => {
-  assert.equal(estimateAnnualHours({ weeks: 16 }), null);
-  assert.equal(estimateAnnualHours({ recentWeeklyHours: 0, weeks: 16 }), null);
-  assert.equal(estimateAnnualHours({ recentWeeklyHours: 8 }), null, 'nor without a runway');
+  assert.equal(byKey.recentWeeklyHours.used, false, 'nothing sizes a season from it any more');
 });
 
 /* ---- wattsPerKg ---- */
