@@ -101,3 +101,105 @@ test('a race of unknown length gets the middle tier, because it is tapered', () 
   assert.equal(taperDepth(race(null)), 0.35);
   assert.equal(taperDepth(null), 0, 'and nothing at all is not a race');
 });
+
+/* ---- what the athlete is shown about a target ---- */
+
+import { AMBITION_INFO, ambitionOptions, describeTarget } from '../assets/coach/targets.js';
+
+const goodTarget = (over = {}) => ({
+  ctl: 75, start: { ctl: 50, source: 'estimate' },
+  feasibility: { feasible: true, status: 'build', targetCtl: 75, achievableCtl: 75, shortfall: 0, limitingFactor: null },
+  ...over,
+});
+const shortTarget = (limitingFactor = 'availability') => goodTarget({
+  ctl: 98,
+  feasibility: { feasible: false, status: 'build', targetCtl: 98, achievableCtl: 64.3, shortfall: 33.7, limitingFactor },
+});
+
+test('each level has a name and a plain-language description', () => {
+  assert.deepEqual(Object.keys(AMBITION_INFO), [...AMBITIONS]);
+  for (const a of AMBITIONS) {
+    assert.ok(AMBITION_INFO[a].label && AMBITION_INFO[a].blurb, a);
+    assert.ok(Object.isFrozen(AMBITION_INFO[a]));
+  }
+});
+
+test('the levels on offer for a race carry their targets, from the band', () => {
+  const opts = ambitionOptions('70.3');
+  assert.deepEqual(opts.map((o) => [o.key, o.target]), [['finish', 60], ['intermediate', 75], ['competitive', 90]]);
+  assert.deepEqual(opts[0].band, { lo: 60, hi: 90 });
+  assert.deepEqual(ambitionOptions('sprint'), [], 'no band, nothing to offer');
+  assert.deepEqual(ambitionOptions(undefined), []);
+});
+
+test('a target that is reached says so, in plain words, and calls the figure an estimate', () => {
+  const d = describeTarget({ target: goodTarget() });
+  assert.equal(d.state, 'reached');
+  assert.match(d.headline, /75/);
+  assert.match(d.detail, /estimate/i);
+  assert.deepEqual(d.choices, []);
+});
+
+test('an athlete already above the target is told the plan holds what they have', () => {
+  const t = goodTarget({ feasibility: { feasible: true, status: 'hold', targetCtl: 75, achievableCtl: 88, shortfall: 0, limitingFactor: null } });
+  const d = describeTarget({ target: t });
+  assert.equal(d.state, 'hold');
+  assert.match(d.headline, /already/i);
+  assert.match(d.detail, /88/);
+});
+
+test('a target out of reach says so plainly: how far short, and what is in the way', () => {
+  const byFactor = {
+    availability: /time you have each week/i,
+    runway: /enough weeks/i,
+    ramp: /pinned or already trained/i,
+  };
+  for (const [factor, re] of Object.entries(byFactor)) {
+    const d = describeTarget({ target: shortTarget(factor) });
+    assert.equal(d.state, 'short');
+    assert.match(d.headline, /out of reach/i);
+    assert.match(d.headline, /64/);
+    assert.match(d.headline, /98/);
+    assert.match(d.detail, re, factor);
+  }
+});
+
+test('what would help is offered as choices, each worked out and none promised', () => {
+  const levers = {
+    raceDate: { weeks: 40, raceDate: '2027-09-12' },
+    ambition: { ambition: 'finish', targetCtl: 80 },
+    hours: { weeklyHours: 16 },
+    distance: { raceType: '70.3', ambition: 'competitive', targetCtl: 90 },
+  };
+  const d = describeTarget({ target: shortTarget(), levers });
+  const text = d.choices.join(' | ');
+  assert.match(text, /Finish/);
+  assert.match(text, /80/);
+  assert.match(text, /70\.3/);
+  assert.match(text, /12 Sep 2027/);
+  assert.match(text, /16 hours/);
+  assert.match(d.choices.at(-1), /keep this goal/i, 'and the athlete may keep the goal, with the best plan that can be built');
+  assert.equal(d.choices.length, 5);
+});
+
+test('levers that are not there are not offered', () => {
+  const d = describeTarget({ target: shortTarget('runway'), levers: { raceDate: null, ambition: null, hours: null, distance: null } });
+  assert.deepEqual(d.choices.length, 1, 'only keeping the goal');
+  assert.deepEqual(describeTarget({ target: shortTarget() }).choices, [], 'levers not asked for: none shown');
+});
+
+test('what is said about a target never promises a result or talks about the body', () => {
+  const levers = { raceDate: { weeks: 40, raceDate: '2027-09-12' }, ambition: { ambition: 'finish', targetCtl: 80 }, hours: { weeklyHours: 16 }, distance: { raceType: '70.3', ambition: 'competitive', targetCtl: 90 } };
+  const text = JSON.stringify([
+    AMBITION_INFO, describeTarget({ target: goodTarget() }), describeTarget({ target: shortTarget(), levers }),
+    describeTarget({ target: goodTarget({ feasibility: { feasible: true, status: 'hold', targetCtl: 75, achievableCtl: 88, shortfall: 0, limitingFactor: null } }) }),
+  ]);
+  for (const re of [/guarantee/i, /will (reach|qualify|finish|achieve|hit)/i, /injur/i, /readiness/i, /\brisk/i, /overtrain/i, /medical/i, /\bready\b/i]) {
+    assert.doesNotMatch(text, re);
+  }
+});
+
+test('nothing to say for a plan with no target', () => {
+  assert.equal(describeTarget({ target: null }), null);
+  assert.equal(describeTarget({}), null);
+});

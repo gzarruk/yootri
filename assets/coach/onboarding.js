@@ -15,7 +15,7 @@
 import { DAYS, DEFAULT_PROFILE, normalizeProfile } from './profile.js';
 import { newPlan, refit, weekCount, sessionsAt, landingsDetail, isUntouchedPlan, leversFor } from './plan.js';
 import { planLandings, LONG_RUNWAY_WEEKS } from './season.js';
-import { nextMonday, snapToMonday, weeksUntil, parseISO } from './dates.js';
+import { nextMonday, snapToMonday, weeksUntil, parseISO, sayDate } from './dates.js';
 import {
   RACE_TYPES, SECONDARY_RACE_TYPES, AMBITIONS, DEFAULT_AMBITION, normalizeEvent, normalizeEvents, goalEvent, secondaryRaces,
   raceTypeLabel,
@@ -29,7 +29,7 @@ import { startFitness } from './startfit.js';
 import { validateSeason } from './validate.js';
 import { durToMin } from './duration.js';
 
-export const STEPS = ['welcome', 'about', 'background', 'thresholds', 'week', 'races', 'goal', 'review'];
+export const STEPS = ['welcome', 'about', 'background', 'thresholds', 'week', 'races', 'ambition', 'goal', 'review'];
 
 /** The privacy notice says yootri is not for anyone under this age. */
 export const MIN_AGE = 16;
@@ -42,14 +42,6 @@ const ATHLETE_KEYS = [
 const EQUIPMENT_KEYS = ['pool', 'openWater', 'indoorTrainer', 'powerMeter'];
 
 const yearOf = (iso) => parseISO(iso)?.getUTCFullYear() ?? null;
-
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-/* "19 Oct 2026", for a sentence the athlete reads. Fixed English month names,
-   not the locale's: the engine has no locale, and the message is text. */
-const sayDate = (iso) => {
-  const d = parseISO(iso);
-  return d ? `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : String(iso);
-};
 
 /**
  * The Monday the plan these answers describe starts on: the one the athlete
@@ -237,6 +229,13 @@ export function stepProblems(step, a, { today } = {}) {
       });
       break;
     }
+    case 'ambition': {
+      // How hard to build is a choice among three; leaving it unset is the middle one.
+      if (given(a.ambition) && !AMBITIONS.includes(a.ambition)) {
+        out.push(problem('ambition', 'Choose one of the three levels.'));
+      }
+      break;
+    }
     case 'review': {
       if (given(a.startCtlEntered) && !(Number.isFinite(Number(a.startCtlEntered)) && Number(a.startCtlEntered) >= 0 && Number(a.startCtlEntered) <= 200)) {
         out.push(problem('startCtlEntered', 'Fitness is a number from 0 to 200.'));
@@ -293,6 +292,32 @@ const sameResult = (bm, r) => bm && r
   && bm.distanceMeters === r.distanceMeters && bm.timeSeconds === r.timeSeconds && bm.date === r.date;
 
 /**
+ * Where the athlete starts, as `startFitness` answers it, for these answers: the
+ * figure they typed, their synced sessions (a returning athlete's, carried in
+ * `base`) or an estimate from their recent hours. The review shows it with its
+ * `note`, and the plan keeps the figure and where it came from.
+ */
+export function startFitnessFor(a, { today, now = Date.now(), base = null, benchmarks, loadRefs } = {}) {
+  const refs = loadRefs ?? normalizeLoadRefs({ ftpW: a.ftpW, cssSecPer100m: a.cssSecPer100m });
+  let marks = benchmarks;
+  if (!marks) {
+    marks = normalizeBenchmarks(base?.benchmarks);
+    if (a.runResult && vdotFrom(a.runResult) !== null && !sameResult(currentBenchmark(marks), a.runResult)) {
+      marks = upsertBenchmark(marks, { id: 'bm-start', ...a.runResult, source: 'manual', current: true });
+    }
+  }
+  return startFitness({
+    today,
+    activities: base?.activities,
+    activitySync: base?.activitySync,
+    benchmarks: marks,
+    loadRefs: refs,
+    athlete: athleteFromAnswers(a, { now }),
+    entered: a.startCtlEntered,
+  });
+}
+
+/**
  * The season these answers describe, as a new plan — not saved, not adopted.
  *
  * It starts on the Monday `startOf` gives and ends on the main race. It is built
@@ -339,19 +364,10 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
     || `${raceTypeLabel(raceType)} ${yearOf(a.race.date)}`;
 
   const loadRefs = normalizeLoadRefs({ ftpW: a.ftpW, cssSecPer100m: a.cssSecPer100m });
-  // Where the season starts from: the figure the athlete typed, their synced
-  // sessions or an estimate from their recent hours (startfit.js). With none of
-  // the three there is nothing to build up from and the season is sized as it
-  // was before targets.
-  const start = startFitness({
-    today,
-    activities: base?.activities,
-    activitySync: base?.activitySync,
-    benchmarks,
-    loadRefs,
-    athlete: athleteFromAnswers(a, { now }),
-    entered: a.startCtlEntered,
-  });
+  // Where the season starts from (see `startFitnessFor`). With none of the three
+  // sources there is nothing to build up from and the season is sized as it was
+  // before targets.
+  const start = startFitnessFor(a, { today, now, base, benchmarks, loadRefs });
   const { note: _note, ...startInfo } = start;
 
   let plan = newPlan({

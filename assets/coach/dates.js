@@ -34,6 +34,16 @@ export function mondayOf(iso) {
   return toISO(addDays(d, -since));
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** "19 Oct 2026", for a sentence the athlete reads. Fixed English month names,
+    not the locale's: the engine has no locale and its messages are plain text.
+    Something that is not a date comes back as it came. */
+export function sayDate(iso) {
+  const d = parseISO(iso);
+  return d ? `${d.getUTCDate()} ${MONTHS[d.getUTCMonth()]} ${d.getUTCFullYear()}` : String(iso);
+}
+
 /* The first Monday on or after `iso`. Internal: the two public starts below
    differ only in what they feed it. */
 function mondayOnOrAfter(iso) {

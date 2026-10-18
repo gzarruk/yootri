@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   STEPS, emptyAnswers, prefill, stepProblems, racePreview, athleteFromAnswers,
-  buildPlanFromAnswers, planReview, isReturning, carriedAnswers,
+  buildPlanFromAnswers, planReview, isReturning, startFitnessFor, carriedAnswers,
 } from '../assets/coach/onboarding.js';
 import { newPlan, weekCount, sessionsAt, loadPlan } from '../assets/coach/plan.js';
 import { normalizeEvents, goalEvent, secondaryRaces } from '../assets/coach/events.js';
@@ -29,7 +29,7 @@ const filled = (over = {}) => ({
 /* ---- the steps ---- */
 
 test('the steps run welcome to review, in the order the athlete meets them', () => {
-  assert.deepEqual(STEPS, ['welcome', 'about', 'background', 'thresholds', 'week', 'races', 'goal', 'review']);
+  assert.deepEqual(STEPS, ['welcome', 'about', 'background', 'thresholds', 'week', 'races', 'ambition', 'goal', 'review']);
 });
 
 test('an empty wizard starts from a defensible week and nothing else assumed', () => {
@@ -513,4 +513,36 @@ test('a season built without a start still reviews, with no target', () => {
   const p = buildPlanFromAnswers(a, { today: TODAY, now: 1 });
   assert.equal(p.target, undefined);
   assert.equal(planReview(p).target, null);
+});
+
+/* ---- the ambition step ---- */
+
+test('the ambition step comes straight after the races, and before the goal', () => {
+  assert.equal(STEPS.indexOf('ambition'), STEPS.indexOf('races') + 1);
+  assert.equal(STEPS.indexOf('goal'), STEPS.indexOf('ambition') + 1);
+});
+
+test('the ambition step accepts any of the three levels, or none, and refuses what is not one', () => {
+  for (const ambition of [undefined, 'finish', 'intermediate', 'competitive']) {
+    assert.deepEqual(stepProblems('ambition', filled({ ambition }), { today: TODAY }), [], String(ambition));
+  }
+  for (const bad of ['fast', 3, '']) {
+    const p = stepProblems('ambition', filled({ ambition: bad }), { today: TODAY });
+    if (bad === '') assert.deepEqual(p, [], 'an empty box is no answer');
+    else assert.deepEqual(p.map((x) => x.field), ['ambition'], String(bad));
+  }
+});
+
+test('every step the wizard has can be left with a filled-in answer set', () => {
+  for (const step of STEPS) assert.deepEqual(stepProblems(step, filled({ ambition: 'finish' }), { today: TODAY }), [], step);
+});
+
+test('where the athlete starts is worked out once, for the review and for the plan alike', () => {
+  const a = filled();
+  const start = startFitnessFor(a, { today: TODAY, now: 1 });
+  const plan = buildPlanFromAnswers(a, { today: TODAY, now: 1 });
+  assert.equal(start.ctl, plan.target.start.ctl);
+  assert.equal(start.source, plan.target.start.source);
+  assert.match(start.note, /estimate/i, 'with the sentence the review shows');
+  assert.equal(startFitnessFor(filled({ startCtlEntered: 80 }), { today: TODAY, now: 1 }).source, 'entered');
 });

@@ -22,6 +22,15 @@ const FORBIDDEN = [
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), 'utf8');
 
+/* The page's own drawing of the target: the section between these two markers. */
+function targetSection() {
+  const html = read('../index.html');
+  const from = html.indexOf('/* ---- Target: what the season was built to arrive with');
+  const to = html.indexOf('/* ---- end of Target ---- */');
+  assert.ok(from > 0 && to > from, 'the Target section is still where this test looks');
+  return html.slice(from, to);
+}
+
 function surfaces() {
   const html = read('../index.html');
   const from = html.indexOf('/* ---- Workouts to Garmin');
@@ -60,6 +69,7 @@ function surfaces() {
     'targets.js': read('../assets/coach/targets.js'),
     'startfit.js': read('../assets/coach/startfit.js'),
     'backplan.js': read('../assets/coach/backplan.js'),
+    'index.html target section': targetSection(),
     'bridge overnight.py': read('../tools/garmin-bridge/garmin_bridge/overnight.py'),
     'bridge messages': BRIDGE_ERROR_CODES.map((c) => bridgeErrorMessage(c)).join('\n'),
   };
@@ -79,7 +89,15 @@ test('workout export wording makes no medical or performance claims', () => {
    closest to the body and to performance claims, so the list here is stricter
    than the one above: no recovery or readiness talk, no promise about what a
    number means for an athlete, and no named standard a reader could take as a
-   target. */
+   target.
+
+   The plan's own target is not that. It is the number the athlete chose to
+   build the season to — read off the same illustrative bands the chart draws —
+   shown as "Plan target" beside the planned line, and a screen can say so
+   without naming anyone's time or qualifying standard. What stays barred is
+   the vocabulary of a standard to aim at (kona, qualif, competitive, comfortabl)
+   and any claim about what the number means for the athlete. The names of the
+   three levels live in targets.js, not on these surfaces. */
 
 const STRICTER = [
   ...FORBIDDEN,
@@ -147,4 +165,28 @@ test('race preparation says where a figure sits and never scores or judges it', 
   const { section } = fitnessSurfaces();
   assert.match(section, /Race preparation/, 'the block is on the page');
   assert.match(section, /illustrative, not findings/, 'its references say they are illustrative');
+});
+
+test('what the page says about the plan target is held to the stricter list too', () => {
+  const text = targetSection();
+  for (const re of STRICTER) {
+    const hit = text.match(re);
+    assert.equal(hit, null, `the Target section says "${hit && hit[0]}"`);
+  }
+});
+
+test('the chart shows the athlete\'s own plan target and names no standard to aim at', () => {
+  const { section } = fitnessSurfaces();
+  assert.match(section, /Plan target/);
+  assert.doesNotMatch(section, /kona|qualif|standard/i);
+  assert.doesNotMatch(section, /competitive|finish|intermediate/i, 'the level names are not on the chart');
+});
+
+test('what a target says never promises a result', () => {
+  for (const [where, text] of [['targets.js', read('../assets/coach/targets.js')], ['the Target section', targetSection()]]) {
+    for (const re of [/will (reach|qualify|finish|achieve|hit|make)/i, /you('| wi)ll (get|be)/i, /guarantee/i, /\bready\b/i]) {
+      const hit = text.replace(/\/\*[\s\S]*?\*\//g, '').match(re);
+      assert.equal(hit, null, `${where} says "${hit && hit[0]}"`);
+    }
+  }
 });

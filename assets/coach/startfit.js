@@ -118,7 +118,7 @@ export function startNote(start) {
     case 'garmin':
       return `From ${start.coveredWeeks ?? 'several'} weeks of your synced sessions, scored by power, pace, swim pace or session effort.`;
     case 'estimate':
-      return 'An estimate from your recent weekly hours. Replace it if you know your number.';
+      return 'An estimate from your recent weekly hours.';
     case 'entered':
       return 'Entered by you.';
     default:
@@ -186,7 +186,7 @@ export function startFitness({
     };
   }
 
-  let why = 'An estimate from your recent weekly hours. Replace it if you know your number.';
+  let why = 'An estimate from your recent weekly hours.';
   if (sync && !enough) {
     why = `Fewer than ${HISTORY_THRESHOLDS.minCovered} weeks of synced sessions so far, so this is an estimate from your recent weekly hours.`;
   } else if (sync && enough && !scoreable) {

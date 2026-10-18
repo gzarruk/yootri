@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  parseISO, toISO, addDays, mondayOf, weeksUntil, nextMonday, snapToMonday,
+  parseISO, toISO, addDays, mondayOf, weeksUntil, nextMonday, snapToMonday, sayDate,
 } from '../assets/coach/dates.js';
 
 /* Week counting decides how long a season is, so it has to be exact. All of it
@@ -123,4 +123,12 @@ test('an unreadable chosen start falls back to the default', () => {
 test('snapToMonday with no today only snaps forward', () => {
   assert.equal(snapToMonday('2026-10-14'), '2026-10-19');
   assert.equal(snapToMonday('2026-10-19'), '2026-10-19');
+});
+
+test('sayDate writes a date as words, in English, whatever the locale', () => {
+  assert.equal(sayDate('2026-10-19'), '19 Oct 2026');
+  assert.equal(sayDate('2027-01-05'), '5 Jan 2027');
+  assert.equal(sayDate('2026-12-31'), '31 Dec 2026');
+  assert.equal(sayDate('nonsense'), 'nonsense');
+  assert.equal(sayDate(undefined), 'undefined');
 });

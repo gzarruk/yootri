@@ -924,6 +924,29 @@
     color: color-mix(in srgb, var(--color-text) 62%, transparent); }
   .imp-facts dd { margin: 0; font-size: .88rem; font-variant-numeric: tabular-nums; }
 
+  /* ---- The target on screen: styles ---- */
+  .amb { display: flex; gap: .65rem; align-items: flex-start; padding: .65rem .8rem; margin: 0 0 .5rem; cursor: pointer;
+    border: 1px solid color-mix(in srgb, var(--color-text) 14%, transparent); border-radius: 10px; }
+  .amb:has(input:checked) { border-color: var(--color-accent); background: color-mix(in srgb, var(--color-accent) 8%, transparent); }
+  .amb input { margin-top: .22rem; }
+  .amb > span { display: flex; flex-direction: column; gap: .15rem; font-size: .86rem; }
+  .amb small { font-size: .75rem; line-height: 1.4; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+  .tgt { margin: .9rem 0 .3rem; padding: .7rem .85rem; border-radius: 10px; font-size: .82rem; line-height: 1.5;
+    background: color-mix(in srgb, var(--color-text) 5%, transparent);
+    border-left: 3px solid color-mix(in srgb, var(--color-accent) 60%, transparent); }
+  .tgt-short { border-left-color: var(--color-danger); }
+  .tgt p { margin: 0 0 .35rem; }
+  .tgt ul { margin: .3rem 0 0; padding-left: 1.1rem; }
+  .tgt-edit { display: flex; gap: .5rem; align-items: flex-end; flex-wrap: wrap; margin: .5rem 0 .4rem; }
+  .tgt-edit .pnl-f { width: 9.5rem; }
+  .tgt-spark { width: 100%; height: 70px; display: block; margin: .5rem 0 .1rem; }
+  .race-label { margin: 0 0 .8rem; padding: .5rem .85rem; border-radius: 10px; font-size: .84rem;
+    display: flex; flex-wrap: wrap; gap: .2rem .9rem; align-items: baseline;
+    background: color-mix(in srgb, var(--color-accent) 7%, transparent); }
+  .race-label:empty { display: none; }
+  .race-label b { font-weight: 600; }
+  .race-label .rl-dim { color: color-mix(in srgb, var(--color-text) 62%, transparent); }
+
   /* ---- Logging what actually happened ---- */
   .log-sec { margin-top: .2rem; padding-top: .85rem;
     border-top: 1px solid color-mix(in srgb, var(--color-text) 10%, transparent); }
@@ -1236,6 +1259,8 @@
     <div id="orient-root"></div>
     <div id="advice-root"></div>
 
+    <div class="race-label" id="race-label" aria-label="The race this season is for"></div>
+
     <div class="summary" id="summary"></div>
 
     <div class="dstrip" id="dstrip" role="group" aria-label="Day of this week"></div>
@@ -1387,7 +1412,7 @@
      a browser (`npm test`). This file keeps the markup, styles and DOM. */
   import {
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
-    landingsOf, freshWeek, isUntouchedPlan, carryOver, upcomingEvents,
+    landingsOf, landingsDetail, freshWeek, isUntouchedPlan, carryOver, upcomingEvents, leversFor,
   } from './assets/coach/plan.js';
   import { PLANNED, FITNESS_BANDS, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline } from './assets/coach/fitness.js';
   import { racePreparation } from './assets/coach/preparation.js';
@@ -1395,7 +1420,7 @@
   import { normalizeNight, mergeOvernight, overnightNights, overnightSyncWindow, compareNights } from './assets/coach/overnight.js';
   import {
     STEPS as WIZARD_STEPS, prefill, stepProblems, racePreview, athleteFromAnswers,
-    buildPlanFromAnswers, planReview, isReturning,
+    buildPlanFromAnswers, planReview, isReturning, startFitnessFor,
   } from './assets/coach/onboarding.js';
   import {
     normalizeAthlete, mergeAthletes, athleteGaps, wattsPerKg, isEmptyAthlete,
@@ -1423,8 +1448,10 @@
   import {
     RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES, raceTypeLabel,
     normalizeEvents, upsertEvent, removeEvent,
-    goalEvent, eventsByDate, raceFieldsOf, seedEventsFromProfile, hasTaper,
+    goalEvent, eventsByDate, raceFieldsOf, seedEventsFromProfile, hasTaper, AMBITIONS, DEFAULT_AMBITION,
   } from './assets/coach/events.js';
+  import { AMBITION_INFO, ambitionOptions, describeTarget } from './assets/coach/targets.js';
+  import { startFitness, startNote } from './assets/coach/startfit.js';
   import { suggest } from './assets/coach/adapt.js';
   import { runTurn } from './assets/coach/agent.js';
   import { PROVIDERS, getProvider, resolveModel } from './assets/coach/providers.js';
@@ -2530,6 +2557,7 @@
     renderToolbar();
     renderStatus();
     renderAdvice();
+    renderRaceLabel();
     renderSummary();
     renderViewBody();
     renderChart();
@@ -2992,6 +3020,9 @@
       '</div>' +
       '<div class="pnl-grid">' +
         field('Race distance', '<select class="input" id="ev-type"></select>') +
+        field('How hard to aim', '<select class="input" id="ev-amb"></select>') +
+        field('Time you expect', '<input type="text" class="input" id="ev-time" placeholder="e.g. 5:30" value="' +
+          esc(ev.expectedMinutes ? minToDur(ev.expectedMinutes) : '') + '" />') +
       '</div>' +
       '<p class="pnl-hint" id="ev-hint"></p>' +
       '<div class="pnl-act">' +
@@ -3019,6 +3050,19 @@
       });
     };
 
+    /* How hard to aim belongs to the race the season is built for and nothing
+       else, and what it sets — the target — depends on the distance, so the
+       choices are rebuilt with it. The time expected is any race's own. */
+    const renderAim = () => {
+      const isMain = $('ev-kind').value === 'race' && $('ev-prio').value === 'primary';
+      const opts = ambitionOptions($('ev-type').value);
+      const keep = $('ev-amb').value || (AMBITIONS.includes(ev.ambition) ? ev.ambition : DEFAULT_AMBITION);
+      $('ev-amb').innerHTML = opts.map((o) => '<option value="' + esc(o.key) + '"' + (o.key === keep ? ' selected' : '') + '>' +
+        esc(o.label + ' — target ' + o.target) + '</option>').join('');
+      $('ev-amb').closest('.pnl-f').classList.toggle('hidden', !isMain || !opts.length);
+      $('ev-time').closest('.pnl-f').classList.toggle('hidden', $('ev-kind').value !== 'race');
+    };
+
     const sync = () => {
       const isRace = $('ev-kind').value === 'race';
       // Only a race has a distance or a priority: a priority is an instruction
@@ -3027,12 +3071,14 @@
       $('ev-prio').closest('.pnl-f').classList.toggle('hidden', !isRace);
       if (!isRace) $('ev-prio').value = 'none';
       renderTypes();
+      renderAim();
       renderEventHint();
     };
     $('ev-kind').addEventListener('change', sync);
     $('ev-date').addEventListener('change', renderEventHint);
-    $('ev-type').addEventListener('change', renderEventHint);
-    $('ev-prio').addEventListener('change', () => { renderTypes(); renderEventHint(); });
+    $('ev-type').addEventListener('change', () => { renderAim(); renderEventHint(); });
+    $('ev-prio').addEventListener('change', () => { renderTypes(); renderAim(); renderEventHint(); });
+    $('ev-time').addEventListener('input', renderEventHint);
     $('ev-cancel').addEventListener('click', closePanel);
     $('ev-save').addEventListener('click', () => saveEventFromPanel(ev.id));
     if (existing) $('ev-del').addEventListener('click', () => applyEvents(removeEvent(state.events, ev.id)));
@@ -3071,7 +3117,7 @@
        than describing the rule again here — the two saying different things is
        the failure worth designing out. */
     const at = weekIndexOf(state.start, date);
-    const taper = hasTaper({ raceType: $('ev-type').value });
+    const taper = hasTaper({ raceType: $('ev-type').value, expectedMinutes: durToMin($('ev-time').value.trim()) || undefined });
     const { applied, refused } = planLandings({ weeks: totalWeeks(), landings: [{ absWeek: at, taper }] });
     if (applied.length && !taper) {
       el.innerHTML = 'That race is short enough to need no taper week, so week <b>' + (at + 1) +
@@ -3103,8 +3149,9 @@
     if (!date) { $('ev-hint').innerHTML = 'An event needs a date.'; return; }
     const kind = $('ev-kind').value;
     const priority = $('ev-prio').value;
-    // Edited in place: what the panel does not show (the ambition, the athlete's
-    // expected time) is kept, not rebuilt from nothing.
+    const isMain = kind === 'race' && priority === 'primary';
+    const minutes = kind === 'race' ? durToMin($('ev-time').value.trim()) : 0;
+    // Edited in place: what the panel does not show is kept, not rebuilt from nothing.
     applyEvents(upsertEvent(state.events, {
       ...(state.events.find((x) => x.id === id) || {}),
       id,
@@ -3113,6 +3160,10 @@
       kind,
       raceType: kind === 'race' ? $('ev-type').value : null,
       priority: kind === 'race' && priority !== 'none' ? priority : null,
+      // The ambition is the main race's; a race that is not one has none. The
+      // time expected is the athlete's own and may be cleared.
+      ambition: isMain && AMBITIONS.includes($('ev-amb').value) ? $('ev-amb').value : undefined,
+      expectedMinutes: minutes > 0 ? minutes : undefined,
     }), id);
   }
 
@@ -3126,14 +3177,19 @@
     const goal = goalEvent(next);
     const race = raceFieldsOf(next);
     const landedIn = (events) =>
-      JSON.stringify(landingsOf({ start: state.start, events }).sort((a, b) => a - b));
+      JSON.stringify(landingsDetail({ start: state.start, events }).sort((a, b) => a.absWeek - b.absWeek));
+    // How hard to aim, and how long a race is expected to take, change what the
+    // season is built to: the target, and whether a tune-up gets a taper.
+    const aimed = (events) => JSON.stringify(normalizeEvents(events).filter((e) => e.priority)
+      .map((e) => [e.id, e.ambition ?? null, e.expectedMinutes ?? null]));
 
     const movesTheSeason = (!!goal &&
       (race.raceDate !== plan.profile.raceDate ||
         (!!race.raceType && race.raceType !== plan.profile.raceType))) ||
       // A tune-up race takes a taper week and a race week out of the block it
       // falls in, which is as much a change to the training as moving the date.
-      landedIn(plan.events) !== landedIn(next);
+      landedIn(plan.events) !== landedIn(next) ||
+      aimed(plan.events) !== aimed(next);
 
     if (!movesTheSeason) {
       state.events = next;
@@ -3157,9 +3213,14 @@
     // out where the tune-up races land, so handing it the old ones would build
     // the season the athlete is trying to change.
     const runway = race.raceDate ? weeksUntil(state.start, race.raceDate) : null;
+    // A change of race is one of the changes that builds a season to a target:
+    // a plan sized the old way is offered one here, from where the athlete starts.
+    const startNow = plan.target ? null : startFor();
     draft = refit({ ...plan, events: next }, {
       profile,
       keepBefore: trainedWeeks(),
+      upgrade: true,
+      ...(startNow ? { start: startNow } : {}),
       // Only a race the season is aimed at can move its length. With none, the
       // weeks already built stay as they are — they have already been trained.
       ...(runway ? { weeks: runway } : {}),
@@ -3453,6 +3514,132 @@
     }
   }
 
+  /* ---- Target: what the season was built to arrive with ---------------------
+
+     A season built to a target (backplan.js) records the fitness it was built
+     to arrive with on race day, the fitness the athlete started from and where
+     that figure came from, and whether the target can be reached. This draws
+     that — in the wizard's review, in Plan setup, in the review of a change,
+     above the calendar and on the Fitness chart — from what the engine returns,
+     and writes nothing. What is said when a target cannot be reached is
+     describeTarget's: plainly, with the choices the athlete has and none of them
+     promised. The figures are estimates from planned sessions, and say so. */
+
+  const tgtToday = () => toISO(new Date());
+  const tgtNum = (n) => String(Math.round(n));
+  const ambitionLabel = (key) => AMBITION_INFO[key]?.label ?? '';
+
+  /* Where this plan's athlete would start from if it were built to a target
+     now: their synced sessions on the plan, or an estimate from About you.
+     startFitness takes no heart-rate store and none is given one. */
+  function startFor(entered) {
+    const r = startFitness({
+      today: tgtToday(), activities: plan.activities, activitySync: plan.activitySync,
+      benchmarks: plan.benchmarks, loadRefs: plan.loadRefs, athlete: loadAthlete(), entered,
+    });
+    return r.ctl === null ? null : r;
+  }
+
+  /* The target's numbers: what it aims at, what it asks, where the athlete
+     starts and what the plan reaches. */
+  function targetFactsHTML(target, ambition) {
+    const f = target.feasibility;
+    return '<dl class="imp-facts">' +
+      '<div><dt>Aiming for</dt><dd>' + esc(ambitionLabel(ambition) || '—') + '</dd></div>' +
+      '<div><dt>Target on race day</dt><dd>' + tgtNum(target.ctl) + '</dd></div>' +
+      '<div><dt>Where you start</dt><dd>' + tgtNum(target.start.ctl) + '</dd></div>' +
+      (f ? '<div><dt>The plan reaches</dt><dd>about ' + tgtNum(f.achievableCtl) + '</dd></div>' : '') +
+    '</dl>';
+  }
+
+  /* What describeTarget says, as a block: whether the target can be reached,
+     what is in the way if not, and what would change that. */
+  function targetBlockHTML(target, levers) {
+    const d = describeTarget({ target, levers });
+    if (!d) return '';
+    return '<div class="tgt tgt-' + d.state + '"><p><b>' + esc(d.headline) + '</b></p>' +
+      (d.detail ? '<p>' + esc(d.detail) + '</p>' : '') +
+      (d.choices.length ? '<p>What would change that:</p><ul>' + d.choices.map((c) => '<li>' + esc(c) + '</li>').join('') + '</ul>' : '') +
+    '</div>';
+  }
+
+  /* Planned fitness week by week against the target, small enough for a review. */
+  function targetSparkHTML(season, target) {
+    const vals = season.map((w) => w.ctl);
+    if (vals.length < 2 || !vals.every(Number.isFinite)) return '';
+    const top = Math.max(target.ctl, ...vals) * 1.1;
+    const X = (i) => 10 + (i * 980) / (vals.length - 1);
+    const Y = (v) => 62 - (v / top) * 58;
+    const line = 'fill: none; vector-effect: non-scaling-stroke; ';
+    return '<svg class="tgt-spark" viewBox="0 0 1000 64" preserveAspectRatio="none" role="img" aria-label="Planned fitness, an estimate, by week: from ' +
+        tgtNum(vals[0]) + ' to ' + tgtNum(vals[vals.length - 1]) + ', against a target of ' + tgtNum(target.ctl) + '.">' +
+      '<line x1="0" x2="1000" y1="' + Y(target.ctl).toFixed(1) + '" y2="' + Y(target.ctl).toFixed(1) + '" style="' + line + 'stroke: var(--color-accent-300); stroke-width: 1.5; stroke-dasharray: 5 4"></line>' +
+      '<polyline points="' + vals.map((v, i) => X(i).toFixed(1) + ',' + Y(v).toFixed(1)).join(' ') + '" style="' + line + 'stroke: var(--color-accent); stroke-width: 2.5"></polyline>' +
+    '</svg>' +
+    '<p class="pnl-hint" style="margin-top:0">Planned fitness by week, an estimate, against the target (dashed).</p>';
+  }
+
+  /* The race this season is for, above the week and the month: its name, the
+     day, how far off it is and, when the season was built to a target, that
+     target and where the plan gets to. */
+  function raceLabelHTML() {
+    const main = goalEvent(state.events);
+    if (!main) return '';
+    const days = Math.round((parseISO(main.date) - parseISO(tgtToday())) / 86400000);
+    const when = days > 13 ? 'in ' + Math.round(days / 7) + ' weeks' : days > 1 ? 'in ' + days + ' days'
+      : days === 1 ? 'tomorrow' : days === 0 ? 'today' : 'has passed';
+    const kind = raceTypeLabel(main.raceType);
+    const name = (main.name || '').trim();
+    const t = plan.target;
+    const f = t && t.feasibility;
+    return '<span><b>A race</b> · ' + esc(name && kind && name !== kind ? name + ' · ' + kind : (name || kind || 'Race')) + '</span>' +
+      '<span>' + esc(fmtLongDate(main.date)) + '</span>' +
+      '<span class="rl-dim">' + when + '</span>' +
+      (t ? '<span>Target fitness <b>' + tgtNum(t.ctl) + '</b></span>' : '') +
+      (f && !f.feasible ? '<span class="rl-dim">the plan reaches about ' + tgtNum(f.achievableCtl) + '</span>' : '');
+  }
+  function renderRaceLabel() {
+    const el = $('race-label');
+    if (el) el.innerHTML = raceLabelHTML();
+  }
+
+  /* Plan setup's target section: how hard to aim, where the athlete starts and
+     what the season now says about both. A season sized the old way is offered a
+     target here; previewing builds it, and the review shows exactly that. */
+  function setupTargetHTML() {
+    const main = goalEvent(state.events);
+    const opts = main ? ambitionOptions(plan.profile.raceType) : [];
+    if (!opts.length) return '';
+    const t = plan.target;
+    const current = AMBITIONS.includes(main.ambition) ? main.ambition : DEFAULT_AMBITION;
+    const estimate = t ? null : startFor();
+    const startCtl = t ? t.start.ctl : estimate && estimate.ctl;
+    let levers = null;
+    if (t && t.feasibility && !t.feasibility.feasible) {
+      try { levers = leversFor(plan); } catch (e) { console.error(e); }
+    }
+    const typed = t && t.start.source === 'entered' ? t.start.ctl : '';
+    return '<div class="pnl-sec" id="f-target">' +
+      '<h3 class="pnl-h3" style="margin-top:0">Target fitness</h3>' +
+      (t ? '' : '<p class="pnl-hint">This season was sized by the time you have each day, not by what the race calls for. ' +
+        (estimate ? 'It can be built to a target instead.' : 'Give the hours a week you train now in About you, and it can be built to a target.') + '</p>') +
+      (!t && estimate
+        ? '<label class="np-check"><input type="checkbox" id="f-target-on" checked /><span>Build this season to a target fitness when I preview changes.</span></label>'
+        : '') +
+      '<div class="pnl-grid">' +
+        field('How hard to aim', '<select class="input" id="f-ambition">' +
+          opts.map((o) => '<option value="' + esc(o.key) + '"' + (o.key === current ? ' selected' : '') + '>' + esc(o.label + ' — target ' + o.target) + '</option>').join('') + '</select>') +
+        field('Your fitness today', '<input type="number" class="input" id="f-startctl" min="0" max="200" step="1" value="' + esc(typed) +
+          '" placeholder="' + (startCtl !== null && startCtl !== undefined ? tgtNum(startCtl) : '') + '" />') +
+      '</div>' +
+      '<p class="pnl-hint">' + esc((t ? startNote(t.start) : estimate && estimate.note) || '') +
+        ' Type your own number in the box to replace it' + (typed !== '' ? '; clear the box to use the estimate' : '') +
+        '. The ranges the targets come from are illustrative, not findings.</p>' +
+      (t ? targetFactsHTML(t, current) + targetBlockHTML(t, levers) : '') +
+    '</div>';
+  }
+  /* ---- end of Target ---- */
+
   const SPREAD_LABELS = {
     proportional: 'Spread in the same proportions',
     weekend: 'Go to the weekend',
@@ -3494,9 +3681,12 @@
         ? '<p class="pnl-hint">About you says you have no pool and no open water. Set <b>Max swims / week</b> to 0 ' +
           'if you cannot swim at all, and the swim time goes to the other sports.</p>'
         : '') +
-      '<p class="pnl-hint">The season builds up to your biggest week — the time you have each day, below, added up — and tapers from it. It prescribes <b>' +
-        (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
+      '<p class="pnl-hint">' + (plan.target
+        ? 'The season is built to the target below, and no week asks for more than the time you have each day, added up. '
+        : 'The season builds up to your biggest week — the time you have each day, below, added up — and tapers from it. ') +
+        'It prescribes <b>' + (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
       '<p class="pnl-hint fit-warn" id="f-fit"></p>' +
+      setupTargetHTML() +
       '<div class="pnl-sec">' +
         '<span class="pnl-sub" style="display:block">Time available each day (minutes)</span>' +
         '<div class="pnl-days">' +
@@ -3634,11 +3824,40 @@
       constraints,
     });
 
-    draft = refit(plan, { profile, keepBefore: trainedWeeks() });
-    // The distance is still set here, and the goal event holds one too — write
-    // it across so the two can never disagree about the same race.
-    draft.events = state.events.map((e) => (e.priority === 'primary' ? { ...e, raceType: profile.raceType } : e));
+    // The distance and the ambition are set here and held by the goal event too:
+    // they go in before the refit reads them, so the two can never disagree
+    // about the same race.
+    const picked = $('f-ambition') ? $('f-ambition').value : null;
+    const events = state.events.map((e) => (e.priority === 'primary'
+      ? { ...e, raceType: profile.raceType, ...(AMBITIONS.includes(picked) ? { ambition: picked } : {}) } : e));
+
+    // A season with a target starts from the figure it was built from, unless a
+    // number is typed. One sized the old way is built to a target only if asked.
+    const typedStart = $('f-startctl') && $('f-startctl').value.trim() !== '' ? Number($('f-startctl').value) : NaN;
+    const entered = Number.isFinite(typedStart) && typedStart >= 0 && typedStart <= 200
+      ? { ctl: typedStart, source: 'entered', asOf: tgtToday() } : null;
+    const upgrade = !plan.target && !!$('f-target-on') && $('f-target-on').checked;
+    const start = entered || (upgrade ? startFor() : null);
+
+    draft = refit({ ...plan, events }, {
+      profile, keepBefore: trainedWeeks(),
+      ...(plan.target || upgrade ? { upgrade: true, ...(start ? { start } : {}) } : {}),
+    });
     renderDiff(diffPlans(plan, draft));
+  }
+
+  /* What the change would leave the season built to, and whether it can be
+     reached — said before the athlete applies it, not after. */
+  function draftTargetHTML() {
+    if (!draft || !draft.target) return '';
+    const main = goalEvent(normalizeEvents(draft.events));
+    let levers = null;
+    if (draft.target.feasibility && !draft.target.feasibility.feasible) {
+      try { levers = leversFor(draft); } catch (e) { console.error(e); }
+    }
+    return '<h3 class="pnl-h3">Target fitness</h3>' +
+      (plan.target ? '' : '<p class="pnl-hint">This also builds the season to a target fitness. ' + esc(startNote(draft.target.start)) + '</p>') +
+      targetFactsHTML(draft.target, main && main.ambition) + targetBlockHTML(draft.target, levers);
   }
 
   function renderDiff(d, onBack = openSetupPanel) {
@@ -3673,6 +3892,11 @@
         '</div>'
       : '';
 
+    // A change can leave every week as it is and still change what the season is
+    // built to — a different level of ambition, a number typed for where the
+    // athlete starts — and that is a change worth applying.
+    const targetMoves = !!draft && (JSON.stringify(draft.target || null) !== JSON.stringify(plan.target || null) ||
+      JSON.stringify(normalizeEvents(draft.events)) !== JSON.stringify(normalizeEvents(plan.events)));
     const delta = d.totalDeltaMinutes;
     // Moving the goal event re-lengthens the season, which nothing could do
     // before — and "49 of 16 weeks change" is not a sentence. When the runway
@@ -3688,21 +3912,21 @@
         (d.weeks.length
           ? scope +
             (delta ? ', season volume ' + (delta > 0 ? '+' : '−') + fmtTotal(Math.abs(delta)) : '')
-          : 'Nothing changes') + '.</p>' +
+          : targetMoves ? 'No week changes, but what the season is built to does' : 'Nothing changes') + '.</p>' +
       (d.weeks.length
         ? '<ul class="diff-list">' + rows + '</ul>'
-        : '<p class="diff-empty">This fit produces the plan you already have.</p>') +
-      issues +
+        : targetMoves ? '' : '<p class="diff-empty">This fit produces the plan you already have.</p>') +
+      issues + draftTargetHTML() +
       '<div class="pnl-act">' +
         '<button type="button" class="btn btn-ghost spacer" id="d-back">Back</button>' +
         '<button type="button" class="btn btn-ghost" id="d-cancel">Discard</button>' +
         '<button type="button" class="btn btn-primary" id="d-apply"' +
-          (d.blocked || !d.weeks.length ? ' disabled' : '') + '>Apply</button>' +
+          (d.blocked || (!d.weeks.length && !targetMoves) ? ' disabled' : '') + '>Apply</button>' +
       '</div>',
     );
     $('d-back').addEventListener('click', onBack);
     $('d-cancel').addEventListener('click', closePanel);
-    if (!d.blocked && d.weeks.length) $('d-apply').addEventListener('click', applyRefit);
+    if (!d.blocked && (d.weeks.length || targetMoves)) $('d-apply').addEventListener('click', applyRefit);
   }
 
   function applyRefit() {
@@ -4437,7 +4661,7 @@
 
   const WIZ_TITLES = {
     welcome: 'Welcome', about: 'About you', background: 'Your training', thresholds: 'Your numbers',
-    week: 'Your week', races: 'Your races', goal: 'Your goal', review: 'Your season',
+    week: 'Your week', races: 'Your races', ambition: 'How hard to build', goal: 'Your goal', review: 'Your season',
   };
 
   function renderWizard() {
@@ -4561,7 +4785,7 @@
     background() {
       const a = wiz.answers;
       return '<h2>Your training</h2>' +
-        '<p class="pnl-sub">Where you are starting from. Optional — it is kept as your own record; the season is sized by the week you give on a later step.</p>' +
+        '<p class="pnl-sub">Where you are starting from. The hours a week are needed: the season is built up from where you are now. The rest is optional and only nudges that starting point.</p>' +
         '<div class="pnl-grid">' +
           field('Hours a week, lately', wnum('wz-hours', a.recentWeeklyHours, 'min="0.5" max="40" step="0.5" placeholder="e.g. 7"')) +
           field('Years in triathlon', wnum('wz-years', a.yearsInSport, 'min="0" max="80"')) +
@@ -4572,7 +4796,8 @@
         '</div>' +
         (a.prefilledFrom?.recentWeeklyHours === 'garmin'
           ? '<p class="pnl-hint">Hours a week were read from your synced Garmin weeks. Change them if they do not look right.</p>' : '') +
-        '<p class="pnl-hint">Only hours a week is needed. The rest is kept with About you and not used for planning yet.</p>';
+        '<p class="pnl-hint">Years in triathlon and your background in each sport nudge the estimate of where your fitness starts. ' +
+          'Your longest ride and run are kept with About you and not used for planning yet.</p>';
     },
 
     thresholds() {
@@ -4600,7 +4825,7 @@
       const a = wiz.answers;
       const dayOpts = DAYS.map((d) => [d, d]);
       return '<h2>Your week</h2>' +
-        '<p class="pnl-sub">The most you could train on each day, in minutes. A day at 0 is a rest day. Your biggest week is these days added up: the season builds up to it and tapers from it, and no week goes past it.</p>' +
+        '<p class="pnl-sub">The most you could train on each day, in minutes. A day at 0 is a rest day. These days added up are the most any week of the season will ask of you: the season is built to what the race calls for, inside this.</p>' +
         '<div class="pnl-days">' +
           DAYS.map((d) => '<label>' + d + '<input type="number" class="input" data-wzday="' + d + '" min="0" max="600" step="15" value="' +
             (a.availability?.[d] || 0) + '" /></label>').join('') +
@@ -4640,7 +4865,9 @@
           field('Name', '<input type="text" class="input" id="wz-rname" placeholder="e.g. Ironman 70.3 Cascais" value="' + esc(r.name || '') + '" />') +
           field('Date', '<input type="date" class="input" id="wz-racedate" value="' + esc(r.date || '') + '" />') +
           field('Distance', '<select class="input" id="wz-racetype">' + raceTypeOptions(r.raceType || '70.3', { keepRetired: false }) + '</select>') +
+          field('Plan starts', '<input type="date" class="input" id="wz-startdate" value="' + esc(preview.startISO || '') + '" />') +
         '</div>' +
+        '<p class="pnl-hint">A plan starts on a Monday. A date that is not one moves to the next, and a plan never starts in the past.</p>' +
         (preview.weeks
           ? '<p class="np-len">That is a <b>' + preview.weeks + '-week</b> season, built backwards from race week so the taper lands on it.' +
               (preview.longRunway ? ' A runway this long opens with extra preparation weeks before the base blocks.' : '') + '</p>'
@@ -4648,6 +4875,25 @@
         '<h3 class="pnl-h3">B races (fitness tests)</h3>' +
         (tuneRows || '<p class="pnl-hint">None yet. A B race of more than two hours gets a taper week of its own; a shorter one only clears its own day.</p>') +
         '<div class="pnl-act" style="justify-content:flex-start"><button type="button" class="btn btn-secondary" id="wz-addtune">Add a B race</button></div>';
+    },
+
+    ambition() {
+      const a = wiz.answers;
+      const r = a.race || {};
+      const opts = ambitionOptions(r.raceType);
+      const current = AMBITIONS.includes(a.ambition) ? a.ambition : DEFAULT_AMBITION;
+      const band = opts[0] && opts[0].band;
+      return '<h2>How hard to build</h2>' +
+        '<p class="pnl-sub">The season is built to arrive at a level of fitness on race day. Choose how much to aim for; ' +
+          'you can change it later in Plan setup.</p>' +
+        (opts.length
+          ? opts.map((o) => '<label class="amb"><input type="radio" name="wz-amb" value="' + esc(o.key) + '"' + (o.key === current ? ' checked' : '') + ' />' +
+              '<span><b>' + esc(o.label) + ' — target fitness ' + o.target + '</b><small>' + esc(o.blurb) + '</small></span></label>').join('')
+          : '<p class="pnl-hint">There is no range for that distance, so the season is sized by the time you have each day.</p>') +
+        '<p class="pnl-hint">Fitness here is the 42-day average of training load, the number the Fitness chart draws' +
+          (band ? '; the illustrative range for ' + esc(raceTypeLabel(r.raceType)) + ' runs from ' + band.lo + ' to ' + band.hi : '') +
+          '. The ranges are not findings, and the figures are estimates from planned sessions. ' +
+          'This is separate from the finish-or-a-time goal on the next step.</p>';
     },
 
     goal() {
@@ -4665,6 +4911,20 @@
   };
 
   const WIZ_STEP_BIND = {
+    review() {
+      // Where the season starts from can be replaced with a number of the athlete's own.
+      const set = $('wz-startctl-set');
+      if (!set) return;
+      set.addEventListener('click', () => {
+        const x = $('wz-startctl').value.trim();
+        if (x === '') { delete wiz.answers.startCtlEntered; } else wiz.answers.startCtlEntered = Number(x);
+        wiz.problems = stepProblems('review', wiz.answers, { today: wizToday() });
+        wizSave();
+        renderWizard();
+      });
+      const clear = $('wz-startctl-clear');
+      if (clear) clear.addEventListener('click', () => { delete wiz.answers.startCtlEntered; wizSave(); renderWizard(); });
+    },
     races() {
       $('wz-addtune').addEventListener('click', () => {
         readWizardStep();
@@ -4677,7 +4937,7 @@
         renderWizard();
       }));
       // The season length and any refused taper are worth seeing as the date is typed.
-      for (const id of ['wz-racedate', 'wz-racetype']) $(id).addEventListener('change', () => { readWizardStep(); renderWizard(); });
+      for (const id of ['wz-racedate', 'wz-racetype', 'wz-startdate']) $(id).addEventListener('change', () => { readWizardStep(); renderWizard(); });
       els.panelRoot.querySelectorAll('[data-wztune][data-k="date"]').forEach((i) =>
         i.addEventListener('change', () => { readWizardStep(); renderWizard(); }));
     },
@@ -4726,11 +4986,18 @@
         break;
       case 'races':
         a.race = { name: v('wz-rname') || '', date: v('wz-racedate') || '', raceType: v('wz-racetype') };
+        // The default start is not an answer: only a date the athlete changed it to is kept.
+        a.startDate = v('wz-startdate') && v('wz-startdate') !== nextMonday(wizToday()) ? v('wz-startdate') : undefined;
         a.tuneUps = (a.tuneUps || []).map((t, i) => {
           const pick = (k) => { const el = els.panelRoot.querySelector('[data-wztune="' + i + '"][data-k="' + k + '"]'); return el ? el.value.trim() : t[k]; };
           return { name: pick('name'), date: pick('date'), raceType: pick('raceType') };
         });
         break;
+      case 'ambition': {
+        const picked = els.panelRoot.querySelector('input[name="wz-amb"]:checked');
+        a.ambition = picked ? picked.value : undefined;
+        break;
+      }
       case 'goal':
         Object.assign(a, { goal: v('wz-goal') || undefined, goalTime: mins('wz-goaltime'), planName: v('wz-pname') || '' });
         break;
@@ -4751,6 +5018,23 @@
     const week = r.firstWeek.filter((x) => x.disc !== 'Rest');
     const issues = r.issues.filter((x) => x.level === 'error' || x.code !== 'budget-shortfall');
     const race = goalEvent(normalizeEvents(built.events));
+    const withLevers = built.target && built.target.feasibility && !built.target.feasibility.feasible
+      ? planReview(built, { levers: true }) : r;
+    const start = built.target ? startFitnessFor(wiz.answers, { today: wizToday(), now: now(), base: wizBase() }) : null;
+    const entered = wiz.answers.startCtlEntered !== undefined && wiz.answers.startCtlEntered !== '';
+    const targetHTML = built.target
+      ? '<h3 class="pnl-h3">Target fitness</h3>' +
+        targetFactsHTML(built.target, race.ambition) +
+        '<p class="pnl-hint">' + esc(start ? start.note : '') + '</p>' +
+        '<div class="tgt-edit">' +
+          field('Your fitness today', '<input type="number" class="input" id="wz-startctl" min="0" max="200" step="1" value="' +
+            esc(entered ? wiz.answers.startCtlEntered : '') + '" placeholder="' + tgtNum(built.target.start.ctl) + '" />') +
+          '<button type="button" class="btn btn-secondary" id="wz-startctl-set">Use this number</button>' +
+          (entered ? '<button type="button" class="btn btn-ghost" id="wz-startctl-clear">Use the estimate</button>' : '') +
+        '</div>' +
+        targetSparkHTML(built.season, built.target) +
+        targetBlockHTML(built.target, withLevers.levers)
+      : '';
     return {
       blocked: r.blocked,
       html: '<h2>Your season</h2>' +
@@ -4763,6 +5047,7 @@
           '<div><dt>Biggest week</dt><dd>' + peak + ' h</dd></div>' +
         '</dl>' +
         '<div class="wiz-bars" aria-label="Planned hours each week">' + bars + '</div>' +
+        targetHTML +
         '<h3 class="pnl-h3">Week 1</h3>' +
         '<ul class="wiz-list">' + week.map((x) => '<li><b>' + esc(x.day) + '</b> · ' + esc(x.disc) + ' ' + esc(x.dur) + ' — ' + esc(x.focus) + '</li>').join('') + '</ul>' +
         (issues.length
@@ -7120,6 +7405,12 @@
     const raceW = fs.race ? Math.min(last, fs.race.week) : last;
     const raceV = fs.race ? fs.race.fit : fs.weeks[last].planned;
     svg += dot(X(raceW), Y(raceV), 'var(--color-accent-300)', 'var(--color-surface)');
+    // What the season was built to arrive with: a mark on race day at the target.
+    if (plan.target) {
+      const ty = f1(Y(plan.target.ctl));
+      svg += '<line x1="' + f1(X(last) - 34) + '" y1="' + ty + '" x2="' + f1(X(last) + 34) + '" y2="' + ty +
+        '" stroke-linecap="round" style="stroke: var(--color-text); stroke-width: 3; vector-effect: non-scaling-stroke"></line>';
+    }
     if (fs.trend !== null) svg += dot(X(raceW), Y(fs.trend), 'var(--color-accent)', 'var(--color-surface)');
 
     const step = Math.max(1, Math.ceil(N / 16));
@@ -7177,7 +7468,8 @@
         '<div class="plot-y"><span>' + c.top + '</span><span>' + Math.round(c.top * 2 / 3) + '</span><span>' + Math.round(c.top / 3) + '</span><span>0</span></div>' +
         '<svg viewBox="0 0 1000 380" preserveAspectRatio="none" role="img" aria-label="Fitness by week. Planned fitness (an estimate) goes from ' + fs.weeks[0].planned + ' in week 1 to ' + fs.weeks[N - 1].planned + ' in week ' + N + '.' +
           (fs.today ? ' Actual fitness is ' + Math.round(fs.today.fit) + ' now.' + (fs.race ? ' The plan followed from today reaches ' + Math.round(fs.race.fit) + ' on race day.' : '') : ' There is no actual line yet.') +
-          (fs.trend !== null ? ' On the current trend it reaches ' + Math.round(fs.trend) + ' on race day.' : '') + ' ' +
+          (fs.trend !== null ? ' On the current trend it reaches ' + Math.round(fs.trend) + ' on race day.' : '') +
+          (plan.target ? ' The plan target is ' + Math.round(plan.target.ctl) + ' on race day.' : '') + ' ' +
           BANDS.map((b) => b.name + ' band, illustrative, runs ' + b.lo + ' to ' + b.hi).join(', ') + '.">' + c.svg + '</svg>' +
         '<div class="bands" aria-hidden="true">' + c.bands + '</div>' +
         '<div class="plot-x">' + c.xlab + '</div>' +
@@ -7188,6 +7480,7 @@
         '<span class="lg">' + swatch('var(--color-accent-300)', 2, LINE_DASH.planned) + 'Planned, estimated <span>' + whole(fs.weeks[N - 1].planned) + ' in week ' + N + '</span></span>' +
         (fs.race ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.followed) + 'Plan from today <span>' + whole(fs.race.fit) + ' on race day</span></span>' : '') +
         (fs.trend !== null ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.trend) + 'On current trend <span>' + whole(fs.trend) + ' on race day</span></span>' : '') +
+        (plan.target ? '<span class="lg">' + swatch('var(--color-text)', 3) + 'Plan target <span>' + whole(plan.target.ctl) + ' on race day</span></span>' : '') +
         '<span class="lg">' + swatch('var(--color-text)', 1.5, null, 0.5) + 'Race day, week ' + N + '</span>' +
       '</div>' + preparationHTML(fs);
 
@@ -7259,6 +7552,7 @@
       '<p class="pnl-sub">Every session gets one load number, where an hour at threshold is 100: from power for rides, pace for runs and swims, effort rating for strength, and heart rate when nothing better exists.</p>' +
       '<p class="pnl-hint"><b>Fitness</b> is the average of that over the last 42 days and <b>fatigue</b> the average over the last 7. ' +
         '<b>Form</b> is fitness minus fatigue. They are worked out each time the page opens from sessions synced through your Garmin bridge, and are never stored or put on your plan.</p>' +
+      '<p class="pnl-hint">A season built to a target keeps that <b>target</b>, and the figure it started from, on your plan: the mark on race day is the target. Nothing else here is stored.</p>' +
       '<p class="pnl-hint">The <b>planned</b> line and the <b>race day</b> figures cannot be measured, so each planned session is scored from its length and zone with one fixed intensity per zone. ' +
         'The <b>trend</b> carries today’s figures to race day with the rest of the plan done at the rate of the last four weeks. The cut-offs for low and high form and the bands are starting values, not findings.</p>' +
       '<div class="pnl-act"><button type="button" class="btn btn-primary" id="ffm-close">Close</button></div>',

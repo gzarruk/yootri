@@ -23,7 +23,8 @@
    highest level is one of the words on it. */
 
 import { FITNESS_BANDS } from './fitness.js';
-import { AMBITIONS, DEFAULT_AMBITION, TAPER_MIN_MINUTES, raceMinutes } from './events.js';
+import { AMBITIONS, DEFAULT_AMBITION, TAPER_MIN_MINUTES, raceMinutes, raceTypeLabel } from './events.js';
+import { sayDate } from './dates.js';
 
 const freeze = (o) => {
   for (const v of Object.values(o)) if (v && typeof v === 'object') freeze(v);
@@ -124,4 +125,100 @@ export function taperDepth(event) {
   let depth = 0;
   for (const tier of PLAN_MODEL.taper) if (minutes > tier.over) depth = tier.depth;
   return depth;
+}
+
+/** What each level is, in words the athlete chooses by. The names are the
+    stored keys' display text; the stored keys never change. */
+export const AMBITION_INFO = freeze({
+  finish: {
+    label: 'Finish',
+    blurb: 'Reach the start line prepared to finish. The lightest of the three builds.',
+  },
+  intermediate: {
+    label: 'Intermediate',
+    blurb: 'A solid build for a solid race: the middle of the illustrative range for the distance.',
+  },
+  competitive: {
+    label: 'Competitive',
+    blurb: 'Build as much fitness as the illustrative range for the distance reaches. The most training of the three.',
+  },
+});
+
+/**
+ * The levels on offer for a race, each with the target it sets: `[{ key, label,
+ * blurb, target, band }]`, empty for a distance the chart has no band for.
+ */
+export function ambitionOptions(raceType) {
+  const band = FITNESS_BANDS.find((b) => b.key === raceType);
+  if (!band) return [];
+  return AMBITIONS.map((key) => ({
+    key, ...AMBITION_INFO[key], target: targetCtl(raceType, key), band: { lo: band.lo, hi: band.hi },
+  }));
+}
+
+const BLOCKED_BY = {
+  availability: 'The time you have each week is the limit. More weeks would not close the gap.',
+  runway: 'There are not enough weeks to build safely from where you are now.',
+  ramp: 'The weeks you have pinned or already trained leave too little room to climb.',
+};
+
+/**
+ * What to tell the athlete about a plan's target, in words and as plain text:
+ * `{ state, headline, detail, choices }`, or null for a plan with no target.
+ *
+ * `state` is `reached`, `hold` (they are already above it) or `short`. A target
+ * that cannot be reached is said to be out of reach, how far short the plan
+ * falls and what stands in the way; with `levers` (backplan.js `planLevers`) it
+ * also lists what would change that, each of them worked out and none promised,
+ * and ends by saying the goal may be kept. The figures are estimates, and are
+ * called so: they describe planned training, not the athlete.
+ */
+export function describeTarget({ target, levers = null } = {}) {
+  const f = target?.feasibility;
+  if (!target || !f) return null;
+  const goal = Math.round(target.ctl);
+  const reaches = Math.round(f.achievableCtl);
+
+  if (f.status === 'hold') {
+    return {
+      state: 'hold',
+      headline: `You are already at or above the fitness this race calls for (${goal}).`,
+      detail: `The plan holds what you have rather than building more; it reaches about ${reaches} on race day. That is an estimate from the planned sessions.`,
+      choices: [],
+    };
+  }
+  if (f.feasible) {
+    return {
+      state: 'reached',
+      headline: `Built to arrive at a fitness of ${goal} on race day.`,
+      detail: `The plan reaches about ${reaches}. That is an estimate from the planned sessions and describes training, not you.`,
+      choices: [],
+    };
+  }
+
+  const choices = [];
+  if (levers) {
+    if (levers.ambition) {
+      const a = levers.ambition;
+      choices.push(`Aim at the ${AMBITION_INFO[a.ambition]?.label ?? a.ambition} level instead: a fitness of ${Math.round(a.targetCtl)} can be reached.`);
+    }
+    if (levers.distance) {
+      const d = levers.distance;
+      choices.push(`Choose a shorter race: ${raceTypeLabel(d.raceType)} at the ${AMBITION_INFO[d.ambition]?.label ?? d.ambition} level (${Math.round(d.targetCtl)}) can be reached.`);
+    }
+    if (levers.raceDate) {
+      const r = levers.raceDate;
+      choices.push(`Allow more time: a race${r.raceDate ? ` on ${sayDate(r.raceDate)}` : ''}, ${r.weeks} weeks from the start, would work.`);
+    }
+    if (levers.hours) {
+      choices.push(`Train more: about ${levers.hours.weeklyHours} hours a week would do it.`);
+    }
+    choices.push('Or keep this goal: the plan above is the best that can be built.');
+  }
+  return {
+    state: 'short',
+    headline: `A fitness of ${goal} is out of reach as things stand: this plan reaches about ${reaches} on race day, ${Math.round(f.shortfall)} short.`,
+    detail: BLOCKED_BY[f.limitingFactor] ?? '',
+    choices,
+  };
 }
