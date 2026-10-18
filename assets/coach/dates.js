@@ -34,6 +34,43 @@ export function mondayOf(iso) {
   return toISO(addDays(d, -since));
 }
 
+/* The first Monday on or after `iso`. Internal: the two public starts below
+   differ only in what they feed it. */
+function mondayOnOrAfter(iso) {
+  const d = parseISO(iso);
+  if (!d) return null;
+  const until = (8 - d.getUTCDay()) % 7; // 0 on a Monday
+  return toISO(addDays(d, until));
+}
+
+/**
+ * Where a new plan starts by default: the first Monday on or after tomorrow.
+ *
+ * Not `mondayOf(today)`. That is the Monday *before* today, which is right for
+ * "which week is this date in" and wrong for "where does a plan begin": on a
+ * Sunday it starts the plan six days ago, in a week that is over. A plan
+ * starts on a Monday that has not happened yet, and not on today even when
+ * today is one, since today is already under way.
+ */
+export function nextMonday(today) {
+  const d = parseISO(today);
+  if (!d) return null;
+  return mondayOnOrAfter(toISO(addDays(d, 1)));
+}
+
+/**
+ * A start date the athlete chose, made a Monday that is not in the past. It
+ * snaps *forward* — a Tuesday goes to the next week, never back to the Monday
+ * already gone — and a date before today goes to the first Monday on or after
+ * today. Unlike the default, today itself is allowed when it is a Monday: the
+ * athlete asked for it. A date that cannot be read gives the default.
+ */
+export function snapToMonday(iso, { today } = {}) {
+  if (!parseISO(iso)) return today ? nextMonday(today) : null;
+  const from = parseISO(today) && iso < today ? today : iso;
+  return mondayOnOrAfter(from);
+}
+
 /**
  * How many whole weeks a season starting at `startISO` needs to reach — and
  * include — the week containing `raceISO`. Returns null when either date is

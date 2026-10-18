@@ -172,11 +172,15 @@ export function dailyLoads(activities, thresholds, hrById = new Map()) {
 /**
  * An exponentially weighted average over every day from `from` to `to`, a day
  * with no activity counting as zero. `k = 1 − e^(−1/days)`.
+ *
+ * It starts from `seed` — the average the day before `from` — which is zero
+ * unless a caller knows better. A window shorter than the average's own span
+ * reads low from zero, so the caller that has a level to start from says so.
  */
-export function ewma(byDate, { from, to, days }) {
+export function ewma(byDate, { from, to, days, seed = 0 }) {
   const k = 1 - Math.exp(-1 / days);
   const out = [];
-  let v = 0;
+  let v = seed;
   for (let d = parseISO(from), end = parseISO(to); d && end && d <= end; d = addDays(d, 1)) {
     const iso = toISO(d);
     v += k * ((byDate?.[iso] ?? 0) - v);
