@@ -59,6 +59,7 @@ function surfaces() {
     // The plan's target and the figure it starts from: the notes the athlete reads.
     'targets.js': read('../assets/coach/targets.js'),
     'startfit.js': read('../assets/coach/startfit.js'),
+    'backplan.js': read('../assets/coach/backplan.js'),
     'bridge overnight.py': read('../tools/garmin-bridge/garmin_bridge/overnight.py'),
     'bridge messages': BRIDGE_ERROR_CODES.map((c) => bridgeErrorMessage(c)).join('\n'),
   };

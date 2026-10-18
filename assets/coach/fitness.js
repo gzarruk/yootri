@@ -36,7 +36,7 @@ import { parseISO, toISO, addDays } from './dates.js';
 import { dateOf, weekIndexOf } from './calendar.js';
 import { durToMin } from './duration.js';
 import { LOAD, dailyLoads, ewma } from './load.js';
-import { normalizeEvents, secondaryRaces, raceLoad } from './events.js';
+import { plannedRaceLoads } from './races.js';
 
 export const PLANNED = Object.freeze({
   // One intensity (a share of threshold) for each zone, evenly spaced so that
@@ -100,7 +100,7 @@ export function raceFormPosition(form) {
 
 const EMPTY = Object.freeze({
   hasHistory: false, scored: 0, unscored: 0, missing: [], unestimated: 0,
-  today: null, race: null, trend: null, adherence: null, weeks: [],
+  today: null, race: null, plannedRace: null, trend: null, adherence: null, weeks: [],
 });
 const empty = () => ({ ...EMPTY, missing: [], weeks: [] });
 
@@ -112,11 +112,7 @@ const empty = () => ({ ...EMPTY, missing: [], weeks: [] });
 function plannedByDate(plan, weeks) {
   const byDate = {};
   let unestimated = 0;
-  const last = dateOf(plan.start, weeks - 1, 'Sun');
-  for (const ev of secondaryRaces(normalizeEvents(plan.events))) {
-    const load = raceLoad(ev);
-    if (load !== null && ev.date >= plan.start && ev.date <= last) byDate[ev.date] = (byDate[ev.date] ?? 0) + load;
-  }
+  for (const [iso, load] of Object.entries(plannedRaceLoads(plan, weeks))) byDate[iso] = load;
   for (let w = 0; w < weeks; w++) {
     const sessions = plan.weeks?.[`w${w}`];
     for (const s of Array.isArray(sessions) ? sessions : []) {
@@ -184,9 +180,16 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
   // A plan that has not begun yet starts from where the athlete is today: the
   // days between are not modelled, and zero would draw a plan for someone with
   // no fitness at all.
+  //
+  // With no history there is still somewhere to start from if the plan was built
+  // from a fitness figure (`target.start.ctl`, which the planner stores): the
+  // line then begins where the plan began, not at nothing.
   const dayBefore = toISO(addDays(parseISO(start), -1));
   const seedDay = dayBefore > today ? today : dayBefore;
-  const seed = covers && seedDay >= from ? at(chronic, seedDay) : 0;
+  const storedStart = Number(plan.target?.start?.ctl);
+  const planStart = Number.isFinite(storedStart) && storedStart >= 0 && storedStart <= 400 && plan.target.start.ctl !== null
+    ? storedStart : 0;
+  const seed = covers && seedDay >= from ? at(chronic, seedDay) : planStart;
   const plannedChronic = new Map();
   carry({ fit: seed, fat: 0 }, dayBefore, dateOf(start, N - 1, 'Sun'), (iso) => planned.byDate[iso] ?? 0,
     (iso, s) => plannedChronic.set(iso, s.fit));
@@ -257,9 +260,17 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
     };
   });
 
+  // Race day as the plan alone takes the athlete there: the same planned
+  // average, on the race date itself. `race` above is that from where they are
+  // today and needs history; this needs only the plan, and the figure it was
+  // built from if it has one.
+  const plannedRace = plannedChronic.has(raceDate)
+    ? { date: raceDate, week: weekIndexOf(start, raceDate), fit: round1(plannedChronic.get(raceDate)) }
+    : null;
+
   return {
     hasHistory, scored: d.scored, unscored: d.unscored, missing: Object.keys(d.missing),
-    unestimated: planned.unestimated, today: todayOut, race, trend, adherence, weeks,
+    unestimated: planned.unestimated, today: todayOut, race, plannedRace, trend, adherence, weeks,
   };
 }
 

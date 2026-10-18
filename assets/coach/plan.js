@@ -17,12 +17,14 @@ import { validateSeason } from './validate.js';
 import { durToMin, REST_DUR } from './duration.js';
 import { DAYS } from './profile.js';
 import { weeksUntil } from './dates.js';
-import { weekIndexOf, weekdayOf } from './calendar.js';
-import { normalizeEvents, secondaryRaces, seedEventsFromProfile, hasTaper } from './events.js';
+import { normalizeEvents, seedEventsFromProfile } from './events.js';
+import { landingsDetail, raceClosure } from './races.js';
 import { normalizeBenchmarks } from './paces.js';
 import { normalizeActivities, normalizeActivitySync } from './synced.js';
 import { normalizeLoadRefs } from './load.js';
 import { setActual } from './actuals.js';
+
+export { landingsOf, landingsDetail, raceDayFor, raceClosure } from './races.js';
 
 const clone = (x) => structuredClone(x);
 const weekKey = (absWeek) => `w${absWeek}`;
@@ -181,71 +183,8 @@ export function weekTotals(plan) {
   );
 }
 
-/* ---- Where the races fall -------------------------------------------------
-   The two functions the calendar and the season model meet in. Everything else
-   in this file counts weeks; events are dated. Both take anything carrying
-   `start` and `events`, so a plan being built works as well as a stored one.
-
-   Both normalize on the way in. `loadPlan` deliberately does not — events are
-   the page's to clean — so an imported file or a coach-written list could
-   otherwise reach the season model with a priority on a non-race. */
-
-/** The absolute weeks the plan's secondary races fall in — what `fitToRace`
-    lands a taper and race week on. The primary race is not among them: it is
-    the week the whole runway already ends on. */
-export function landingsOf(plan) {
-  return secondaryRaces(normalizeEvents(plan?.events))
-    .map((ev) => weekIndexOf(plan?.start, ev.date))
-    .filter((w) => Number.isInteger(w));
-}
-
-/**
- * The same landings with what each one needs: `{ absWeek, taper }`, where
- * `taper` is false for a race short enough to be a hard day in the build
- * (events.js `hasTaper`) and so gets neither a taper week nor a race week. This
- * is what `planLandings` and the planner are given; `landingsOf` is the weeks
- * alone, for a caller that only wants to know where the races are.
- */
-export function landingsDetail(plan) {
-  return secondaryRaces(normalizeEvents(plan?.events))
-    .map((ev) => ({ absWeek: weekIndexOf(plan?.start, ev.date), taper: hasTaper(ev) }))
-    .filter((l) => Number.isInteger(l.absWeek));
-}
-
-/**
- * The weekday a race falls on in a given week, or null when none does.
- *
- * Every race the athlete marked counts here, including one the season model
- * turned down for a taper: they are racing that day either way, so the week
- * should not schedule training on it. A marker with no priority does not — it
- * changes nothing by definition.
- *
- * Two races in one week give the earlier day, which is the conservative answer.
- */
-export function raceDayFor(plan, absWeek) {
-  return normalizeEvents(plan?.events)
-    .filter((ev) => ev.kind === 'race' && ev.priority && weekIndexOf(plan?.start, ev.date) === absWeek)
-    .map((ev) => weekdayOf(ev.date))
-    .filter(Boolean)
-    .sort((a, b) => DAYS.indexOf(a) - DAYS.indexOf(b))[0] ?? null;
-}
-
-/**
- * What a week's races close, in the terms `generateWeek` takes: `raceDay`, the
- * earliest race day in the week (or null), and `raceOnly`, true when every race
- * that week is short enough to need no taper, so only its own day is cleared.
- * The race the season is built for, and any race with a taper, clears the rest
- * of its week as well. Two races of different kinds in one week clear from the
- * earlier day on: the conservative answer, as `raceDayFor` gives.
- */
-export function raceClosure(plan, absWeek) {
-  const raceDay = raceDayFor(plan, absWeek);
-  if (!raceDay) return { raceDay: null, raceOnly: false };
-  const races = normalizeEvents(plan?.events)
-    .filter((ev) => ev.kind === 'race' && ev.priority && weekIndexOf(plan?.start, ev.date) === absWeek);
-  const raceOnly = races.length > 0 && races.every((ev) => ev.priority === 'secondary' && !hasTaper(ev));
-  return { raceDay, raceOnly };
-}
+/* Where the races fall — `landingsOf`, `landingsDetail`, `raceDayFor` and
+   `raceClosure` — is in races.js and handed back above. */
 
 /**
  * One week's sessions, built afresh from the season the plan already stores.

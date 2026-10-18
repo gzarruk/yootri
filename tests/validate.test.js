@@ -411,3 +411,13 @@ test('a long day a constraint rules out is said too', () => {
   const weeks = [{ absWeek: 0, block: 'Base 1', hours: 8, sessions: [] }];
   assert.ok(codes(validateSeason(weeks, { profile: p })).includes('long-day-unavailable'));
 });
+
+/* The planner builds weeks against the ceilings the validator holds them to, so
+   it reads them from here rather than keeping its own copy. */
+
+import { MAX_RAMP, MAX_BLOCK_STEP } from '../assets/coach/validate.js';
+
+test('the volume steps the validator allows are exported for the planner to read', () => {
+  assert.equal(MAX_RAMP, 1.1, 'a loading week may be 10% above the last one within a block');
+  assert.equal(MAX_BLOCK_STEP, 1.25, 'and a new block may open 25% above the last block\'s hardest week');
+});

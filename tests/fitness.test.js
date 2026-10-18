@@ -324,3 +324,66 @@ test('the projection to race day counts a tune-up that is still ahead', () => {
   const withIt = fitnessSeries({ ...base, events: [{ id: 'ev-t', date: dayISO(30), kind: 'race', raceType: '70.3', priority: 'secondary' }] }, { today: TODAY, thresholds: T });
   assert.ok(withIt.race.fit > without.race.fit);
 });
+
+/* ---- where the plan alone takes the athlete ---- */
+
+test('with nothing synced, the planned line starts from the fitness the plan was built from', () => {
+  const seeded = plan({ target: { start: { ctl: 60 } } });
+  const r = fitnessSeries(seeded, { today: TODAY, thresholds: T });
+  const zero = fitnessSeries(plan(), { today: TODAY, thresholds: T });
+  assert.ok(r.weeks[0].planned > zero.weeks[0].planned + 40, `week 1 is ${r.weeks[0].planned}, from 60, not ${zero.weeks[0].planned}, from nothing`);
+  assert.ok(r.weeks[0].planned < 60 + 5, 'and it moves toward what the week asks, not away');
+});
+
+test('a figure that is not a number is not a seed', () => {
+  const zero = fitnessSeries(plan(), { today: TODAY, thresholds: T }).weeks.map((w) => w.planned);
+  for (const ctl of [null, undefined, 'lots', -5, NaN]) {
+    assert.deepEqual(fitnessSeries(plan({ target: { start: { ctl } } }), { today: TODAY, thresholds: T }).weeks.map((w) => w.planned), zero, String(ctl));
+  }
+});
+
+test('synced history from before the plan began still wins over the stored start', () => {
+  // Two weeks of rides before the plan, then the plan's own weeks.
+  const earlier = Array.from({ length: 38 }, (_, n) => ride(n - 14));
+  const sync = { source: 'garmin', from: dayISO(-14), through: TODAY };
+  const a = fitnessSeries(plan({ activities: earlier, activitySync: sync }), { today: TODAY, thresholds: T });
+  const b = fitnessSeries(plan({ activities: earlier, activitySync: sync, target: { start: { ctl: 120 } } }), { today: TODAY, thresholds: T });
+  assert.deepEqual(b.weeks.map((w) => w.planned), a.weeks.map((w) => w.planned));
+});
+
+test('history that begins with the plan leaves the stored start as the plan\'s own', () => {
+  // The synced line cannot say where the athlete stood before its first day; the plan can.
+  const { activities, sync } = history();
+  const withStart = fitnessSeries(plan({ activities, activitySync: sync, target: { start: { ctl: 30 } } }), { today: TODAY, thresholds: T });
+  const without = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  assert.ok(withStart.weeks[0].planned > without.weeks[0].planned);
+});
+
+test('the plan alone says where fitness is on race day, with no history at all', () => {
+  const r = fitnessSeries(plan({ target: { start: { ctl: 40 } } }), { today: TODAY, thresholds: T });
+  assert.equal(r.race, null, 'the projection from today still needs history');
+  assert.equal(r.plannedRace.date, '2026-10-17');
+  assert.equal(r.plannedRace.week, 5);
+  assert.ok(r.plannedRace.fit > 40, 'six weeks of an hour a day from 40');
+  const sunday = r.weeks[5].planned;
+  assert.ok(Math.abs(r.plannedRace.fit - sunday) < 1, 'the Saturday and the Sunday of that week are a day apart');
+});
+
+test('planned race-day fitness is the value on the race date, not the end of its week', () => {
+  const p = plan({ target: { start: { ctl: 40 } }, profile: { raceDate: '2026-10-14', raceType: '70.3' } });  // a Wednesday of week 6
+  const r = fitnessSeries(p, { today: TODAY, thresholds: T });
+  const sunday = r.weeks[5].planned;
+  assert.notEqual(r.plannedRace.fit, sunday, 'four more days of an hour a day change it');
+  assert.equal(r.plannedRace.date, '2026-10-14');
+});
+
+test('with no race date, race day is the last day of the season', () => {
+  const r = fitnessSeries(plan({ profile: { raceDate: null, raceType: '70.3' } }), { today: TODAY, thresholds: T });
+  assert.equal(r.plannedRace.date, '2026-10-18');
+  assert.equal(r.plannedRace.fit, r.weeks[5].planned);
+});
+
+test('a race date outside the plan has no planned race day', () => {
+  const r = fitnessSeries(plan({ profile: { raceDate: '2027-06-01', raceType: '70.3' } }), { today: TODAY, thresholds: T });
+  assert.equal(r.plannedRace, null);
+});
