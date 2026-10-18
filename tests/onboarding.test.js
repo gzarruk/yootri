@@ -94,10 +94,19 @@ test('every step of a well-filled wizard has nothing to say', () => {
   for (const step of STEPS) assert.deepEqual(stepProblems(step, filled(), { today: TODAY }), [], step);
 });
 
-test('recent weekly hours are optional, but a nonsense figure is refused', () => {
-  assert.deepEqual(stepProblems('background', filled({ recentWeeklyHours: undefined }), { today: TODAY }), []);
-  const p = stepProblems('background', filled({ recentWeeklyHours: 90 }), { today: TODAY });
+test('recent weekly hours are asked for, because the season is built up from where the athlete is', () => {
+  const p = stepProblems('background', filled({ recentWeeklyHours: undefined }), { today: TODAY });
   assert.deepEqual(p.map((x) => x.field), ['recentWeeklyHours']);
+  assert.match(p[0].message, /hours a week/i);
+  assert.deepEqual(stepProblems('background', filled({ recentWeeklyHours: 90 }), { today: TODAY }).map((x) => x.field), ['recentWeeklyHours'], 'and a nonsense figure is refused');
+});
+
+test('a fitness the athlete types stands in for the hours', () => {
+  assert.deepEqual(stepProblems('background', filled({ recentWeeklyHours: undefined, startCtlEntered: 70 }), { today: TODAY }), []);
+  assert.deepEqual(stepProblems('review', filled({ startCtlEntered: 70 }), { today: TODAY }), []);
+  for (const bad of [-5, 250, 'lots']) {
+    assert.deepEqual(stepProblems('review', filled({ startCtlEntered: bad }), { today: TODAY }).map((x) => x.field), ['startCtlEntered'], String(bad));
+  }
 });
 
 test('an impossible body measurement or threshold is named, not stored', () => {
@@ -404,4 +413,104 @@ test('the review reports a refused taper, not a short race', () => {
   assert.equal(planReview(short).issues.some((i) => i.code === 'race-in-primary-taper'), false);
   const long = buildPlanFromAnswers(filled({ tuneUps: [{ name: 'Close', date: '2027-05-09', raceType: 'marathon' }] }), { today: TODAY, now: 1 });
   assert.equal(planReview(long).issues.some((i) => i.code === 'race-in-primary-taper'), true);
+});
+
+/* ---- a season built to a target ---- */
+
+import { fitnessSeries } from '../assets/coach/fitness.js';
+
+const raceRead = (p) => fitnessSeries(p, { today: TODAY }).plannedRace.fit;
+
+test('the plan the wizard builds records its target and where the athlete starts', () => {
+  const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
+  assert.equal(p.target.ctl, 75, 'a 70.3 with no ambition given: the middle of its band');
+  assert.equal(p.target.start.source, 'estimate');
+  assert.equal(p.target.start.ctl, 62.9, 'eight hours a week, from About you');
+  assert.equal(goalEvent(normalizeEvents(p.events)).ambition, 'intermediate');
+  assert.ok(Math.abs(raceRead(p) - 75) <= 2, `race-day fitness reads ${raceRead(p)}`);
+});
+
+test('the ambition the athlete chose sets the target', () => {
+  for (const [ambition, ctl] of [['finish', 60], ['intermediate', 75], ['competitive', 90]]) {
+    const p = buildPlanFromAnswers(filled({ ambition }), { today: TODAY, now: 1 });
+    assert.equal(p.target.ctl, ctl, ambition);
+    assert.equal(goalEvent(normalizeEvents(p.events)).ambition, ambition);
+  }
+  assert.equal(buildPlanFromAnswers(filled({ ambition: 'fast' }), { today: TODAY, now: 1 }).target.ctl, 75, 'a level that is not one is the default');
+});
+
+test('an Olympic season is built to the Olympic band', () => {
+  const p = buildPlanFromAnswers(filled({ race: { date: '2027-03-14', raceType: 'olympic' }, ambition: 'competitive' }), { today: TODAY, now: 1 });
+  assert.equal(p.target.ctl, 70);
+  assert.equal(p.profile.raceType, 'olympic');
+});
+
+test('a fitness the athlete typed is where it starts from, and says so', () => {
+  const p = buildPlanFromAnswers(filled({ startCtlEntered: 72 }), { today: TODAY, now: 1 });
+  assert.equal(p.target.start.ctl, 72);
+  assert.equal(p.target.start.source, 'entered');
+});
+
+test('a returning athlete\'s synced history is where they start from, when it can be scored', () => {
+  const day = (n) => new Date(Date.UTC(2026, 8, 1) + n * 86400000).toISOString().slice(0, 10);       // from 1 Sep
+  const activities = Array.from({ length: 40 }, (_, n) => ({
+    id: `garmin:${n}`, source: 'garmin', date: day(n), disc: 'Bike', durationS: 3600, normPowerW: 200,
+  }));
+  const base = { ...newPlan({ name: 'Old', startISO: '2026-08-31', now: 1 }), activities, activitySync: { source: 'garmin', from: day(0), through: day(39), at: 1 } };
+  const p = buildPlanFromAnswers(filled({ ftpW: 250 }), { today: TODAY, now: 1, base });
+  assert.equal(p.target.start.source, 'garmin');
+  assert.ok(Math.abs(p.target.start.ctl - 64) < 3, `a steady 64 a day: ${p.target.start.ctl}`);
+  assert.ok(p.target.start.coveredWeeks >= 3);
+  const unscoreable = buildPlanFromAnswers(filled({ ftpW: undefined }), { today: TODAY, now: 1, base });
+  assert.equal(unscoreable.target.start.source, 'estimate', 'with no FTP the rides cannot be scored, so the hours are used');
+});
+
+test('the inputs the start was worked out from are not on the plan; only the figure is', () => {
+  const p = buildPlanFromAnswers(filled({ yearsInSport: 6, levels: { Swim: 'some', Bike: 'strong', Run: 'some' }, heightCm: 170 }), { today: TODAY, now: 1 });
+  const text = JSON.stringify(p);
+  for (const re of [/recentWeeklyHours/, /yearsInSport/, /weightKg/, /heightCm/, /birthYear/, /"levels"/, /"sex"/]) assert.doesNotMatch(text, re);
+  assert.deepEqual(Object.keys(p.target.start).sort(), ['asOf', 'coveredWeeks', 'ctl', 'source']);
+});
+
+test('nothing derived from heart rate is on a plan the wizard builds', () => {
+  const text = JSON.stringify(buildPlanFromAnswers(filled(), { today: TODAY, now: 1 }));
+  for (const re of [/avgHr/i, /maxHr/i, /heart/i, /hrById/i, /trimp/i]) assert.doesNotMatch(text, re);
+});
+
+test('tune-ups are landed inside a season built to a target, and it still arrives', () => {
+  const p = buildPlanFromAnswers(filled({ tuneUps: [
+    { name: 'Marathon', date: '2027-01-30', raceType: 'marathon' },
+    { name: '10k', date: '2027-03-06', raceType: '10k' },
+  ] }), { today: TODAY, now: 1 });
+  assert.ok(p.season.some((w) => w.block === 'Taper'), 'the marathon is tapered for');
+  assert.ok(Math.abs(raceRead(p) - 75) <= 2, `race-day fitness reads ${raceRead(p)}`);
+});
+
+test('a plan the wizard builds has no more asked of any week than the athlete has', () => {
+  const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
+  const week = Object.values(emptyAnswers().availability).reduce((a, b) => a + b, 0) / 60;
+  assert.ok(Math.max(...p.season.map((w) => w.hours)) <= week + 0.01);
+});
+
+test('the review carries the target, and what would make it reachable only when asked', () => {
+  const ok = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
+  assert.equal(planReview(ok).target.ctl, 75);
+  assert.equal(planReview(ok, { levers: true }).levers, null, 'nothing to offer when it can be reached');
+  const tight = buildPlanFromAnswers(filled({
+    race: { date: '2027-04-03', raceType: 'ironman' }, ambition: 'competitive',
+    availability: { Mon: 0, Tue: 60, Wed: 60, Thu: 60, Fri: 60, Sat: 120, Sun: 90 },
+  }), { today: TODAY, now: 1 });
+  const r = planReview(tight);
+  assert.equal(r.target.feasibility.feasible, false);
+  assert.equal(r.levers, null, 'and not worked out unless asked');
+  const withLevers = planReview(tight, { levers: true });
+  assert.ok(withLevers.levers.distance, 'a different goal is offered');
+  assert.equal(withLevers.blocked, false, 'an unreachable target does not block the plan');
+});
+
+test('a season built without a start still reviews, with no target', () => {
+  const a = filled({ recentWeeklyHours: undefined });
+  const p = buildPlanFromAnswers(a, { today: TODAY, now: 1 });
+  assert.equal(p.target, undefined);
+  assert.equal(planReview(p).target, null);
 });

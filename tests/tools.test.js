@@ -1043,3 +1043,133 @@ test('a season already built for a sprint goes on being edited', () => {
   const again = call(s, 'set_event_priority', { event_id: idOf(s, 'Race day'), priority: 'primary' });
   assert.equal(again.isError, false, 'saying it is the main race again changes nothing');
 });
+
+/* ---- a season built to a target ---- */
+
+import { targetCtl as targetOf } from '../assets/coach/targets.js';
+
+const TWELVE_H = { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 };
+const targetSeason = (over = {}) => newPlan({
+  name: 'Season', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: '70.3', ambition: 'intermediate',
+  startFitness: { ctl: 50, source: 'estimate', asOf: '2026-11-01' }, profile: { availability: TWELVE_H }, now: 1, ...over,
+});
+
+test('the plan summary says what the season was built to arrive with', () => {
+  const s = createSession(targetSeason());
+  const out = parse(call(s, 'get_plan_summary'));
+  assert.equal(out.target.ctl, 75);
+  assert.equal(out.target.start.source, 'estimate');
+  assert.equal(out.target.feasibility.feasible, true);
+  assert.equal(parse(call(createSession(racePlan()), 'get_plan_summary')).target, null, 'a plan sized the old way has none');
+});
+
+test('get_target explains the target, where it started from and whether it can be reached', () => {
+  const s = createSession(targetSeason());
+  const out = parse(call(s, 'get_target'));
+  assert.equal(out.targetFitness, 75);
+  assert.equal(out.ambition, 'intermediate');
+  assert.equal(out.startedFrom.fitness, 50);
+  assert.match(out.startedFrom.how, /estimate/i);
+  assert.equal(out.reachable, true);
+  assert.equal(out.levers, null);
+  assert.match(out.about, /training load/i, 'it says what the number is');
+  assert.equal(s.draft, null, 'a read never starts a draft');
+});
+
+test('get_target says plainly when the target cannot be reached, and what would help', () => {
+  const tight = targetSeason({
+    raceType: 'ironman', raceDate: '2027-03-21', ambition: 'competitive',
+    profile: { availability: { Mon: 0, Tue: 60, Wed: 60, Thu: 60, Fri: 60, Sat: 120, Sun: 90 } },
+  });
+  const out = parse(call(createSession(tight), 'get_target'));
+  assert.equal(out.reachable, false);
+  assert.equal(out.limitedBy, 'availability');
+  assert.ok(out.reachesAbout < out.targetFitness);
+  assert.ok(out.shortfall > 0);
+  assert.ok(out.levers.distance, 'a different goal is offered');
+  assert.match(out.advice, /different|shorter|later|more/i);
+});
+
+test('get_target on a plan with no target says how it was sized', () => {
+  const out = parse(call(createSession(racePlan()), 'get_target'));
+  assert.equal(out.targetFitness, null);
+  assert.match(out.about, /not built to a target|set it in Plan setup/i);
+});
+
+test('a week pinned on a plan with a target re-sizes the rest of the season around it', () => {
+  const s = createSession(targetSeason());
+  const r = call(s, 'set_week_budget', { week: 9, hours: 4 });
+  assert.equal(r.isError, false);
+  assert.equal(s.draft.season[8].hours, 4);
+  assert.deepEqual(s.draft.season.map((w) => w.ctl).every(Number.isFinite), true, 'with its fitness kept up to date');
+  assert.ok(s.draft.target.feasibility.feasible, 'one light week is made up');
+  assert.notDeepEqual(s.draft.season.slice(9).map((w) => w.hours), s.plan.season.slice(9).map((w) => w.hours));
+});
+
+test('a pin that puts the target out of reach is said to', () => {
+  const s = createSession(targetSeason());
+  for (let w = 4; w <= 13; w++) call(s, 'set_week_budget', { week: w, hours: 3 });
+  const r = call(s, 'set_week_budget', { week: 14, hours: 3 });
+  assert.equal(s.draft.target.feasibility.feasible, false);
+  assert.match(r.content, /out of reach|cannot be reached|not be reached/i);
+  assert.match(r.content, /pinned weeks|pins/i, 'and what is in the way');
+});
+
+test('a week pinned on a plan with no target is pinned and rebuilt as it always was', () => {
+  const s = createSession(racePlan());
+  call(s, 'set_week_budget', { week: 9, hours: 4 });
+  assert.equal(s.draft.season[8].hours, 4);
+  assert.equal('target' in s.draft, false);
+});
+
+test('changing the hours on a plan with a target re-sizes it to the target, and says if it cannot be reached', () => {
+  const s = createSession(targetSeason());
+  const r = call(s, 'set_availability', { day: 'Sat', minutes: 30 });
+  assert.equal(r.isError, false);
+  assert.equal(s.draft.target.ctl, 75);
+  assert.ok(s.draft.season.every((w) => Number.isFinite(w.ctl)));
+  assert.match(r.content, /refitted/);
+});
+
+test('an event can be given an ambition, and an expected time, after the fact', () => {
+  const s = createSession(targetSeason());
+  const main = idOf(s, 'Race day');
+  const r = call(s, 'set_event_details', { event_id: main, ambition: 'competitive' });
+  assert.equal(r.isError, false);
+  assert.equal(s.draft.target.ctl, targetOf('70.3', 'competitive'), 'the season is re-sized to the new target');
+  assert.match(r.content, /competitive|90/i);
+  call(s, 'add_event', tuneUp({ name: 'Lisbon' }));
+  const r2 = call(s, 'set_event_details', { event_id: idOf(s, 'Lisbon'), expected_minutes: 110 });
+  assert.equal(r2.isError, false);
+  assert.equal(parse(call(s, 'get_events')).events.find((e) => e.name === 'Lisbon').getsTaper, false);
+});
+
+test('an ambition is only for the race the season is built around, and a made-up one is refused', () => {
+  const s = createSession(targetSeason());
+  call(s, 'add_event', tuneUp({ name: 'Lisbon' }));
+  assert.equal(call(s, 'set_event_details', { event_id: idOf(s, 'Lisbon'), ambition: 'finish' }).isError, true);
+  assert.equal(call(s, 'set_event_details', { event_id: idOf(s, 'Race day'), ambition: 'fast' }).isError, true);
+  assert.equal(call(s, 'set_event_details', { event_id: idOf(s, 'Race day'), expected_minutes: 5 }).isError, true);
+  assert.equal(call(s, 'set_event_details', { event_id: idOf(s, 'Race day') }).isError, true, 'nothing to change');
+});
+
+test('a new main race can be given its ambition when it is added', () => {
+  const s = createSession(targetSeason());
+  const r = call(s, 'add_event', { name: 'Cascais', date: '2027-04-18', kind: 'race', race_type: 'ironman', priority: 'primary', ambition: 'finish' });
+  assert.equal(r.isError, false);
+  assert.equal(s.draft.target.ctl, targetOf('ironman', 'finish'));
+});
+
+test('a plan with no target stays sized as it was when the coach changes a race, unless it can start from its own history', () => {
+  const s = createSession(racePlan());
+  call(s, 'add_event', tuneUp());
+  assert.equal('target' in s.draft, false, 'with nothing to say where the athlete starts, it is left alone');
+});
+
+test('no tool puts anything derived from heart rate on a plan with a target', () => {
+  const s = createSession(targetSeason());
+  call(s, 'set_week_budget', { week: 5, hours: 6 });
+  call(s, 'set_event_details', { event_id: idOf(s, 'Race day'), ambition: 'finish' });
+  const text = JSON.stringify(s.draft);
+  for (const re of [/avgHr/i, /maxHr/i, /heart/i, /hrById/i, /trimp/i]) assert.doesNotMatch(text, re);
+});

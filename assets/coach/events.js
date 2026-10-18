@@ -343,7 +343,7 @@ export function raceFieldsOf(events) {
  * race means there is still only one place the race is recorded, and the
  * athlete sees the race they already entered rather than an empty calendar.
  */
-export function seedEventsFromProfile(profile, { id } = {}) {
+export function seedEventsFromProfile(profile, { id, ambition } = {}) {
   const date = toISO(parseISO(profile?.raceDate));
   if (!date || !id) return [];
   return normalizeEvents([{
@@ -353,5 +353,6 @@ export function seedEventsFromProfile(profile, { id } = {}) {
     kind: 'race',
     raceType: profile?.raceType,
     priority: 'primary',
+    ambition,
   }]);
 }

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import {
   releaseState, isReleased, normalizeRelease, reviewWeek, proposeNextWeek, hardestSession,
 } from '../assets/coach/review.js';
-import { newPlan, loadPlan, applyDraft, refit, sessionsAt, weekCount } from '../assets/coach/plan.js';
+import { newPlan, loadPlan, applyDraft, refit, sessionsAt, weekCount, freshWeek } from '../assets/coach/plan.js';
 import { setActual, getActual } from '../assets/coach/actuals.js';
 import { dateOf } from '../assets/coach/calendar.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -265,4 +265,75 @@ test('asking to ease a week with nothing hard in it changes nothing', () => {
   const r = proposeNextWeek(p, { today: '2026-10-12', ease: true });
   assert.equal(r.eased, null);
   assert.deepEqual(sessionsAt(r.draft, 1), sessionsAt(proposeNextWeek(p, { today: '2026-10-12' }).draft, 1));
+});
+
+/* ---- a season built to a target is re-anchored at each release ---- */
+
+const TWELVE = { Mon: 0, Tue: 75, Wed: 90, Thu: 75, Fri: 60, Sat: 240, Sun: 150 };
+const targetWeekly = (through = 0, over = {}) => ({
+  ...newPlan({
+    name: 'Season', startISO: START, raceDate: '2027-03-28', raceType: '70.3', ambition: 'intermediate',
+    startFitness: { ctl: 50, source: 'estimate', asOf: '2026-10-04' }, profile: { availability: TWELVE }, now: 1,
+  }),
+  release: { through },
+  loadRefs: { ftpW: 250 },
+  ...over,
+});
+// A steady hour of bike a day (64 load) from 1 Sep, synced through the end of week 0.
+const dayOf = (n) => new Date(Date.UTC(2026, 8, 1) + n * 86400000).toISOString().slice(0, 10);
+const steadyHistory = (through = 40) => ({
+  activities: Array.from({ length: through + 1 }, (_, n) => ({
+    id: `garmin:${n}`, source: 'garmin', date: dayOf(n), disc: 'Bike', durationS: 3600, normPowerW: 200,
+  })),
+  activitySync: { source: 'garmin', from: dayOf(0), through: dayOf(through), at: 1 },
+});
+
+test('a release re-sizes the weeks still to come from where the athlete actually is', () => {
+  const p = targetWeekly(0, steadyHistory());                       // synced through 11 Oct, the end of week 0
+  const r = proposeNextWeek(p, { today: '2026-10-12' });
+  assert.equal(JSON.stringify(r.draft.season[0]), JSON.stringify(p.season[0]), 'the week just reviewed is as it was');
+  assert.notDeepEqual(r.draft.season.slice(1).map((w) => w.hours), p.season.slice(1).map((w) => w.hours), 'the rest of the season is sized from where they are');
+  assert.equal(r.change.code, 'reanchored');
+  assert.ok(Math.abs(r.change.seasonDeltaHours) > 0, 'and it says how much more or less it now asks for');
+  assert.match(r.change.reason, /fitness/i);
+  assert.match(r.change.reason, /64/, 'naming where they got to');
+  assert.deepEqual(r.draft.target.start, p.target.start, 'it starts from the same place; only where it has got to moved');
+  assert.equal(r.draft.target.ctl, p.target.ctl, 'and the target is not lowered');
+  assert.ok(r.draft.target.feasibility.feasible);
+});
+
+test('weeks after the one released that are still what the generator made follow the re-size', () => {
+  const p = targetWeekly(0, steadyHistory());
+  const r = proposeNextWeek(p, { today: '2026-10-12' });
+  const moved = r.draft.season.findIndex((w, i) => i > 1 && w.hours !== p.season[i].hours);
+  assert.ok(moved > 1, 'a later week changed size');
+  assert.deepEqual(r.draft.weeks[`w${moved}`], freshWeek(r.draft, moved), 'and its sessions were rebuilt to match');
+  assert.notDeepEqual(r.draft.weeks[`w${moved}`], p.weeks[`w${moved}`]);
+});
+
+test('with no synced history to say where the athlete is, nothing is re-sized', () => {
+  const p = targetWeekly(0);
+  const r = proposeNextWeek(p, { today: '2026-10-12' });
+  assert.equal(r.change, null);
+  assert.deepEqual(r.draft.season, p.season);
+});
+
+test('history that does not reach the end of the reviewed week is not read as where they are', () => {
+  const p = targetWeekly(0, steadyHistory(30));                      // synced only to 1 Oct
+  assert.equal(proposeNextWeek(p, { today: '2026-10-12' }).change, null);
+});
+
+test('a plan with no target is released as it always was, history or not', () => {
+  const p = { ...weekly(0), ...steadyHistory(), loadRefs: { ftpW: 250 } };
+  const r = proposeNextWeek(p, { today: '2026-10-12' });
+  assert.equal(r.change, null);
+  assert.equal('target' in r.draft, false);
+  assert.deepEqual(r.draft.season, p.season);
+});
+
+test('the athlete\'s own ease option and the rule-based pin still work on a plan with a target', () => {
+  const p = targetWeekly(0, steadyHistory());
+  const r = proposeNextWeek(p, { today: '2026-10-12', ease: true });
+  assert.equal(r.draft.release.through, 1);
+  assert.ok(r.eased === null || r.eased.id);
 });

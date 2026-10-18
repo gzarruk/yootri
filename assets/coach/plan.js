@@ -16,8 +16,10 @@ import { generateWeek } from './generate.js';
 import { validateSeason } from './validate.js';
 import { durToMin, REST_DUR } from './duration.js';
 import { DAYS } from './profile.js';
-import { weeksUntil } from './dates.js';
-import { normalizeEvents, seedEventsFromProfile } from './events.js';
+import { weeksUntil, parseISO, toISO } from './dates.js';
+import { normalizeEvents, seedEventsFromProfile, goalEvent, AMBITIONS, DEFAULT_AMBITION } from './events.js';
+import { planSeason, planLevers } from './backplan.js';
+import { targetCtl } from './targets.js';
 import { landingsDetail, raceClosure } from './races.js';
 import { normalizeBenchmarks } from './paces.js';
 import { normalizeActivities, normalizeActivitySync } from './synced.js';
@@ -43,6 +45,7 @@ const weekKey = (absWeek) => `w${absWeek}`;
     rate loses it here, before anything can sync or export it again. */
 export function loadPlan(raw) {
   const p = migratePlan(raw);
+  const target = normalizeTarget(p.target);
   const profile = normalizeProfile(p.profile);
   const benchmarks = normalizeBenchmarks(p.benchmarks);
   const activities = normalizeActivities(p.activities);
@@ -55,8 +58,11 @@ export function loadPlan(raw) {
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (same(profile, p.profile) && same(benchmarks, p.benchmarks)
     && same(activities, p.activities) && same(activitySync, p.activitySync)
-    && same(loadRefs, p.loadRefs) && same(release, p.release) && !('athlete' in p)) return p;
+    && same(loadRefs, p.loadRefs) && same(release, p.release) && same(target, p.target) && !('athlete' in p)) return p;
   const out = { ...p, profile, benchmarks, activities };
+  // What the season was built to arrive with (normalizeTarget): kept if usable, absent if not.
+  if (target) out.target = target;
+  else delete out.target;
   // The release horizon (review.js): absent means the whole season is shown.
   if (release) out.release = release;
   else delete out.release;
@@ -74,7 +80,83 @@ export function loadPlan(raw) {
   return out;
 }
 
+/* ---- what a season was built to arrive with ------------------------------ */
+
+const FEASIBILITY_STATUSES = ['build', 'hold'];
+const LIMITING_FACTORS = ['availability', 'runway', 'ramp'];
+const START_SOURCES = ['garmin', 'estimate', 'entered'];
+const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+const tenth = (n) => Math.round(n * 10) / 10;
+
+/**
+ * A plan's `target`, cleaned: `{ ctl, start: { ctl, source, asOf?, coveredWeeks?,
+ * scoredShare? }, feasibility? }`, or undefined when it cannot be used. Total: it
+ * arrives from storage, a cloud copy and a plan file somebody edited, and must
+ * never throw. An allowlist, like every other field a plan carries that someone
+ * could put a stray value in: nothing derived from heart rate is stored here,
+ * and a hand-edited file cannot put it back.
+ *
+ * `ctl` is the chronic training load the season was built to arrive with on race
+ * day; `start` the load the athlete started from and where that figure came from
+ * (startfit.js); `feasibility` the planner's own record of whether the target
+ * could be reached, and how far short it came if not (backplan.js).
+ */
+export function normalizeTarget(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const s = raw.start;
+  if (!inRange(raw.ctl, 0.1, 400) || !s || typeof s !== 'object') return undefined;
+  if (!inRange(s.ctl, 0, 400) || !START_SOURCES.includes(s.source)) return undefined;
+
+  const start = { ctl: tenth(s.ctl), source: s.source };
+  if (typeof s.asOf === 'string' && toISO(parseISO(s.asOf)) === s.asOf) start.asOf = s.asOf;
+  if (inRange(s.coveredWeeks, 0, 60)) start.coveredWeeks = Math.round(s.coveredWeeks);
+  if (inRange(s.scoredShare, 0, 1)) start.scoredShare = Math.round(s.scoredShare * 1000) / 1000;
+
+  const out = { ctl: tenth(raw.ctl), start };
+  const f = raw.feasibility;
+  if (f && typeof f === 'object' && typeof f.feasible === 'boolean' && FEASIBILITY_STATUSES.includes(f.status)
+    && inRange(f.targetCtl, 0.1, 400) && inRange(f.achievableCtl, 0, 400) && inRange(f.shortfall, 0, 400)) {
+    out.feasibility = {
+      feasible: f.feasible,
+      status: f.status,
+      targetCtl: tenth(f.targetCtl),
+      achievableCtl: tenth(f.achievableCtl),
+      shortfall: tenth(f.shortfall),
+      limitingFactor: LIMITING_FACTORS.includes(f.limitingFactor) ? f.limitingFactor : null,
+    };
+  }
+  return out;
+}
+
 export const weekCount = (plan) => plan.season.length;
+
+/**
+ * What `planSeason` is given for a plan that has a target: its start, length,
+ * profile, events, the fitness it was built from and to, and the weeks the
+ * athlete pinned. Null for a plan with none, or with no race to aim at.
+ */
+export function targetInputOf(plan) {
+  const t = normalizeTarget(plan?.target);
+  const events = normalizeEvents(plan?.events);
+  if (!t || !goalEvent(events) || !Array.isArray(plan?.season) || !plan.season.length) return null;
+  return {
+    start: plan.start, weeks: plan.season.length, profile: normalizeProfile(plan.profile), events,
+    startCtl: t.start.ctl, targetCtl: t.ctl, weekBudgets: plan.weekBudgets ?? {},
+  };
+}
+
+/**
+ * What would make a plan's target reachable when it is not: the earliest race
+ * date, the highest lower ambition, the weekly hours, a shorter race that works
+ * (backplan.js `planLevers`). Null when the target can be reached, or the plan
+ * has none. Rebuilds the season several ways, so ask when it is to be shown.
+ */
+export function leversFor(plan) {
+  const input = targetInputOf(plan);
+  const f = normalizeTarget(plan?.target)?.feasibility;
+  if (!input || !f || f.feasible) return null;
+  return planLevers(input, { feasibility: f });
+}
 
 /**
  * A plan released one week at a time carries `release: { through }`, the last
@@ -205,8 +287,45 @@ export function freshWeek(plan, absWeek) {
   }).sessions;
 }
 
+/* Size a season to a target, or say that it cannot be: null means "size it the
+   old way". A season is built to a target when the plan already has one or the
+   caller is upgrading it, there is a race to aim at, the race's distance has a
+   band to take a target from, and there is a fitness to start from. Anything
+   the planner cannot be given sensible input for is sized the old way too — a
+   refit never throws a new kind of error. */
+function solveSeason({ start, weeks, profile, events, weekBudgets, keep, frozen, anchorCtl, startInfo, upgraded }) {
+  const list = normalizeEvents(events);
+  const main = goalEvent(list);
+  if (!main || !startInfo || !(Number(startInfo.ctl) >= 0)) return null;
+  const goal = targetCtl(profile.raceType, main.ambition);
+  if (goal === null) return null;
+  let result;
+  try {
+    result = planSeason({
+      start, weeks, profile, events: list, startCtl: Number(startInfo.ctl), targetCtl: goal,
+      weekBudgets, keepBefore: keep, frozen, anchorCtl,
+    });
+  } catch {
+    return null;
+  }
+  const target = normalizeTarget({ ctl: goal, start: startInfo, feasibility: result.feasibility });
+  if (!target) return null;
+  // A plan made before ambitions existed is read as the default level; written
+  // onto the race, it is part of what the athlete sees when they apply this.
+  const events2 = upgraded && !main.ambition
+    ? list.map((e) => (e.id === main.id ? { ...e, ambition: DEFAULT_AMBITION } : e))
+    : undefined;
+  return { season: result.season, target, events: events2 };
+}
+
 /**
  * Re-fit the plan and hand back a draft. The stored plan is untouched.
+ *
+ * A plan with a `target` is re-sized to it, by backplan.js, from the fitness it
+ * was built from. A plan with none is re-sized as it always was — **unless it
+ * is being upgraded**, which only Plan setup, a change of race and the wizard
+ * do: the weekly review and the coach's week-level tools leave a plan's sizing
+ * as they found it, so one week's change never quietly re-sizes the season.
  *
  * @param {object} plan
  * @param {object} [opts]
@@ -217,52 +336,100 @@ export function freshWeek(plan, absWeek) {
  *        they were, sessions and planned hours alike — the weeks already trained.
  *        A change to the profile or the race reshapes what is still to come, not
  *        the record of what was planned for the weeks behind it.
+ * @param {boolean} [opts.upgrade] size a plan that has no target to one, from `start`
+ * @param {object} [opts.start]   where the athlete starts: `startFitness`'s answer
+ *        (kept as `target.start`); a plan with a target uses its own unless given
+ * @param {number} [opts.anchorCtl] the athlete's fitness at the end of the last
+ *        kept week, when it is known better than the plan's own figure for it
  */
-export function refit(plan, { profile, from = 0, to = Infinity, weeks, keepBefore = 0 } = {}) {
+export function refit(plan, {
+  profile, from = 0, to = Infinity, weeks, keepBefore = 0, upgrade = false, start, anchorCtl,
+} = {}) {
   const draft = clone(plan);
   draft.profile = normalizeProfile(profile ?? plan.profile);
 
-  // Re-resolve the season whenever the budget changes. The length is kept unless
-  // a caller passes one: the race date has not moved just because the hours did,
-  // but when it *has* moved the runway genuinely changes.
-  draft.season = fitToRace({
-    peakHours: peakHoursFor(draft.profile),
-    weeks: Number.isFinite(weeks) && weeks > 0 ? Math.round(weeks) : weekCount(plan),
-    // Tune-up races come out of the block they fall in. Read off the draft, so
-    // a caller that changed the events and the profile in one go gets both.
-    landings: landingsDetail(draft),
-  });
-
-  // Reapply any pinned per-week budgets on top. Without this, "make next week
-  // 4 hours" followed by any change that refits the season would silently undo
-  // itself — including two tool calls made by the coach in the same turn.
-  const pinned = draft.weekBudgets ?? {};
-  draft.season = draft.season.map((w) => {
-    const hours = Number(pinned[weekKey(w.absWeek)]);
-    return Number.isFinite(hours) && hours >= 0 ? { ...w, hours } : w;
-  });
-
+  // The length is kept unless a caller passes one: the race date has not moved
+  // just because the hours did, but when it *has* moved the runway genuinely changes.
+  const n = Number.isFinite(weeks) && weeks > 0 ? Math.round(weeks) : weekCount(plan);
   const keep = Math.max(0, Math.floor(Number(keepBefore) || 0));
-  if (keep) {
-    draft.season = draft.season.map((w) =>
-      (w.absWeek < keep && plan.season?.[w.absWeek] ? { ...plan.season[w.absWeek], absWeek: w.absWeek } : w));
+  const pinned = draft.weekBudgets ?? {};
+
+  const wanted = plan.target || upgrade ? (start ?? plan.target?.start ?? null) : null;
+  const frozen = (plan.season ?? []).slice(0, Math.min(keep, n));
+  const solved = wanted ? solveSeason({
+    start: draft.start, weeks: n, profile: draft.profile, events: draft.events, weekBudgets: pinned,
+    keep: frozen.length, frozen,
+    anchorCtl: Number.isFinite(anchorCtl) ? anchorCtl
+      : (frozen.length && Number.isFinite(frozen.at(-1)?.ctl) ? frozen.at(-1).ctl : undefined),
+    startInfo: wanted, upgraded: !plan.target,
+  }) : null;
+
+  if (solved) {
+    draft.season = solved.season;
+    draft.target = solved.target;
+    if (solved.events) draft.events = solved.events;
+  } else {
+    // Sized the old way. A target the season was not built to would only mislead.
+    delete draft.target;
+
+    // Re-resolve the season whenever the budget changes.
+    draft.season = fitToRace({
+      peakHours: peakHoursFor(draft.profile),
+      weeks: n,
+      // Tune-up races come out of the block they fall in. Read off the draft, so
+      // a caller that changed the events and the profile in one go gets both.
+      landings: landingsDetail(draft),
+    });
+
+    // Reapply any pinned per-week budgets on top. Without this, "make next week
+    // 4 hours" followed by any change that refits the season would silently undo
+    // itself — including two tool calls made by the coach in the same turn.
+    draft.season = draft.season.map((w) => {
+      const hours = Number(pinned[weekKey(w.absWeek)]);
+      return Number.isFinite(hours) && hours >= 0 ? { ...w, hours } : w;
+    });
+
+    if (keep) {
+      draft.season = draft.season.map((w) =>
+        (w.absWeek < keep && plan.season?.[w.absWeek] ? { ...plan.season[w.absWeek], absWeek: w.absWeek } : w));
+    }
   }
 
   const first = Math.max(0, from, keep);
   const last = Math.min(weekCount(draft) - 1, to);
 
+  const build = (w) => generateWeek({
+    hours: w.hours,
+    block: w.block,
+    profile: draft.profile,
+    idPrefix: weekKey(w.absWeek),
+    ...raceClosure(draft, w.absWeek),
+  }).sessions;
+
   for (const w of draft.season) {
-    if (w.absWeek < first || w.absWeek > last) continue;
-    draft.weeks[weekKey(w.absWeek)] = generateWeek({
-      hours: w.hours,
-      block: w.block,
-      profile: draft.profile,
-      idPrefix: weekKey(w.absWeek),
-      ...raceClosure(draft, w.absWeek),
-    }).sessions;
+    const key = weekKey(w.absWeek);
+    if (w.absWeek >= first && w.absWeek <= last) { draft.weeks[key] = build(w); continue; }
+    // A re-size to a target changes later weeks' hours, and the chart reads
+    // every week's sessions. A later week that is still exactly what the
+    // generator made follows the new season; one the athlete has edited stays
+    // as they left it.
+    if (solved && w.absWeek >= keep && followsGenerator(plan, w.absWeek) && changed(plan.season?.[w.absWeek], w)) {
+      draft.weeks[key] = build(w);
+    }
   }
   return draft;
 }
+
+/* Is week `absWeek` of the stored plan still exactly what the generator makes
+   for its own season entry? A week with nothing stored counts: there is no
+   edit to protect. */
+function followsGenerator(plan, absWeek) {
+  const entry = plan.season?.[absWeek];
+  const stored = plan.weeks?.[weekKey(absWeek)];
+  if (!entry || !stored) return true;
+  return sameJSON(stored, freshWeek(plan, absWeek));
+}
+const changed = (a, b) => !a || a.hours !== b.hours || a.block !== b.block;
 
 const SESSION_FIELDS = ['day', 'disc', 'focus', 'dur', 'zone', 'paceZone'];
 const sameSession = (a, b) => SESSION_FIELDS.every((f) => a[f] === b[f]);
@@ -434,11 +601,15 @@ const emptyWeek = (idPrefix) =>
  * @param {object[]} [opts.activities] inherited synced activities
  * @param {object} [opts.activitySync] the days those activities cover
  * @param {object} [opts.loadRefs] inherited FTP and CSS
+ * @param {string} [opts.ambition] what the athlete wants from the race (events.js `AMBITIONS`)
+ * @param {object} [opts.startFitness] where the athlete starts, from `startFitness`. With
+ *        it, and a race, the season is built to a target (backplan.js) and records it;
+ *        without it, as it always was.
  * @param {'fitted'|'empty'} [opts.mode]
  */
 export function newPlan({
   name, startISO, raceDate = null, raceType, profile, benchmarks, activities, activitySync, loadRefs,
-  mode = 'fitted', id, now = Date.now(),
+  mode = 'fitted', id, now = Date.now(), ambition, startFitness,
 } = {}) {
   // Carry the athlete's own constraints across — their week has not changed
   // just because the race has — but never the previous race.
@@ -452,11 +623,14 @@ export function newPlan({
   // so there is one place it is recorded rather than two — and it is needed
   // *before* the weeks are built, because the last one is shaped around the day
   // the race is actually on.
-  const events = seedEventsFromProfile(base, { id: `ev-${now.toString(36)}` });
+  const events = seedEventsFromProfile(base, { id: `ev-${now.toString(36)}`, ambition });
   const dated = { start: startISO, events };
 
   const weeks = weeksUntil(startISO, raceDate) ?? FALLBACK_WEEKS;
-  const season = fitToRace({ peakHours: peakHoursFor(base), weeks, landings: landingsDetail(dated) });
+  const solved = raceDate && startFitness
+    ? solveSeason({ start: startISO, weeks, profile: base, events, weekBudgets: {}, keep: 0, frozen: [], startInfo: startFitness })
+    : null;
+  const season = solved ? solved.season : fitToRace({ peakHours: peakHoursFor(base), weeks, landings: landingsDetail(dated) });
 
   const built = {};
   for (const w of season) {
@@ -481,6 +655,7 @@ export function newPlan({
     season,
     weeks: built,
     events,
+    ...(solved ? { target: solved.target } : {}),
     // Carried across for the same reason the constraints are: the athlete's
     // 10 km did not get slower because they picked a new race.
     benchmarks: normalizeBenchmarks(benchmarks),
@@ -527,7 +702,7 @@ const isEmpty = (x) => x == null || (Array.isArray(x) ? !x.length : !Object.keys
 export function isUntouchedPlan(plan) {
   if (!plan || !Array.isArray(plan.season) || !plan.season.length || !plan.weeks) return false;
   if (plan.name !== 'My plan') return false;
-  for (const field of ['done', 'actuals', 'chat', 'events', 'benchmarks', 'activities', 'weekBudgets', 'loadRefs']) {
+  for (const field of ['done', 'actuals', 'chat', 'events', 'benchmarks', 'activities', 'weekBudgets', 'loadRefs', 'target']) {
     if (!isEmpty(plan[field])) return false;
   }
   if (!sameJSON(normalizeProfile(plan.profile), normalizeProfile({ raceDate: null }))) return false;

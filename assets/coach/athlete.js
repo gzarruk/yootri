@@ -18,11 +18,13 @@
    re-read from. An impossible value is dropped, not clamped, so the record
    never holds a number the athlete did not give.
 
-   What reads it today is deliberately small, and `athleteGaps` says so to the
-   athlete rather than implying more: weight turns FTP into watts per kilogram, and sex is
-   the default heart-rate formula for training load. Everything else is kept
-   for the onboarding steps that come next, and is labelled as not used for
-   planning yet. */
+   What reads it is deliberately small, and `athleteGaps` says so to the
+   athlete rather than implying more: weight turns FTP into watts per kilogram,
+   sex is the default heart-rate formula for training load, and recent weekly
+   hours, years in the sport and background are where a season's fitness starts
+   from when synced sessions cannot say (startfit.js; only the figure that comes
+   out is kept on a plan). Everything else is kept for the onboarding steps that
+   come next, and is labelled as not used for planning yet. */
 
 import { goalEvent } from './events.js';
 import { normalizeBenchmarks } from './paces.js';
@@ -121,7 +123,8 @@ const GAPS = [
   { key: 'race', label: 'Your main race', used: true, plan: true,
     why: 'Decides how long the season is and where it peaks.',
     missing: (a, p) => !goalEvent(p.events) },
-  { key: 'recentWeeklyHours', label: 'Hours a week you train now', used: false, why: NOT_YET,
+  { key: 'recentWeeklyHours', label: 'Hours a week you train now', used: true,
+    why: 'Where your fitness starts from, when your synced sessions cannot say.',
     missing: (a) => a.recentWeeklyHours === undefined },
   { key: 'runResult', label: 'A recent running result', used: true, plan: true,
     why: 'Sets the paces on every run.',
@@ -140,9 +143,11 @@ const GAPS = [
     missing: (a) => a.sex === undefined },
   { key: 'birthYear', label: 'Birth year', used: false, why: NOT_YET,
     missing: (a) => a.birthYear === undefined },
-  { key: 'yearsInSport', label: 'Years in triathlon', used: false, why: NOT_YET,
+  { key: 'yearsInSport', label: 'Years in triathlon', used: true,
+    why: 'Nudges the estimate of where your fitness starts.',
     missing: (a) => a.yearsInSport === undefined },
-  { key: 'levels', label: 'Your swim, bike and run background', used: false, why: NOT_YET,
+  { key: 'levels', label: 'Your swim, bike and run background', used: true,
+    why: 'Nudges the estimate of where your fitness starts.',
     missing: (a) => !a.levels },
   { key: 'longest', label: 'Your longest recent ride and run', used: false, why: NOT_YET,
     missing: (a) => a.longestRideMin === undefined || a.longestRunMin === undefined },

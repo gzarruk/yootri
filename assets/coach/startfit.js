@@ -90,6 +90,43 @@ function syncedCtl(activities, thresholds, { from, asOf }) {
 }
 
 /**
+ * The athlete's fitness at the end of a past day, from their synced sessions —
+ * what the weekly review re-anchors a season to once some of it has been
+ * trained. `{ ctl, scoredShare }`, or null when the sync does not reach the
+ * date, began too recently to read a level from, or mostly could not be
+ * scored. Scored the same way and by the same bar as `startFitness`: power,
+ * pace, swim pace and session effort, never heart rate.
+ */
+export function actualCtlAt({
+  date, activities = [], activitySync = null, benchmarks = [], loadRefs = null,
+} = {}) {
+  const sync = activitySync && activitySync.from && activitySync.through ? activitySync : null;
+  const acts = Array.isArray(activities) ? activities : [];
+  if (!sync || !parseISO(date) || sync.through < date) return null;
+  if (sync.from > shift(date, 1 - HISTORY_THRESHOLDS.minCovered * 7)) return null;
+  const thresholds = loadThresholds({ benchmarks, loadRefs });
+  const share = scoredShare(acts, thresholds, { from: sync.from, asOf: date });
+  if (share === null || share < PLAN_MODEL.garmin.scoredShare) return null;
+  const ctl = syncedCtl(acts, thresholds, { from: sync.from, asOf: date });
+  return ctl === null ? null : { ctl: round1(ctl), scoredShare: share };
+}
+
+/** A stored start, in words — from the source and the weeks it was read from,
+    which are all that is stored. Empty for anything that is not one. */
+export function startNote(start) {
+  switch (start?.source) {
+    case 'garmin':
+      return `From ${start.coveredWeeks ?? 'several'} weeks of your synced sessions, scored by power, pace, swim pace or session effort.`;
+    case 'estimate':
+      return 'An estimate from your recent weekly hours. Replace it if you know your number.';
+    case 'entered':
+      return 'Entered by you.';
+    default:
+      return '';
+  }
+}
+
+/**
  * The athlete's fitness today, as `{ ctl, source, coveredWeeks, scoredShare,
  * asOf, note }`. `ctl` is null only when there is nothing to estimate from.
  *

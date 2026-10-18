@@ -724,3 +724,22 @@ test('the event panel keeps what it does not show when a race is edited', () => 
 test('the wizard does not open on the shortest main race just because it is first in the list', () => {
   assert.doesNotMatch(HTML, /(?<!SECONDARY_)RACE_TYPES\[0\]/);
 });
+
+/* ---- the planner and heart rate ---- */
+
+test('the page never hands a heart-rate store to what builds or re-sizes a season', () => {
+  // The start fitness and the per-week figures are stored on the plan, which syncs
+  // and exports. They are worked out from power, pace, swim pace and session effort
+  // only, and nothing that takes a heart-rate store is called with one.
+  for (const fn of ['startFitness', 'actualCtlAt', 'planSeason', 'planLevers', 'buildPlanFromAnswers', 'newPlan', 'refit', 'proposeNextWeek']) {
+    const calls = [...HTML.matchAll(new RegExp(`\\b${fn}\\(([^;]*?)\\)\\s*[;)]`, 'g'))].map((m) => m[1]);
+    for (const args of calls) assert.doesNotMatch(args, /hrById|hrThresholds|hrStore/, `${fn}(${args.slice(0, 60)}…)`);
+  }
+});
+
+test('the engine modules that store a figure on a plan do not import the heart-rate store', () => {
+  for (const file of ['startfit.js', 'backplan.js', 'targets.js', 'races.js']) {
+    const src = readFileSync(new URL(`assets/coach/${file}`, ROOT), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    assert.doesNotMatch(src, /hrById|hrThresholds|activity_hr|normalizeHrThresholds/, file);
+  }
+});

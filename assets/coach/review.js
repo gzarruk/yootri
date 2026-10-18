@@ -32,6 +32,7 @@ import { getActual, setActual, actualMinutes } from './actuals.js';
 import { matchActivities } from './match.js';
 import { suggest } from './adapt.js';
 import { dateOf, weekIndexOf } from './calendar.js';
+import { actualCtlAt } from './startfit.js';
 import { durToMin } from './duration.js';
 
 export { normalizeRelease };
@@ -137,6 +138,8 @@ export function hardestSession(plan, absWeek, { today } = {}) {
   return best ? best.s : null;
 }
 
+const hoursFrom = (plan, week) => plan.season.slice(week).reduce((a, w) => a + w.hours, 0);
+
 /**
  * The draft that releases the next week, and why it looks the way it does.
  *
@@ -146,6 +149,11 @@ export function hardestSession(plan, absWeek, { today } = {}) {
  * week (and only that week) is pinned and rebuilt; otherwise it is released as
  * planned. Weeks before it are never touched. With `ease`, the released week's
  * hardest session is then made easy (see `hardestSession`); its hours stay.
+ *
+ * A plan built to a target is also re-sized, from the athlete's fitness at the
+ * end of the reviewed week when their synced sessions say what it was (never
+ * heart rate, and never lowering the target): `change.code` is `reanchored`,
+ * and `seasonDeltaHours` says how much more or less the rest of the season asks.
  *
  * @returns {{ draft, nextWeek, review, change: null | {fromHours, toHours, reason}, eased: null | object, logged: number, missed: number }}
  */
@@ -174,16 +182,39 @@ export function proposeNextWeek(plan, { today, ease = false } = {}) {
   const pick = suggest(draft, { week: nextWeek })
     .find((x) => x.action?.tool === 'set_week_budget' && x.action.input.week === nextWeek);
 
+  // Where the athlete actually is at the end of the reviewed week, when their
+  // synced sessions say — a season built to a target is re-sized from there, so
+  // a week that went better or worse than planned changes the climb still to
+  // come and not only the week being released. Otherwise the plan's own figure
+  // for that day stands, and with no change of budget nothing is re-sized.
+  const anchor = plan.target
+    ? actualCtlAt({
+      date: dateOf(plan.start, nextWeek - 1, 'Sun'),
+      activities: plan.activities, activitySync: plan.activitySync, benchmarks: plan.benchmarks, loadRefs: plan.loadRefs,
+    })
+    : null;
+
   let change = null;
-  if (pick) {
-    const fromHours = draft.season[nextWeek].hours;
-    const toHours = Number(pick.action.input.hours);
-    if (Number.isFinite(toHours) && toHours >= 0 && toHours !== fromHours) {
-      draft = refit(
-        { ...draft, weekBudgets: { ...(draft.weekBudgets ?? {}), [weekKey(nextWeek)]: toHours } },
-        { from: nextWeek, to: nextWeek, keepBefore: nextWeek },
-      );
+  const fromHours = draft.season[nextWeek].hours;
+  const toHours = pick ? Number(pick.action.input.hours) : fromHours;
+  const pinned = pick && Number.isFinite(toHours) && toHours >= 0 && toHours !== fromHours;
+  if (pinned || anchor) {
+    draft = refit(
+      pinned ? { ...draft, weekBudgets: { ...(draft.weekBudgets ?? {}), [weekKey(nextWeek)]: toHours } } : draft,
+      { from: nextWeek, to: nextWeek, keepBefore: nextWeek, ...(anchor ? { anchorCtl: anchor.ctl } : {}) },
+    );
+    if (pinned) {
       change = { fromHours, toHours, reason: pick.message, code: pick.code };
+    } else if (hoursFrom(draft, nextWeek) !== hoursFrom(plan, nextWeek)) {
+      const planned = plan.season[nextWeek - 1]?.ctl;
+      change = {
+        fromHours,
+        toHours: draft.season[nextWeek].hours,
+        // How much more or less the whole of the rest of the season now asks for.
+        seasonDeltaHours: Math.round((hoursFrom(draft, nextWeek) - hoursFrom(plan, nextWeek)) * 10) / 10,
+        reason: `Your fitness at the end of last week was ${anchor.ctl}${Number.isFinite(planned) ? `, against ${planned} in the plan` : ''}, so the weeks to come are sized from there.`,
+        code: 'reanchored',
+      };
     }
   }
 
