@@ -32,7 +32,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. |
 | `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
 | `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
-| `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. |
+| `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. `carryOver`/`upcomingEvents` say what survives a start-over. |
 | `migrate.js` | Schema v2 → v3. `legacy-plan.js` is the frozen old template it needs. |
 | `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
 | `duration.js` | `"H:MM"` ↔ minutes, the format the app already stores. |
@@ -69,6 +69,15 @@ athlete reads, **A race (target)** and **B race (fitness test)**, are display te
 only: the stored values stay `primary` and `secondary`. `ambition` is kept on the
 primary race alone (it goes with the priority if the race is stood down, and a new
 primary inherits the old one's), and `expectedMinutes` on any race.
+
+**Starting a new season keeps the races the athlete chooses.** **Delete plan & start
+over…** (`openStartOverDialog`) lists the upcoming events (A = `primary`, B =
+`secondary`, markers); the ticked ones are carried into the wizard as answers
+(`carriedAnswers` in `onboarding.js`, `carryOver` in `plan.js`). Nothing is removed
+until the wizard finishes — `replaceCurrentPlan` then swaps the plan, with a
+ten-second Undo — so backing out changes nothing. What is true of the athlete
+(benchmarks, FTP/CSS, synced Garmin history, About you) comes along; weeks, logs
+and chat do not.
 
 **A season can hold more than one race.** A race marked `secondary` is a B race, a
 tune-up inside the build: `planLandings` in `season.js` decides where it lands and

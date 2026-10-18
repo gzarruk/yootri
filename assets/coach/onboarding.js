@@ -17,7 +17,7 @@ import { newPlan, refit, weekCount, sessionsAt, landingsDetail, isUntouchedPlan 
 import { planLandings, LONG_RUNWAY_WEEKS } from './season.js';
 import { nextMonday, snapToMonday, weeksUntil, parseISO } from './dates.js';
 import {
-  RACE_TYPES, SECONDARY_RACE_TYPES, normalizeEvent, raceTypeLabel,
+  RACE_TYPES, SECONDARY_RACE_TYPES, normalizeEvent, normalizeEvents, goalEvent, secondaryRaces, raceTypeLabel,
 } from './events.js';
 import { normalizeBenchmarks, currentBenchmark, upsertBenchmark, vdotFrom } from './paces.js';
 import { normalizeLoadRefs } from './load.js';
@@ -70,6 +70,7 @@ export function emptyAnswers() {
     longRunDay: '',
     race: null,
     tuneUps: [],
+    markers: [],
     prefilledFrom: {},
   };
 }
@@ -80,9 +81,10 @@ export function emptyAnswers() {
  * and — when About you has none — recent weekly hours from synced Garmin
  * weeks. Never the old race: a new season is a new race.
  */
-export function prefill({ athlete, plan = null, today } = {}) {
+export function prefill({ athlete, plan = null, today, carry = null } = {}) {
   const a = normalizeAthlete(athlete);
   const out = emptyAnswers();
+  if (carry) Object.assign(out, carriedAnswers(carry, { today }));
   for (const k of ATHLETE_KEYS) if (a[k] !== undefined) out[k] = structuredClone(a[k]);
   for (const k of EQUIPMENT_KEYS) if (a.equipment?.[k] !== undefined) out[k] = a.equipment[k];
   for (const k of Object.keys(out).filter((k) => ATHLETE_KEYS.includes(k))) out.prefilledFrom[k] = 'about-you';
@@ -114,6 +116,21 @@ export function prefill({ athlete, plan = null, today } = {}) {
     }
   }
   return out;
+}
+
+/**
+ * Races the athlete chose to keep when starting over, as wizard answers: the
+ * A race (primary) is the season's race, B races (secondary) are tune-ups, and
+ * anything else on the calendar is a marker. Only what is still to come.
+ */
+export function carriedAnswers(events, { today } = {}) {
+  const future = normalizeEvents(events).filter((e) => !today || e.date >= today);
+  const primary = goalEvent(future);
+  return {
+    race: primary ? { name: primary.name, date: primary.date, raceType: primary.raceType } : null,
+    tuneUps: secondaryRaces(future).map((e) => ({ name: e.name, date: e.date, raceType: e.raceType })),
+    markers: future.filter((e) => !e.priority).map((e) => ({ name: e.name, date: e.date, kind: e.kind, raceType: e.raceType, note: e.note })),
+  };
 }
 
 /** Has this person used yootri before? Decides which welcome they see. */
@@ -324,7 +341,14 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
   plan.events = plan.events.map((e) => (e.priority === 'primary' && String(a.race.name ?? '').trim()
     ? { ...e, name: String(a.race.name).trim() } : e));
 
+  // Markers carry no priority, so they change nothing about the season: they
+  // are added after it is fitted, with ids minted from `now`.
+  const markers = (a.markers ?? [])
+    .map((m, i) => normalizeEvent({ ...m, id: `ev-${now.toString(36)}-m${i + 1}`, priority: null }))
+    .filter(Boolean);
+
   if (tune.length) plan = refit({ ...plan, events: [...plan.events, ...tune] }, { weeks: weekCount(plan) });
+  if (markers.length) plan.events = normalizeEvents([...plan.events, ...markers]);
   // Released a week at a time: week 1 now, each later week after the review of
   // the one before (review.js).
   plan.release = { through: 0 };

@@ -5,6 +5,7 @@ import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
   refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId, moveSession,
   landingsOf, landingsDetail, raceDayFor, raceClosure, freshWeek, isUntouchedPlan,
+  carryOver, upcomingEvents,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -795,6 +796,35 @@ test('loadPlan drops an athlete record put on a plan', () => {
   assert.deepEqual(loadPlan(p), p, 'still idempotent');
 });
 
+/* ---- One plan per athlete ---- */
+
+const ev = (id, date, priority, kind = 'race') => ({
+  id, name: id, date, kind, raceType: kind === 'race' ? '70.3' : null, priority, note: '',
+});
+
+test('upcomingEvents keeps today and later, in date order, and drops the past', () => {
+  const events = [ev('late', '2027-06-01', 'primary'), ev('past', '2026-09-01', 'secondary'),
+    ev('today', '2026-10-16', null, 'other'), ev('mid', '2027-03-01', 'secondary')];
+  assert.deepEqual(upcomingEvents(events, '2026-10-16').map((e) => e.id), ['today', 'mid', 'late']);
+});
+
+test('carryOver brings the athlete\'s facts and the chosen future events, never the weeks or logs', () => {
+  const base = newPlan({ name: 'Old', startISO: '2026-01-05', raceDate: '2026-06-07', raceType: '70.3', now: 5 });
+  const p = {
+    ...base,
+    events: [ev('a', '2027-06-01', 'primary'), ev('b', '2027-03-01', 'secondary'), ev('gone', '2026-02-01', 'secondary')],
+    done: { x: true }, actuals: { y: {} }, chat: [{ role: 'user' }], weekBudgets: { w1: 5 },
+    benchmarks: [{ id: 'bm', distanceMeters: 10000, timeSeconds: 2700, date: '2026-05-01', source: 'manual', current: true }],
+    loadRefs: { ftpW: 250 },
+    activities: [], activitySync: undefined,
+  };
+  const c = carryOver(p, '2026-10-16', ['a', 'gone']);
+  assert.deepEqual(c.events.map((e) => e.id), ['a'], 'only chosen ids, and only if still upcoming');
+  assert.equal(c.events[0].id, 'a', 'ids are stable');
+  assert.deepEqual(c.loadRefs, { ftpW: 250 });
+  assert.equal(c.benchmarks.length, 1);
+  for (const k of ['done', 'actuals', 'chat', 'weekBudgets', 'weeks', 'season', 'release']) assert.ok(!(k in c), k);
+});
 /* ---- A race short enough not to need a taper ------------------------------
 
    A tune-up of two hours or less (a 10 km, a half marathon) is a hard day in

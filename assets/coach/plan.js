@@ -595,3 +595,33 @@ export function isUntouchedPlan(plan) {
   if (Object.keys(plan.weeks).length !== plan.season.length) return false;
   return plan.season.every((w) => sameJSON(plan.weeks[weekKey(w.absWeek)], freshWeek(plan, w.absWeek)));
 }
+
+/* ---- One plan per athlete ---------------------------------------------------
+
+   The page holds a single active plan. Starting a new season deletes it and
+   begins again, carrying over what is true of the athlete rather than of the
+   season: results, thresholds, synced history, and the races still to come. */
+
+/** Events on `today` or later, in date order. Past races are history. */
+export function upcomingEvents(events, today) {
+  return normalizeEvents(events).filter((e) => e.date >= today);
+}
+
+/**
+ * What survives a restart. `keepIds` names the upcoming events the athlete
+ * ticked; the rest of the plan — weeks, logs, chat, budgets, release horizon —
+ * is deliberately absent, so nothing here can bring last season back.
+ */
+export function carryOver(plan, today, keepIds = []) {
+  const keep = new Set(keepIds);
+  const out = {
+    events: upcomingEvents(plan.events, today).filter((e) => keep.has(e.id)),
+    benchmarks: normalizeBenchmarks(plan.benchmarks),
+    activities: normalizeActivities(plan.activities),
+  };
+  const sync = normalizeActivitySync(plan.activitySync);
+  if (sync) out.activitySync = sync;
+  const refs = normalizeLoadRefs(plan.loadRefs);
+  if (refs) out.loadRefs = refs;
+  return out;
+}

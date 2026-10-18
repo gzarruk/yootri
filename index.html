@@ -1169,7 +1169,7 @@
           <p class="im-sub" id="subtitle"></p>
         </div>
         <div class="more-wrap">
-          <button type="button" class="btn btn-secondary btn-icon" id="plan-more" aria-haspopup="menu" aria-expanded="false" aria-controls="more-pop" aria-label="Plan actions: rename, export, delete"><i class="ic i-dots" aria-hidden="true"></i></button>
+          <button type="button" class="btn btn-secondary btn-icon" id="plan-more" aria-haspopup="menu" aria-expanded="false" aria-controls="more-pop" aria-label="Plan actions: rename, export, delete and start over"><i class="ic i-dots" aria-hidden="true"></i></button>
           <div id="more-pop"></div>
         </div>
       </div>
@@ -1387,7 +1387,7 @@
      a browser (`npm test`). This file keeps the markup, styles and DOM. */
   import {
     loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, applyDraft, moveSession,
-    landingsOf, freshWeek, isUntouchedPlan,
+    landingsOf, freshWeek, isUntouchedPlan, carryOver, upcomingEvents,
   } from './assets/coach/plan.js';
   import { PLANNED, FITNESS_BANDS, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline } from './assets/coach/fitness.js';
   import { racePreparation } from './assets/coach/preparation.js';
@@ -2553,6 +2553,70 @@
     plans = [];
     saveIndex(plans);
     ids.forEach((id) => { remove(planKey(id)); cloudDelete(id); });
+    return replaced;
+  }
+
+  /* =========================================================================
+     Starting over — the only way a second season comes to exist.
+
+     There is one plan. A new season replaces it: the athlete says which of the
+     races still to come to keep, and the setup wizard opens with them already
+     answered. Nothing is deleted until the wizard finishes (replaceCurrentPlan),
+     so backing out leaves the season exactly as it was. What is true of the
+     athlete — results, FTP/CSS, synced history, About you — comes along;
+     weeks, logs and the coach conversation do not.
+     ========================================================================= */
+
+  const EVENT_ROLE = { primary: 'A race', secondary: 'B race' };
+
+  function openStartOverDialog() {
+    if (currentPlanUntouched()) return openWizard();
+    const upcoming = upcomingEvents(state.events, wizToday());
+    const rows = upcoming.map((e) =>
+      '<label class="np-check"><input type="checkbox" data-keep="' + esc(e.id) + '" checked />' +
+      '<span><b>' + esc(e.name || raceTypeLabel(e.raceType) || 'Event') + '</b> · ' +
+        esc(fmtLongDate(e.date)) + ' · ' + esc(EVENT_ROLE[e.priority] || 'Marker') + '</span></label>').join('');
+    els.dialogRoot.innerHTML =
+      '<div class="modal-backdrop" id="so-backdrop">' +
+        '<div class="dialog" role="dialog" aria-modal="true" aria-labelledby="so-title" style="width: min(460px, 100%);">' +
+          '<div class="dialog-head"><h3 id="so-title">Delete plan &amp; start over</h3></div>' +
+          '<p class="pnl-sub">“' + esc(plan.name || 'This plan') + '” — its weeks, completed sessions, logs and coach ' +
+            'conversation — is removed from this device' + (authUser ? ' and your account' : '') +
+            ' once you finish setting up the new one. Your results, FTP/CSS, synced Garmin history and About you stay. ' +
+            'Export it first from the plan’s … menu if you want a copy.</p>' +
+          (rows
+            ? '<span class="pnl-sub" style="display:block">Keep these races on the calendar</span>' + rows
+            : '<p class="pnl-hint">No races or events are coming up, so there is nothing to keep.</p>') +
+          '<div class="dialog-foot" style="justify-content: flex-end;">' +
+            '<button type="button" class="btn btn-ghost spacer" data-so="import">Start from a plan file…</button>' +
+            '<span class="right"><button type="button" class="btn btn-secondary" data-so="cancel">Cancel</button>' +
+            '<button type="button" class="btn btn-primary" data-so="ok">Continue</button></span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    const close = () => { els.dialogRoot.innerHTML = ''; els.dialogRoot.onclick = null; };
+    els.dialogRoot.onclick = (e) => {
+      if (e.target.id === 'so-backdrop') return close();
+      const b = e.target.closest('[data-so]');
+      if (!b) return;
+      if (b.dataset.so === 'cancel') return close();
+      if (b.dataset.so === 'import') { close(); return openImportPanel(null); }
+      const keep = Array.from(els.dialogRoot.querySelectorAll('[data-keep]'))
+        .filter((x) => x.checked).map((x) => x.dataset.keep);
+      const events = carryOver({ ...plan, events: state.events }, wizToday(), keep).events;
+      close();
+      openWizard({ restart: true, carry: events });
+    };
+  }
+
+  /* clearPlans + addPlan, with a ten-second Undo when a season the athlete has
+     used is what is being replaced. Returns what clearPlans does, for
+     replacedNote. */
+  function replaceCurrentPlan(next) {
+    const old = plan;
+    const replaced = clearPlans();
+    addPlan(next);
+    if (replaced !== null) armUndo({ kind: 'replace', plan: old, newId: next.id });
     return replaced;
   }
 
@@ -3933,7 +3997,7 @@
     renderStatus();
   }
 
-  /* Deleting a plan throws away a whole season, so it stays recoverable for a
+  /* Replacing a plan throws away a whole season, so it stays recoverable for a
      short window: the full plan object is stashed and re-pushed on undo. The
      cloud write is a setDoc at a fixed id, so restoring recreates it exactly. */
   const UNDO_MS = 10000;
@@ -3947,34 +4011,9 @@
     els.undoBtn.classList.add('hidden');
   }
 
-  function deletePlan(id) {
-    const doomed = loadPlanLocal(id);
-    if (!doomed) return;
+  function armUndo(entry) {
     clearUndo();
-    pendingUndo = { plan: doomed, index: plans.findIndex((x) => x.id === id), wasCurrent: currentId() === id };
-
-    // One plan is shown, so deleting it starts over: nothing stored is left to
-    // surface as "the current plan" in its place.
-    const gone = plans.map((x) => x.id);
-    plans = [];
-    saveIndex(plans);
-    gone.forEach((g) => { remove(planKey(g)); cloudDelete(g); });
-    if (!plans.length) {
-      const p = blankPlan('My plan');
-      savePlanLocal(p);
-      plans = [{ id: p.id, name: p.name }];
-      saveIndex(plans);
-      setCurrentId(p.id);
-      adoptPlan(p);
-      if (cloudReady() && authUser) pushPlan(p);
-      pendingUndo.autoCreatedId = p.id;
-    } else if (currentId() === id) {
-      setCurrentId(plans[0].id);
-      adoptPlan(loadPlanLocal(plans[0].id));
-    }
-    renderAll();
-
-    setStatus('Deleted "' + (doomed.name || 'plan') + '"');
+    pendingUndo = entry;
     els.undoBtn.classList.remove('hidden');
     undoTimer = setTimeout(clearUndo, UNDO_MS);
   }
@@ -3991,23 +4030,17 @@
       setStatus(label);
       return;
     }
-    const { plan: p, index, wasCurrent, autoCreatedId } = pendingUndo;
+    // A replaced season: take the new plan away and put the old one back.
+    const { plan: p, newId } = pendingUndo;
     clearUndo();
+    plans = plans.filter((x) => x.id !== newId);
+    remove(planKey(newId));
+    cloudDelete(newId);
     savePlanLocal(p);
-    if (!plans.some((x) => x.id === p.id)) {
-      plans.splice(index < 0 ? plans.length : index, 0, { id: p.id, name: p.name });
-    }
-    // Deleting the last plan spawns a blank stand-in; drop it again on undo.
-    if (autoCreatedId) {
-      const stand = loadPlanLocal(autoCreatedId);
-      if (isUntouchedPlan(stand)) {
-        plans = plans.filter((x) => x.id !== autoCreatedId);
-        remove(planKey(autoCreatedId));
-        cloudDelete(autoCreatedId);
-      }
-    }
+    plans = [{ id: p.id, name: p.name }];
     saveIndex(plans);
-    if (wasCurrent || !loadPlanLocal(currentId())) { setCurrentId(p.id); adoptPlan(p); }
+    setCurrentId(p.id);
+    adoptPlan(p);
     if (cloudReady() && authUser) pushPlan(p);
     renderAll();
     setStatus('Restored "' + (p.name || 'plan') + '"');
@@ -4194,8 +4227,7 @@
       name: String(typed || '').trim() || fallback,
     });
     closePanel();
-    const replaced = clearPlans();
-    addPlan(p);
+    const replaced = replaceCurrentPlan(p);
     setStatus('Imported "' + p.name + '" · ' + weekCount(p) + ' weeks' + replacedNote(replaced));
   }
 
@@ -4364,7 +4396,11 @@
      is the untouched stand-in, which has nothing worth carrying. */
   const wizBase = () => (currentPlanUntouched() ? null : plan);
 
-  function openWizard({ restart = false } = {}) {
+  let wizCarry = null;   // the races kept when starting over, so the wizard's own restart keeps them
+
+  function openWizard({ restart = false, carry = null } = {}) {
+    if (carry) wizCarry = carry;
+    carry = carry ?? wizCarry;
     const saved = restart ? null : wizSaved();
     const allPlans = plans.map((e) => loadPlanLocal(e.id)).filter(Boolean);
     const returning = isReturning({ athlete: loadAthlete(), plans: allPlans });
@@ -4374,7 +4410,7 @@
       : {
         step: 0, problems: [], returning, resumed: false,
         answers: {
-          ...prefill({ athlete: loadAthlete(), plan: wizBase() ?? plan, today: wizToday() }),
+          ...prefill({ athlete: loadAthlete(), plan: wizBase() ?? plan, today: wizToday(), carry }),
           keepInAccount: hasHealthConsent(),
         },
       };
@@ -4747,8 +4783,8 @@
       if (hasHealthConsent()) await pushAthlete();
     }
 
-    const replaced = clearPlans();
-    addPlan(built);
+    const replaced = replaceCurrentPlan(built);
+    wizCarry = null;
     remove(WIZ_KEY);
     markOriented();
     wiz = null;
@@ -6418,13 +6454,7 @@
     if (act === 'export') return exportPlan();
     if (act === 'import') return openImportPanel(null);
     if (act === 'release') return toggleRelease();
-    if (act === 'new') {
-      return openWizard();
-    } else if (act === 'delete') {
-      const ok = await confirmDialog('Delete plan',
-        'Delete "' + (plan.name || 'this plan') + '"? This removes it from this device' + (authUser ? ' and the cloud' : '') + ' and starts you over.', 'Delete');
-      if (ok) deletePlan(plan.id);
-    }
+    if (act === 'new' || act === 'startover') return openStartOverDialog();
   }
 
   /* ---- Inline rename: the title edits itself in place ---- */
@@ -6501,7 +6531,7 @@
         popRow('export', 'i-download', 'Export this plan') +
         popRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +
         '<div class="pop-sep" role="separator"></div>' +
-        popRow('delete', 'i-trash', 'Delete plan', { danger: true }) +
+        popRow('startover', 'i-trash', 'Delete plan & start over…', { danger: true }) +
       '</div>';
     }
     // One plan, not a list of them: what is here is how to start or replace it.

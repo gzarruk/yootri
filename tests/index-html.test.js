@@ -373,11 +373,23 @@ test('Reset week builds the week the way a re-fit does', () => {
 test('creating or importing a season replaces whatever is stored, and only once it is finished', () => {
   for (const fn of ['doImport', 'finishWizard']) {
     const body = fnBody(fn);
-    const drop = body.indexOf('clearPlans()');
-    assert.ok(drop !== -1, `${fn} no longer replaces the stored plan`);
-    assert.ok(drop < body.indexOf('addPlan('), `${fn} must clear the old plan before adopting the new one`);
+    assert.match(body, /replaceCurrentPlan\(/, `${fn} no longer replaces the stored plan`);
   }
+  const body = fnBody('replaceCurrentPlan');
+  assert.ok(body.indexOf('clearPlans()') < body.indexOf('addPlan('), 'the old plan is cleared before the new one is adopted');
+  assert.match(body, /armUndo\(/, 'a used season is replaced with an Undo');
   assert.match(fnBody('clearPlans'), /cloudDelete\(/, 'a plan already uploaded goes from the cloud too');
+});
+
+test('starting over keeps the chosen races and deletes nothing before the wizard finishes', () => {
+  const dlg = fnBody('openStartOverDialog');
+  assert.match(dlg, /upcomingEvents\(/);
+  assert.match(dlg, /carryOver\(/);
+  assert.match(dlg, /openWizard\(\{ restart: true, carry/);
+  assert.doesNotMatch(dlg, /clearPlans\(|remove\(planKey|cloudDelete\(/, 'nothing is deleted before the wizard finishes');
+  assert.match(fnBody('runPlanAction'), /act === 'startover'\) return openStartOverDialog\(\)/);
+  assert.match(fnBody('popHtml'), /popRow\('startover'/);
+  assert.doesNotMatch(withoutComments(HTML), /function deletePlan\b/);
 });
 
 test('the plan menu is one plan, not a list of them', () => {
@@ -388,7 +400,7 @@ test('the plan menu is one plan, not a list of them', () => {
 });
 
 test('the untouched check is the engine’s, wherever the page asks it', () => {
-  for (const fn of ['mergeCloudPlans', 'undoDelete']) {
+  for (const fn of ['mergeCloudPlans']) {
     assert.match(fnBody(fn), /isUntouchedPlan\(/, `${fn} has its own idea of an untouched plan again`);
   }
   assert.match(HTML, /const currentPlanUntouched = \(\) => isUntouchedPlan\(/);
@@ -498,14 +510,13 @@ test('the wizard saves through the same doors as everything else', () => {
   // The account copy only under both consents, the plan through addPlan after
   // the stand-in is dropped — the order every new plan follows.
   assert.match(body, /hasSyncConsent\(\)[\s\S]*pushAthlete\(\)/);
-  const drop = body.indexOf('clearPlans()');
-  assert.ok(drop !== -1 && drop < body.indexOf('addPlan(built)'));
+  assert.match(body, /replaceCurrentPlan\(built\)/);
 });
 
 test('the wizard is reachable from first visit, first sign-in and the plan switcher', () => {
   assert.match(fnBody('maybeShowFirstRun'), /maybeStartWizard\(\)/);
   assert.match(fnBody('pullFromCloud'), /maybeStartWizard\(\)/);
-  assert.match(fnBody('runPlanAction'), /act === 'new'\) \{\s*return openWizard\(\)/);
+  assert.match(fnBody('openStartOverDialog'), /currentPlanUntouched\(\)\) return openWizard\(\)/);
   // It opens by itself only for somebody new, and never twice.
   assert.match(fnBody('maybeStartWizard'), /orientDone\(\)[\s\S]*planIsUntouched\(\)/);
 });
