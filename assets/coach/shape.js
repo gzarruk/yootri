@@ -12,7 +12,7 @@
    This module owns the prescription, so availability can go back to being only a
    ceiling. The table below is the athlete's own, hand-authored per volume — it is
    a coaching opinion, not a fitted model, and belongs with the discipline splits
-   in that respect (see ../yootri-rnd/FINDINGS.md).
+   in that respect (see docs/FINDINGS.md).
 
    Pure and deterministic, like the rest of the engine: no DOM, no clock, no
    randomness. And it never invents time — a day is only ever budgeted up to what

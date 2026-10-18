@@ -148,7 +148,7 @@ export const MIN_LANDING_GAP = 2;
 
     An unfitted guess, like the rest of the coaching numbers: roughly where a
     season stops being one build and starts being two. See
-    ../yootri-rnd/FINDINGS.md, 23 Aug. */
+    docs/FINDINGS.md, 23 Aug. */
 export const LONG_RUNWAY_WEEKS = 30;
 
 /**

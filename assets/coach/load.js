@@ -22,9 +22,14 @@
    are: chronic and acute training load. They describe training, not the
    athlete, and nothing here draws a conclusion from them.
 
+   The one thing a plan does keep is the planner's: the fitness a season starts
+   from and the planned fitness at the end of each week (`plan.target`,
+   startfit.js and backplan.js). Those are written by the planner when it builds
+   a season, not by this file, and none is derived from heart rate.
+
    The coefficients are the published ones and the 42/7-day windows are the
    conventional ones; none has been fitted to anybody (see
-   ../yootri-rnd/FINDINGS.md). */
+   docs/FINDINGS.md). */
 
 import { parseISO, toISO, addDays, mondayOf } from './dates.js';
 import { thresholdSpeedFrom } from './paces.js';

@@ -14,7 +14,7 @@
    athlete's own word about their session outranks the watch's.
 
    The two numbers below are hand-chosen and unfitted (see
-   ../yootri-rnd/FINDINGS.md). */
+   docs/FINDINGS.md). */
 
 import { durToMin } from './duration.js';
 import { dateOf, weekIndexOf } from './calendar.js';

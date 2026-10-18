@@ -16,7 +16,7 @@
    invert the first equation for the velocity that costs it.
 
    Two things are ours rather than Daniels', and both are guesses recorded as
-   guesses in ../yootri-rnd/FINDINGS.md: `ZONE_FOR_LABEL`, which decides that a
+   guesses in docs/FINDINGS.md: `ZONE_FOR_LABEL`, which decides that a
    card reading "Z3–Z4" wants threshold pace, and `MAX_VELOCITY`, the ceiling
    above which a time is a mis-typed or mis-measured one rather than a fast one.
 
