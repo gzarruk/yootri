@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { weeklyHistory, summarizeHistory, trainingHistory } from '../assets/coach/history.js';
+import { weeklyHistory, summarizeHistory, trainingHistory, HISTORY_THRESHOLDS } from '../assets/coach/history.js';
+import { HISTORY_THRESHOLDS as FROM_ADAPT } from '../assets/coach/adapt.js';
 
 /* What was actually trained, week by week, from synced activities.
 
@@ -117,4 +118,13 @@ test('trainingHistory without a sync says nothing is covered', () => {
 test('the week count is bounded', () => {
   assert.equal(trainingHistory([], { today: '2026-09-23', weeks: 500, sync: SYNC }).weeks.length, 26);
   assert.equal(trainingHistory([], { today: '2026-09-23', weeks: 0, sync: SYNC }).weeks.length, 1);
+});
+
+/* The bar a synced history has to clear lives beside the history it describes,
+   so a module that wants it (the athlete's starting fitness) need not import the
+   rules, which import the plan. adapt.js still exports it, as the same object. */
+
+test('the history thresholds live here and adapt.js re-exports the same object', () => {
+  assert.equal(HISTORY_THRESHOLDS.minCovered, 3);
+  assert.equal(FROM_ADAPT, HISTORY_THRESHOLDS);
 });

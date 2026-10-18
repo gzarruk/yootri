@@ -181,3 +181,23 @@ test('the load figures never carry heart rate', () => {
   assert.equal(text.includes('173'), false);
   assert.equal(text.includes('187'), false);
 });
+
+/* The averages can start from a value rather than from nothing. Without that,
+   a few weeks of history read far below the athlete's real level, because the
+   42-day average has not yet filled. */
+
+test('an average can be started from a level instead of from zero', () => {
+  const flat = Object.fromEntries(Array.from({ length: 5 }, (_, i) => [`2026-09-0${i + 1}`, 100]));
+  const k = 1 - Math.exp(-1 / 42);
+  const seeded = ewma(flat, { from: '2026-09-01', to: '2026-09-05', days: 42, seed: 100 });
+  assert.equal(seeded.length, 5);
+  for (const p of seeded) assert.ok(Math.abs(p.value - 100) < 1e-9, 'a flat load on a flat start stays flat');
+  const cold = ewma(flat, { from: '2026-09-01', to: '2026-09-01', days: 42 });
+  assert.ok(Math.abs(cold[0].value - 100 * k) < 1e-9, 'with no seed the first day is one step up from zero');
+});
+
+test('a seed is just the average the day before the first day', () => {
+  const k = 1 - Math.exp(-1 / 42);
+  const [p] = ewma({ '2026-09-01': 50 }, { from: '2026-09-01', to: '2026-09-01', days: 42, seed: 80 });
+  assert.ok(Math.abs(p.value - (80 + k * (50 - 80))) < 1e-9);
+});

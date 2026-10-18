@@ -90,6 +90,17 @@ export const SECONDARY_RACE_TYPES = [
     lists is no distance: the generator would fall back without saying so. */
 export const STORABLE_RACE_TYPES = [...new Set([...KNOWN_RACE_TYPES, ...SECONDARY_RACE_TYPES])];
 
+/** How much the athlete wants from the race, which sets the fitness the season
+    is built to arrive with (targets.js). Stored on the primary race as
+    `ambition`. Ordered from least to most. These are stored names: the words
+    the athlete reads are the page's. */
+export const AMBITIONS = Object.freeze(['finish', 'intermediate', 'competitive']);
+
+/** What a race with no ambition is read as. A plan made before ambitions
+    existed gets this the next time it is re-fitted, in the draft the athlete
+    sees. */
+export const DEFAULT_AMBITION = 'intermediate';
+
 export const EVENT_KINDS = ['race', 'other'];
 
 /** What a race is to this season. Ordered hardest-commitment first, which is

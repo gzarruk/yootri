@@ -56,6 +56,9 @@ function surfaces() {
     'index.html overnight section': html.slice(nightsFrom, from),
     'privacy notice, overnight': nightsNotice[0],
     'overnight.js': read('../assets/coach/overnight.js'),
+    // The plan's target and the figure it starts from: the notes the athlete reads.
+    'targets.js': read('../assets/coach/targets.js'),
+    'startfit.js': read('../assets/coach/startfit.js'),
     'bridge overnight.py': read('../tools/garmin-bridge/garmin_bridge/overnight.py'),
     'bridge messages': BRIDGE_ERROR_CODES.map((c) => bridgeErrorMessage(c)).join('\n'),
   };

@@ -1416,7 +1416,7 @@
     validateSeason, volumeBeyondRace,
   } from './assets/coach/validate.js';
   import { fitToRace, planLandings, LONG_RUNWAY_WEEKS } from './assets/coach/season.js';
-  import { weeksUntil } from './assets/coach/dates.js';
+  import { weeksUntil, nextMonday } from './assets/coach/dates.js';
   import {
     dateOf, weekIndexOf, monthOf, firstOfMonth, addMonths, monthGrid, clampMonth,
   } from './assets/coach/calendar.js';
@@ -1511,7 +1511,9 @@
      day before, anywhere west of Greenwich. */
   const fmtDayISO = (iso) => fmtDate(parseISO(iso));
   const fmtMonthISO = (iso) => parseISO(iso).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-  const defaultStart = () => { const d = new Date(); const since = (d.getDay() + 6) % 7; return toISO(addDays(d, -since)); };
+  /* Where a plan starts when nothing says: the first Monday after today. Not the
+     Monday before it — that starts a new plan in a week that is already over. */
+  const defaultStart = () => nextMonday(toISO(new Date()));
 
   const durToMin = (x) => {
     if (!x || x === '—') return 0;
