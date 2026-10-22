@@ -19,6 +19,12 @@ import { join } from 'node:path';
 const ROOT = new URL('../', import.meta.url);
 const HTML = readFileSync(new URL('index.html', ROOT), 'utf8');
 
+/* The privacy notice's text is not in index.html: the footer panel and
+   privacy.html both draw it from assets/privacy.js. The checks on what it says
+   read it there. */
+const PRIVACY = readFileSync(new URL('assets/privacy.js', ROOT), 'utf8');
+const noticeText = () => PRIVACY.slice(PRIVACY.indexOf('export const PRIVACY_SECTIONS'), PRIVACY.indexOf('];', PRIVACY.indexOf('export const PRIVACY_SECTIONS')));
+
 const OPEN = '<script';
 const CLOSE = '</script';
 
@@ -228,8 +234,8 @@ test('the privacy notice has a contact route and a named region', () => {
      that quietly tells a user nothing — which is also what a fork hits until it
      puts its own values there (FIREBASE_SETUP.md, step 7). */
   for (const name of ['PRIVACY_CONTACT', 'PRIVACY_REGION']) {
-    const m = HTML.match(new RegExp(`const\\s+${name}\\s*=\\s*'([^']*)'`));
-    assert.ok(m, `${name} is gone from index.html — was the privacy notice removed?`);
+    const m = PRIVACY.match(new RegExp(`const\\s+${name}\\s*=\\s*'([^']*)'`));
+    assert.ok(m, `${name} is gone from assets/privacy.js — was the privacy notice removed?`);
     assert.notEqual(m[1].trim(), '', `${name} is still blank; the privacy notice would publish a placeholder`);
   }
 });
@@ -271,9 +277,7 @@ test('the pairing token can only ever be sent to this computer', async () => {
 
 test('if the page talks to the bridge, the privacy notice says what it keeps', () => {
   if (!HTML.includes('/v1/activities')) return;
-  const start = HTML.indexOf('const PRIVACY_SECTIONS');
-  const end = HTML.indexOf('];', start);
-  const notice = HTML.slice(start, end);
+  const notice = noticeText();
   assert.match(notice, /Garmin/, 'the notice does not mention synced Garmin activities');
   assert.match(notice, /heart rate/i, 'the notice does not say where heart rate is kept');
 });
@@ -282,8 +286,7 @@ test('if heart-rate thresholds are kept, the privacy notice says where load figu
   /* Load worked out from heart rate reaches the athlete's AI provider when the
      coach reads it. The notice has to say so before the page can do it. */
   if (!HTML.includes('yootri_hr_thresholds')) return;
-  const start = HTML.indexOf('const PRIVACY_SECTIONS');
-  const notice = HTML.slice(start, HTML.indexOf('];', start));
+  const notice = noticeText();
   assert.match(notice, /training load/i);
   assert.match(notice, /AI provider/);
 });
@@ -328,8 +331,7 @@ test('disconnecting the bridge deletes the nights with the heart rate', () => {
 
 test('if the page reads nights, the privacy notice says what and where', () => {
   if (!HTML.includes('/v1/overnight')) return;
-  const start = HTML.indexOf('const PRIVACY_SECTIONS');
-  const notice = HTML.slice(start, HTML.indexOf('];', start));
+  const notice = noticeText();
   assert.match(notice, /sleep and overnight heart rate/i);
   assert.match(notice, /never synced/);
   assert.match(notice, /never given to the coach/);
@@ -460,8 +462,7 @@ test('erasing cloud data takes About you with it', () => {
 });
 
 test('the privacy notice describes About you and its separate consent', () => {
-  const start = HTML.indexOf('const PRIVACY_SECTIONS');
-  const notice = HTML.slice(start, HTML.indexOf('];', start));
+  const notice = noticeText();
   assert.match(notice, /\['About you\.'/);
   assert.match(notice, /health data/);
   assert.match(notice, /consent of its own/);

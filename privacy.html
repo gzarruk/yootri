@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>yootri — Privacy notice</title>
+<meta name="description" content="What yootri holds if you sign in, and how to get rid of it." />
+<meta name="color-scheme" content="dark" />
+<meta name="theme-color" content="#161826" />
+
+<!-- Paths are relative, like the app's. This page makes no request outside this
+     site: the type falls back to the system face rather than loading a font. -->
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
+<link rel="stylesheet" href="assets/nocturne.css" />
+
+<style>
+  .wrap { max-width: 720px; margin: 0 auto; padding: 28px 16px 64px; }
+  .brand { display: inline-flex; align-items: center; gap: 10px; color: var(--color-text);
+           text-decoration: none; font-weight: 500; font-size: 17px; }
+  .brand:hover { color: var(--color-accent-300); }
+  .brand img { display: block; width: 28px; height: 28px; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 30px; margin: 40px 0 6px; }
+  .kicker { margin-top: 40px; }
+  .kicker + h1 { margin-top: 12px; }
+  .sub { margin: 0 0 28px; color: color-mix(in srgb, var(--color-text) 60%, transparent); font-size: 14px; }
+  .legal { font-size: 14.5px; line-height: 1.7; color: color-mix(in srgb, var(--color-text) 78%, transparent); }
+  .legal p { margin: 0 0 14px; }
+  .legal b { color: var(--color-text); font-weight: 500; }
+  .rights { margin-top: 24px; padding-top: 22px; border-top: 1px solid var(--color-divider); }
+  .legal-about { font-size: 14.5px; line-height: 1.7; margin: 0;
+                 color: color-mix(in srgb, var(--color-text) 78%, transparent); }
+  .legal-about b { color: var(--color-text); font-weight: 500; }
+  .back { margin-top: 36px; }
+  noscript p { color: var(--color-text); }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <div class="top">
+    <a class="brand" href="./"><img src="assets/favicon.svg" alt="" width="28" height="28" />yootri</a>
+    <a class="btn btn-secondary" href="./">Back to yootri</a>
+  </div>
+
+  <span class="kicker">Privacy notice</span>
+  <h1>Privacy notice</h1>
+  <p class="sub" id="version"></p>
+
+  <div id="notice"></div>
+  <noscript><p>This notice is drawn by a script. The same notice is in the app, under Privacy notice at the foot of the page.</p></noscript>
+
+  <div class="rights" id="rights"></div>
+
+  <div class="back"><a class="btn btn-primary" href="./">Back to yootri</a></div>
+</main>
+
+<script type="module">
+  import { PRIVACY_VERSION, privacySectionsHtml, privacyRightsHtml } from './assets/privacy.js';
+
+  /* The words are assets/privacy.js's, the same ones the app's footer panel
+     draws. Nothing about the notice is written here. */
+  document.getElementById('version').textContent =
+    'Version ' + PRIVACY_VERSION + ' — what yootri holds if you sign in, and how to get rid of it.';
+  document.getElementById('notice').innerHTML = privacySectionsHtml();
+  document.getElementById('rights').innerHTML = privacyRightsHtml({ standalone: true });
+</script>
+</body>
+</html>

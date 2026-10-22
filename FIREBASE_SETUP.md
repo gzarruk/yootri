@@ -93,13 +93,12 @@ own domains.
 ## 7. Rewrite the privacy notice for your deployment
 
 Once people can sign in, you are the controller of their training data, and the
-notice in the app is speaking for *you*. Two constants near the top of the
-`PRIVACY_SECTIONS` block in `index.html` carry the facts that cannot be derived
-from anything else:
+notice in the app is speaking for *you*. Two constants near the top of
+`assets/privacy.js` carry the facts that cannot be derived from anything else:
 
 ```js
-const PRIVACY_CONTACT = 'you@example.com';   // where data requests reach you
-const PRIVACY_REGION  = 'eur3 (Europe)';     // the region you picked in step 4
+export const PRIVACY_CONTACT = 'you@example.com';   // where data requests reach you
+export const PRIVACY_REGION  = 'eur3 (Europe)';     // the region you picked in step 4
 ```
 
 Leave either blank and the notice renders a loud marker in its place and
@@ -108,7 +107,11 @@ in with this repository's values is worse than leaving them blank: your users
 would be told to write to somebody else about data that person cannot reach.
 
 The surrounding prose names the developer and their country, and the disclaimer
-above it describes the project. Read both and make them true of your fork.
+in `index.html` describes the project. Read both and make them true of your fork.
+
+The same text is served on its own at `privacy.html`, for anywhere a link to a
+privacy notice is asked for; it draws from `assets/privacy.js`, so there is one
+notice to edit.
 
 ## Checking it worked
 

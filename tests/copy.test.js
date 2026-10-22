@@ -33,10 +33,11 @@ function targetSection() {
 
 function surfaces() {
   const html = read('../index.html');
+  const notice = read('../assets/privacy.js');   // the notice's text, shared by the app and privacy.html
   const from = html.indexOf('/* ---- Workouts to Garmin');
   const to = html.indexOf('const MATCH_REASONS');
   assert.ok(from > 0 && to > from, 'the Workouts to Garmin section is still where this test looks');
-  const privacy = html.match(/\['Workouts sent to Garmin\.',[\s\S]*?\],\n/);
+  const privacy = notice.match(/\['Workouts sent to Garmin\.',[\s\S]*?\],\n/);
   assert.ok(privacy, 'the privacy notice describes workouts');
   const relFrom = html.indexOf('/* ---- Weekly release');
   const wizFrom = html.indexOf('/* ---- Onboarding wizard');
@@ -45,11 +46,11 @@ function surfaces() {
   assert.ok(wizFrom > 0 && aboutFrom > wizFrom, 'the onboarding wizard section is still where this test looks');
   const aboutTo = html.indexOf('/* ---- Training paces');
   assert.ok(aboutFrom > 0 && aboutTo > aboutFrom, 'the About you section is still where this test looks');
-  const aboutNotice = html.match(/\['About you\.',[\s\S]*?\],\n/);
+  const aboutNotice = notice.match(/\['About you\.',[\s\S]*?\],\n/);
   assert.ok(aboutNotice, 'the privacy notice describes About you');
   const nightsFrom = html.indexOf('/* ---- Sleep and overnight heart rate');
   assert.ok(nightsFrom > 0 && from > nightsFrom, 'the overnight section is still where this test looks');
-  const nightsNotice = html.match(/\['Sleep and overnight heart rate from Garmin\.',[\s\S]*?\],\n/);
+  const nightsNotice = notice.match(/\['Sleep and overnight heart rate from Garmin\.',[\s\S]*?\],\n/);
   assert.ok(nightsNotice, 'the privacy notice describes sleep and overnight heart rate');
   return {
     'workout.js': read('../assets/coach/workout.js'),
@@ -186,6 +187,18 @@ test('what a target says never promises a result', () => {
   for (const [where, text] of [['targets.js', read('../assets/coach/targets.js')], ['the Target section', targetSection()]]) {
     for (const re of [/will (reach|qualify|finish|achieve|hit|make)/i, /you('| wi)ll (get|be)/i, /guarantee/i, /\bready\b/i]) {
       const hit = text.replace(/\/\*[\s\S]*?\*\//g, '').match(re);
+      assert.equal(hit, null, `${where} says "${hit && hit[0]}"`);
+    }
+  }
+});
+
+/* The privacy notice and the page it has on its own (privacy.html), which a
+   listing can link to, are held to the stricter list as a whole. */
+
+test('the privacy notice page and its text make no claim about the body or about performance', () => {
+  for (const [where, text] of [['privacy.js', read('../assets/privacy.js')], ['privacy.html', read('../privacy.html')]]) {
+    for (const re of STRICTER) {
+      const hit = text.match(re);
       assert.equal(hit, null, `${where} says "${hit && hit[0]}"`);
     }
   }

@@ -11,6 +11,12 @@ the repo root by GitHub Pages — **anything committed here is public**.
   where the training model, session generation, validation and plan operations
   live, so they can be tested without a browser.
 - `assets/nocturne.css` — the "Nocturne" design-system base.
+- `assets/privacy.js` — the privacy notice's text, version and its two deployment
+  facts, drawn by the app's footer panel and by `privacy.html`, the same notice on
+  a page of its own. Edit it here and nowhere else.
+- `assets/store/` — images for a third-party app listing (cover, screenshots).
+  Public like everything else here; made from `assets/example-plan.json`, so no
+  personal data.
 - `tests/` — `npm test` (plain `node --test`, no test framework).
 - `tools/garmin-bridge/` — the one part that is not plain files: a small Python
   program (run with `uv`) that signs in to Garmin on the athlete's own machine
