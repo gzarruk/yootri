@@ -53,14 +53,14 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `athlete.js` | The athlete record ("About you"): birth year, sex, height, weight, background, recent training, equipment, goal. `normalizeAthlete` is an allowlist; `athleteGaps` says what is missing and, honestly, whether anything reads it yet; recent weekly hours are kept as the athlete's own record and size nothing. Never on a plan — see below. |
 | `onboarding.js` | The onboarding wizard's logic: `STEPS`, `stepProblems` (what each step refuses, in sentences shown beside the box), `prefill` (what a returning athlete is not asked again — About you, the current plan's week and numbers, recent hours from synced Garmin weeks), `racePreview`, `buildPlanFromAnswers` (a new plan starting this Monday, sized by the week the athlete gave, tune-ups landed through `refit`) and `planReview`. The page draws the steps and saves; nothing here stores anything. Body measurements leave through `athleteFromAnswers` only. |
 | `review.js` | Weekly release. `releaseState` (is a release due, which week is reviewed and which released next), `reviewWeek` (each session done, partial or missed — from the athlete's log, a matched synced activity, or nothing on a past day) and `proposeNextWeek` (the draft that releases the next week: the review's logs, plus at most one week budget from the existing `suggest` rules, plus — only when the athlete ticks it — `ease`, which makes `hardestSession` easy). No coaching constant of its own, and it never reads the overnight figures. |
-| `fitness.js` | Fitness (42-day) and fatigue (7-day) training load as of today, form as their difference, and the lines the Fitness chart draws: actual (load.js), planned (an *estimate* of each planned session from its length and zone — `PLANNED.zoneIF`, unfitted) and a trend carried to race day. Derived on read, never stored. Lifts the 28 Sep exclusion of form (FINDINGS, 16 Oct); ACWR, monotony and strain stay out. Also the plan followed from today as a line (`followed`), `FITNESS_BANDS` and the illustrative race-day form range (`PLANNED.raceForm`). |
+| `fitness.js` | Fitness (42-day) and fatigue (7-day) training load as of today, form as their difference, and the lines the Fitness chart draws: actual (load.js), planned (an *estimate* of each planned session from its length and zone — `PLANNED.zoneIF`, unfitted) and a trend carried to race day (only once the last 28 days hold 14 days of plan: `PLANNED.adherenceMinDays`, since a few days read as the capped 1.5 and draw a line far above the plan). Derived on read, never stored. Lifts the 28 Sep exclusion of form (FINDINGS, 16 Oct); ACWR, monotony and strain stay out. Also the plan followed from today as a line (`followed`), `FITNESS_BANDS` and the illustrative race-day form range (`PLANNED.raceForm`). |
 | `preparation.js` | Race preparation: a checklist of facts — fitness on race day against the distance's band, long sessions per discipline over 42 days, steady weeks among those the sync covered, race-day form. **No score and no verdict** (FINDINGS, 17 Oct); silent under three covered weeks. Derived on read, never stored; every number in `PREP` is unfitted. |
 | `history.js` | What was actually trained, week by week, from synced activities — and which weeks a sync fully *covered*, so a gap in syncing never reads as a week off. `adapt.js`'s history rules and the coach's `get_training_history` read it. |
 | `overnight.js` | Sleep and overnight heart rate from the bridge: the device-only store's shape (`normalizeNight` is an allowlist), its sync window, and `compareNights` — the last seven nights against the athlete's own four weeks before them. Describes nights, decides nothing. See below. |
-| `targets.js` | What a season is built to arrive with. `PLAN_MODEL` is the **one frozen table of unfitted coaching constants** for the target-driven planner (ramp, tolerance, taper tiers, the start-fitness estimate); `targetCtl(raceType, ambition)` reads a target off `FITNESS_BANDS`; `taperDepth` gives the share of a week a tune-up's taper takes out. Kept out of `fitness.js` on purpose: the copy test holds that file to a stricter word list, and `competitive` is on it. |
+| `targets.js` | What a season is built to reach: the peak before the taper. `PLAN_MODEL` is the **one frozen table of unfitted coaching constants** for the target-driven planner (ramp, the acute-to-chronic ratio ceiling, tolerance, taper tiers, the start-fitness estimate); `targetCtl(raceType, ambition)` reads a target off `FITNESS_BANDS`; `taperDepth` gives the share of a week a tune-up's taper takes out. Kept out of `fitness.js` on purpose: the copy test holds that file to a stricter word list, and `competitive` is on it. |
 | `startfit.js` | `startFitness`: the athlete's chronic training load today, from an entered figure, their synced sessions (power, pace, swim pace and session effort only — never heart rate) or an estimate from recent weekly hours, years in the sport and per-sport level. Body measurements play no part. |
 | `races.js` | Where a plan's races fall: `landingsOf`, `landingsDetail`, `raceDayFor`, `raceClosure`, and `plannedRaceLoads` (what each tune-up adds to its day). Split out of `plan.js`, which hands them back, so the planner can read them without importing the plan. |
-| `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness: even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`. Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `planLevers` works out, by rebuilding, what would make it reachable. Pure. `refit` and `newPlan` call it for a plan that has a `target` (see below). |
+| `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness, **the peak before the taper** (race day settles lower and is reported as `raceCtl`, not aimed at): even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`, and two hard ceilings — fitness never above the target on any day, and acute load within `PLAN_MODEL.ramp.acuteRatioMax` times chronic load on every day (neither is shown on a screen). Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `targetAt: 'raceDay'` is the first version's solve, kept for plans whose target was made that way. `planLevers` works out, by rebuilding, what would make it reachable. Pure. `refit` and `newPlan` call it for a plan that has a `target` (see below). |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
@@ -286,9 +286,9 @@ weeks before it keep their sessions *and* their planned hours. Plan setup, race
 changes and every coach tool pass the week today falls in; with no date (a coach
 session without `today`) the whole season refits as before.
 
-**A plan can be built to a target.** `plan.target = { ctl, start, feasibility }` —
+**A plan can be built to a target.** `plan.target = { ctl, at, start, feasibility }` —
 another field added without a schema bump — records the chronic training load the
-season was built to arrive with on race day (read off `FITNESS_BANDS` through the
+season was built to peak at, before the taper (read off `FITNESS_BANDS` through the
 race's `ambition`, `targets.js`), where the athlete started from and where that
 figure came from (`startfit.js`: an entered figure, their synced sessions, or an
 estimate from recent hours), and whether the planner (`backplan.js`) could reach
@@ -301,8 +301,17 @@ with no target** (`refit({ upgrade: true, start })`): the weekly review and the
 coach's week-level tools leave a plan's sizing as they found it, so one week's
 change never quietly re-sizes a season. The weekly release re-anchors a plan with a
 target from the athlete's fitness at the end of the reviewed week when their synced
-sessions say (`actualCtlAt`, never heart rate), and never lowers the target. The
-inputs the start was worked out from (recent hours, years in the sport, background,
+sessions say (`actualCtlAt`, never heart rate), and never lowers the target. **The target
+is the peak, not race day** (23 Oct 2026, reversing 18 Oct: aimed at race day the planner
+solved for a peak about 18 % above it to pay for the taper — a 70.3 built for 90 peaked
+near 108, inside the Ironman range). `at: 'peak'` is the only value stored; a target with
+no `at` was made for race day and keeps meaning that, re-sized for race day by the weekly
+review and the coach's week tools, and moved to the peak only by Plan setup, a change of
+race or the wizard (the callers that pass `upgrade`). `feasibility.raceCtl` is where race
+day comes out; `achievableCtl` is read at the peak. Do not turn the ceilings into aims or
+show the acute-to-chronic ratio on a screen: the 16 Oct exclusion of ACWR as a displayed
+figure stands, and `acuteRatioMax` is unfitted (FINDINGS, 23 Oct, has the measurements).
+The inputs the start was worked out from (recent hours, years in the sport, background,
 body measurements) are not stored on the plan; only the figure and its source are.
 
 **A plan with no target is sized by the athlete's own week, never by an annual

@@ -5,9 +5,10 @@ import { readFileSync } from 'node:fs';
 import { planSeason, weeklyLoadFor, planLevers } from '../assets/coach/backplan.js';
 import { PLAN_MODEL, targetCtl } from '../assets/coach/targets.js';
 import { AMBITIONS, normalizeEvents } from '../assets/coach/events.js';
-import { fitnessSeries, plannedLoad } from '../assets/coach/fitness.js';
+import { fitnessSeries, plannedLoad, carry } from '../assets/coach/fitness.js';
 import { generateWeek } from '../assets/coach/generate.js';
-import { raceClosure } from '../assets/coach/races.js';
+import { raceClosure, plannedRaceLoads } from '../assets/coach/races.js';
+import { dateOf } from '../assets/coach/calendar.js';
 import { normalizeProfile, weeklyAvailableMinutes, DAYS } from '../assets/coach/profile.js';
 import { validateSeason, MAX_RAMP, MAX_BLOCK_STEP } from '../assets/coach/validate.js';
 import { LOAD } from '../assets/coach/load.js';
@@ -58,6 +59,32 @@ function assemble(inp, result) {
 }
 const today = '2026-10-18';
 const raceDayCtl = (inp, result) => fitnessSeries(assemble(inp, result), { today }).plannedRace.fit;
+
+/* The planned fitness and fatigue of every day of the season, stepped by the
+   chart's own `carry`. Fatigue starts where fitness does: the athlete is taken to
+   have been training at a steady level. The race the season is for is in the
+   line, as it is on the chart, and so is any tune-up's own load. */
+function dailyLine(inp, result) {
+  const p = assemble(inp, result);
+  const byDate = { ...plannedRaceLoads(p, result.season.length) };
+  for (const w of result.season) {
+    for (const s of p.weeks[`w${w.absWeek}`]) {
+      const iso = dateOf(inp.start, w.absWeek, s.day);
+      byDate[iso] = (byDate[iso] ?? 0) + (plannedLoad(s) ?? 0);
+    }
+  }
+  const out = [];
+  const dayBefore = toISO(addDays(parseISO(inp.start), -1));
+  carry({ fit: inp.startCtl, fat: inp.startCtl }, dayBefore, inp.profile.raceDate, (iso) => byDate[iso] ?? 0,
+    (iso, s) => out.push({ iso, fit: s.fit, fat: s.fat }));
+  return out;
+}
+const peakOf = (line) => Math.max(...line.map((d) => d.fit));
+// Acute over chronic on its worst day. Against a chronic load smaller than the week a season opens on
+// the ratio means nothing, so it is measured against that week's load.
+const CHRONIC_FLOOR = (PLAN_MODEL.ramp.minWeekMinutes / 60) * (PLAN_MODEL.estimate.loadPerHour / 7);
+const acuteRatioOf = (line) => Math.max(...line.map((d) => d.fat / Math.max(d.fit, CHRONIC_FLOOR)));
+const peakCtl = (inp, result) => peakOf(dailyLine(inp, result));
 const minutesOf = (inp, result) => {
   const p = assemble(inp, result);
   return result.season.map((w) => p.weeks[`w${w.absWeek}`].reduce((a, s) => a + durToMin(s.dur), 0));
@@ -85,27 +112,93 @@ test('holding fitness takes a daily load equal to it', () => {
 
 /* ---- landing ---- */
 
-test('a 70.3 built for the middle of its band lands there through the fitness line the chart draws', () => {
+test('a 70.3 built for the middle of its band peaks there, through the fitness line the chart draws', () => {
   const inp = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 24, startCtl: 50 });
   const r = planSeason(inp);
   assert.equal(r.feasibility.feasible, true);
   assert.equal(r.feasibility.targetCtl, 75);
-  near(raceDayCtl(inp, r), 75, TOL, 'race-day fitness');
-  near(r.feasibility.achievableCtl, raceDayCtl(inp, r), 0.6, 'what it says it reaches is what the line reads');
+  assert.equal(r.feasibility.at, 'peak', 'the record says what the number is');
+  near(peakCtl(inp, r), 75, TOL, 'peak fitness');
+  near(r.feasibility.achievableCtl, peakCtl(inp, r), 0.6, 'what it says it reaches is what the line reads');
+  near(r.feasibility.raceCtl, raceDayCtl(inp, r), 0.6, 'and what it says race day is');
 });
 
-test('17 hours: a 70.3 is built to 90, not to whatever the hours would allow', () => {
+test('17 hours: a 70.3 is built to peak at 90, not to whatever the hours would allow', () => {
   const inp = input({ raceType: '70.3', ambition: 'competitive', hours: 17, weeks: 24, startCtl: 50 });
   const r = planSeason(inp);
-  near(raceDayCtl(inp, r), 90, TOL, '70.3 competitive');
+  near(peakCtl(inp, r), 90, TOL, '70.3 competitive');
   assert.ok(Math.max(...r.season.map((w) => w.hours)) < 17, 'and it does not spend the whole week to get there');
 });
 
-test('17 hours: an Ironman built for the top of its band reaches it', () => {
+test('17 hours: an Ironman built for the top of its band peaks there', () => {
   const inp = input({ raceType: 'ironman', ambition: 'competitive', hours: 17, weeks: 36, startCtl: 50 });
   const r = planSeason(inp);
   assert.equal(r.feasibility.feasible, true);
-  near(raceDayCtl(inp, r), 115, TOL, 'ironman competitive');
+  near(peakCtl(inp, r), 115, TOL, 'ironman competitive');
+});
+
+/* ---- the target is the peak before the taper, and a ceiling ---- */
+
+test('a competitive 70.3 never rises above the top of its band, on any day, whatever the runway, the week or the start', () => {
+  const hi = targetCtl('70.3', 'competitive');
+  assert.equal(hi, 90);
+  const bad = [];
+  for (const weeks of [16, 24, 40, 56]) {
+    for (const hours of [10, 12, 17]) {
+      for (const startCtl of [30, 53, 80]) {
+        const inp = input({ raceType: '70.3', ambition: 'competitive', hours, weeks, startCtl });
+        const r = planSeason(inp);
+        const peak = peakCtl(inp, r);
+        const label = `${weeks} wk, ${hours} h, from ${startCtl}`;
+        if (peak > hi + 1e-6) bad.push(`${label}: peaks at ${peak.toFixed(1)}`);
+        if (r.feasibility.feasible && r.feasibility.status === 'build' && peak < hi - TOL) bad.push(`${label}: feasible but peaks at ${peak.toFixed(1)}`);
+      }
+    }
+  }
+  assert.deepEqual(bad, []);
+});
+
+test('race day is what the taper leaves of the peak: lower, and fitness falls through the last four weeks', () => {
+  const inp = input({ raceType: '70.3', ambition: 'competitive', hours: 12, weeks: 40, startCtl: 53 });
+  const r = planSeason(inp);
+  const line = dailyLine(inp, r);
+  const peak = peakOf(line);
+  const race = line[line.length - 1].fit;
+  assert.ok(race < peak - 8, `race day ${race.toFixed(1)} is well under the peak ${peak.toFixed(1)}`);
+  assert.ok(race / peak > 0.7 && race / peak < 0.92, `a taper takes about a fifth off, not a half: ${(race / peak).toFixed(2)}`);
+  const tail = r.season.slice(-5).map((w) => w.ctl);
+  for (let i = 1; i < tail.length; i++) assert.ok(tail[i] < tail[i - 1], `fitness only comes down into the race: ${tail}`);
+});
+
+test('the taper is not paid for earlier: the climb stops at the target, it does not overshoot to arrive on it', () => {
+  // Built the other way (race day on target) this season peaked near 107 for a target of 90.
+  const inp = input({ raceType: '70.3', ambition: 'competitive', hours: 17, weeks: 24, startCtl: 50 });
+  const before = Math.max(...planSeason({ ...inp, targetAt: 'raceDay' }).season.map((w) => w.ctl));
+  const after = Math.max(...planSeason(inp).season.map((w) => w.ctl));
+  assert.ok(before > 100, `race-day mode peaks at ${before}`);
+  assert.ok(after <= 90 + 1e-6, `peak mode peaks at ${after}`);
+});
+
+test('targetAt: raceDay is the old solve, unchanged: race day lands on the target and the season is what it was', () => {
+  const mid = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 24, startCtl: 50, extra: { targetAt: 'raceDay' } });
+  const rMid = planSeason(mid);
+  near(raceDayCtl(mid, rMid), 75, TOL, 'race-day fitness');
+  assert.deepEqual(rMid.season.map((w) => w.hours),
+    [7, 7.667, 8.417, 9.25, 6.5, 10.167, 11.167, 12.083, 8.417, 12.083, 12.083, 12.083, 8.417, 9.25, 9.083, 7.917, 5.583, 8.667, 8.583, 8.5, 6, 7.5, 6, 4.75]);
+  assert.deepEqual(rMid.season.map((w) => w.ctl),
+    [49.7, 50.1, 51.2, 53.1, 51.7, 54.4, 57.5, 61.3, 60.7, 64.1, 66.9, 69.4, 67.5, 74.4, 80, 82.4, 80.2, 84, 87.1, 89.5, 86.9, 85.4, 81.7, 75.1]);
+  assert.deepEqual(rMid.feasibility, { feasible: true, status: 'build', targetCtl: 75, achievableCtl: 75.1, shortfall: 0, limitingFactor: null });
+
+  const top = input({ raceType: '70.3', ambition: 'competitive', hours: 17, weeks: 24, startCtl: 50, extra: { targetAt: 'raceDay' } });
+  const rTop = planSeason(top);
+  assert.deepEqual(rTop.season.map((w) => w.hours),
+    [7, 7.667, 8.417, 9.25, 6.583, 10.167, 11.167, 12.25, 8.833, 13.417, 14.75, 16.167, 11.333, 10.167, 10.75, 9.75, 6.917, 10.667, 10, 10.333, 7.333, 9.083, 7.25, 5.75]);
+  assert.deepEqual(rTop.season.map((w) => w.ctl),
+    [49.6, 50, 51.2, 53, 51.7, 54.5, 57.7, 62, 61.8, 66.3, 71.9, 78.1, 78.1, 85.1, 92, 96.1, 94.1, 99.5, 102.9, 106.4, 103.6, 102, 97.7, 90]);
+});
+
+test('a targetAt that is neither is refused with a sentence', () => {
+  assert.throws(() => planSeason({ ...input(), targetAt: 'sometime' }), /targetAt|peak|race day/i);
 });
 
 test('an Ironman and a 70.3 on the same inputs are not the same season', () => {
@@ -132,8 +225,8 @@ test('race day itself, and the Sunday after a Saturday race, hold no training', 
 
 /* ---- when it cannot be done ---- */
 
-test('8 hours cannot be built to any Ironman target, and the plan says so plainly', () => {
-  for (const ambition of AMBITIONS) {
+test('8 hours cannot be built to the middle or the top of the Ironman range, and the plan says so plainly', () => {
+  for (const ambition of ['intermediate', 'competitive']) {
     const inp = input({ raceType: 'ironman', ambition, hours: 8, weeks: 24, startCtl: 50 });
     const r = planSeason(inp);
     const f = r.feasibility;
@@ -141,13 +234,22 @@ test('8 hours cannot be built to any Ironman target, and the plan says so plainl
     assert.equal(f.limitingFactor, 'availability', `${ambition}: more weeks would not help`);
     assert.ok(f.achievableCtl < f.targetCtl - TOL, ambition);
     assert.ok(f.shortfall > 0 && Math.abs(f.shortfall - (f.targetCtl - f.achievableCtl)) < 0.2, ambition);
-    near(raceDayCtl(inp, r), f.achievableCtl, 1, `${ambition}: it builds the best it can and reads back what it said`);
+    near(peakCtl(inp, r), f.achievableCtl, 1, `${ambition}: it builds the best it can and reads back what it said`);
   }
+});
+
+test('8 hours can be built to the low end of the Ironman range as a peak: it was out of reach only when race day had to be there', () => {
+  // Aimed at race day, 80 asked for a peak near 97, which 8 hours could not carry.
+  const inp = input({ raceType: 'ironman', ambition: 'finish', hours: 8, weeks: 24, startCtl: 50 });
+  const r = planSeason(inp);
+  assert.equal(r.feasibility.feasible, true);
+  near(peakCtl(inp, r), 80, TOL, 'peak fitness');
+  assert.ok(raceDayCtl(inp, r) < peakCtl(inp, r) - 8, 'and race day, after the taper, is lower');
 });
 
 test('an infeasible plan never overshoots the target', () => {
   const inp = input({ raceType: 'ironman', ambition: 'finish', hours: 8, weeks: 24 });
-  assert.ok(raceDayCtl(inp, planSeason(inp)) <= targetCtl('ironman', 'finish'));
+  assert.ok(peakCtl(inp, planSeason(inp)) <= targetCtl('ironman', 'finish') + 1e-6);
 });
 
 test('too short a runway is a runway problem, and a longer one would do', () => {
@@ -219,6 +321,33 @@ test('no loading week raises fitness by more than the ramp allows', () => {
   }
 });
 
+test('acute load is held to its ceiling over chronic load on every day, and a climb that would break that is not made', () => {
+  assert.equal(PLAN_MODEL.ramp.acuteRatioMax, 1.5);
+  const bad = [];
+  for (const [raceType, ambition, hours, weeks, startCtl] of [
+    ['70.3', 'competitive', 17, 20, 30], ['70.3', 'competitive', 17, 24, 53], ['70.3', 'competitive', 12, 24, 53],
+    ['ironman', 'competitive', 17, 24, 50], ['olympic', 'competitive', 12, 16, 20], ['70.3', 'intermediate', 12, 16, 25],
+  ]) {
+    const inp = input({ raceType, ambition, hours, weeks, startCtl });
+    const r = planSeason(inp);
+    const ratio = acuteRatioOf(dailyLine(inp, r));
+    const label = `${raceType} ${ambition} ${hours} h ${weeks} wk from ${startCtl}`;
+    if (ratio > PLAN_MODEL.ramp.acuteRatioMax + 1e-6) bad.push(`${label}: ${ratio.toFixed(2)}`);
+    // Held back is not hidden: a season the ceiling stops short of its target says how far.
+    if (!r.feasibility.feasible) assert.ok(r.feasibility.shortfall > 0, label);
+  }
+  assert.deepEqual(bad, []);
+});
+
+test('a week the athlete pinned does not make the weeks after it empty, even when it breaks the ceiling', () => {
+  const inp = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 24, startCtl: 50 });
+  const free = planSeason(inp);
+  const pinned = planSeason({ ...inp, weekBudgets: { w8: 12 } });     // a very big week, whatever the ratio says
+  assert.equal(pinned.season[8].hours, 12);
+  assert.ok(pinned.season[9].hours > 0 && pinned.season[10].hours > 0, `the weeks after it are weeks of training: ${pinned.season.slice(8, 12).map((w) => w.hours)}`);
+  assert.ok(pinned.season[10].hours >= free.season[10].hours * 0.5, 'and not a fraction of what they would have been');
+});
+
 test('a solved season is one the validator has nothing to say about', () => {
   for (const [raceType, ambition, hours, weeks, startCtl] of [
     ['70.3', 'intermediate', 12, 24, 50], ['70.3', 'competitive', 17, 24, 50], ['ironman', 'competitive', 17, 36, 50],
@@ -233,10 +362,12 @@ test('a solved season is one the validator has nothing to say about', () => {
 });
 
 test('a long runway climbs gently from where the athlete is, and is not the first block repeated', () => {
-  const inp = input({ raceType: '70.3', ambition: 'intermediate', hours: 12, weeks: 52, startCtl: 50 });
+  // A gap of 40 over about 39 loading weeks is a climb of about a point a week. A smaller gap is below
+  // `ramp.floor`, and the athlete then holds where they are until it is time to start (the next test).
+  const inp = input({ raceType: '70.3', ambition: 'competitive', hours: 12, weeks: 52, startCtl: 48 });
   const r = planSeason(inp);
   const early = r.season.slice(0, 16);
-  let prev = 50;
+  let prev = 48;
   for (const w of early) {
     assert.ok(w.ctl - prev < 4, `week ${w.absWeek + 1} rises ${w.ctl - prev}: nothing like the top of the ramp`);
     prev = w.ctl;
@@ -245,15 +376,15 @@ test('a long runway climbs gently from where the athlete is, and is not the firs
   const cycles = [0, 1, 2].map((c) => early.slice(c * 4, c * 4 + 4).map((w) => w.hours));
   assert.notDeepEqual(cycles[0], cycles[1], 'four weeks and the same four again is what padding with Prep used to be');
   assert.notDeepEqual(cycles[1], cycles[2]);
-  near(raceDayCtl(inp, r), 75, TOL, 'and it still arrives');
+  near(peakCtl(inp, r), 90, TOL, 'and it still peaks where it should');
 });
 
 test('where the gap to climb is tiny, the athlete holds until it is time to start', () => {
-  const inp = input({ raceType: '70.3', ambition: 'finish', hours: 12, weeks: 52, startCtl: 72 });  // 60 on race day needs about 74 before the tail
+  const inp = input({ raceType: '70.3', ambition: 'finish', hours: 12, weeks: 52, startCtl: 56 });  // a peak of 60 is four points off
   const r = planSeason(inp);
   const early = r.season.slice(0, 20).map((w) => w.ctl);
   assert.ok(Math.max(...early) - Math.min(...early) < 8, `held: ${early}`);
-  near(raceDayCtl(inp, r), 60, TOL, 'and it arrives');
+  near(peakCtl(inp, r), 60, TOL, 'and it peaks where it should');
 });
 
 test('every week carries what the rest of the engine reads', () => {
@@ -334,7 +465,7 @@ test('a tune-up of more than two hours gets a taper whose load is the share its 
   assert.equal(r.season[10].block, 'Taper');
   assert.equal(r.season[11].block, 'Race');
   assert.ok(r.season[10].hours < plain.season[10].hours, 'the taper week is lighter than the week it replaced');
-  near(raceDayCtl(inp, r), 75, TOL, 'and the season still arrives');
+  near(peakCtl(inp, r), 75, TOL, 'and the season still peaks where it should');
 });
 
 test('a tune-up of two hours or less changes no block, clears its own day, and its load counts', () => {
@@ -351,8 +482,8 @@ test('a tune-up of two hours or less changes no block, clears its own day, and i
   const p = assemble(inp, r);
   assert.equal(durToMin(p.weeks.w19.find((s) => s.day === 'Wed').dur), 0, 'race day is clear');
   assert.ok(durToMin(p.weeks.w19.find((s) => s.day === 'Thu').dur) > 0, 'and the days after it are not');
-  near(raceDayCtl(inp, r), 75, TOL, 'with the race\'s own load in the line, it still arrives');
-  near(r.feasibility.achievableCtl, raceDayCtl(inp, r), 0.3, 'and the planner counted that load the way the line does');
+  near(peakCtl(inp, r), 75, TOL, 'with the race\'s own load in the line, it still peaks where it should');
+  near(r.feasibility.achievableCtl, peakCtl(inp, r), 0.6, 'and the planner counted that load the way the line does');
   const without = planSeason(input());
   assert.ok(r.season[19].hours < without.season[19].hours + 1e-9 || r.season[20].hours <= without.season[20].hours, 'the race\'s own load is part of the week, so it asks a little less of the rest');
 });
@@ -511,7 +642,7 @@ test('the planner reads no heart rate', () => {
 
 /* ---- the whole grid ---- */
 
-test('across races, ambitions, starting fitness, runways and weeks: it lands or says how far short', () => {
+test('across races, ambitions, starting fitness, runways and weeks: it peaks on target or says how far short', () => {
   const cases = [];
   for (const raceType of ['olympic', '70.3', 'ironman']) {
     for (const ambition of AMBITIONS) {
@@ -528,14 +659,16 @@ test('across races, ambitions, starting fitness, runways and weeks: it lands or 
     const inp = input(c);
     const r = planSeason(inp);
     const f = r.feasibility;
-    const read = raceDayCtl(inp, r);
+    const line = dailyLine(inp, r);
+    const read = peakOf(line);
     const label = `${c.raceType} ${c.ambition} from ${c.startCtl} over ${c.weeks} wk at ${c.hours} h`;
     if (f.status === 'hold') {
-      if (!(read >= f.targetCtl - TOL)) bad.push(`${label}: held but reads ${read} for ${f.targetCtl}`);
+      if (!(read >= f.targetCtl - TOL)) bad.push(`${label}: held but peaks at ${read.toFixed(1)} for ${f.targetCtl}`);
     } else if (f.feasible) {
-      if (Math.abs(read - f.targetCtl) > TOL) bad.push(`${label}: reads ${read}, target ${f.targetCtl}`);
+      if (Math.abs(read - f.targetCtl) > TOL) bad.push(`${label}: peaks at ${read.toFixed(1)}, target ${f.targetCtl}`);
+      if (read > f.targetCtl + 1e-6) bad.push(`${label}: rises above its target, to ${read.toFixed(1)} for ${f.targetCtl}`);
     } else {
-      if (!(read <= f.targetCtl + 0.5)) bad.push(`${label}: infeasible but overshoots, reads ${read} for ${f.targetCtl}`);
+      if (!(read <= f.targetCtl + 1e-6)) bad.push(`${label}: infeasible but overshoots, peaks at ${read.toFixed(1)} for ${f.targetCtl}`);
       if (!(f.shortfall > 0)) bad.push(`${label}: infeasible with no shortfall`);
       if (!['availability', 'runway'].includes(f.limitingFactor)) bad.push(`${label}: limiting factor ${f.limitingFactor}`);
       // The factor is the one that matters: with a longer runway it is feasible only if the runway was the limit.
@@ -543,6 +676,9 @@ test('across races, ambitions, starting fitness, runways and weeks: it lands or 
       const expected = longer.feasibility.feasible ? 'runway' : 'availability';
       if (f.limitingFactor !== expected) bad.push(`${label}: says ${f.limitingFactor}, a longer runway says ${expected}`);
     }
+    // Whatever else it does, it never asks the acute load to run past the ceiling over the chronic.
+    const ratio = acuteRatioOf(line);
+    if (ratio > PLAN_MODEL.ramp.acuteRatioMax + 1e-6) bad.push(`${label}: acute load reaches ${ratio.toFixed(2)} times chronic`);
   }
   assert.deepEqual(bad, []);
 });

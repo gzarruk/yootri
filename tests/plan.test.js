@@ -5,7 +5,7 @@ import {
   loadPlan, blockAt, weekCount, sessionsAt, setSessionsAt,
   refit, diffPlans, applyDraft, weekTotals, newPlan, pruneHistory, mintPlanId, moveSession,
   landingsOf, landingsDetail, raceDayFor, raceClosure, freshWeek, isUntouchedPlan,
-  carryOver, upcomingEvents, normalizeTarget,
+  carryOver, upcomingEvents, normalizeTarget, targetInputOf,
 } from '../assets/coach/plan.js';
 import { normalizeProfile, DAYS } from '../assets/coach/profile.js';
 import { durToMin } from '../assets/coach/duration.js';
@@ -967,6 +967,21 @@ test('a start that says nothing of where it came from is read as no more than th
   assert.deepEqual(t.start, { ctl: 50, source: 'entered' });
 });
 
+test('a target made to peak says so, and where race day came out; any other `at` is no marker', () => {
+  const peak = { ...goodTarget(), at: 'peak', feasibility: { ...goodTarget().feasibility, at: 'peak', raceCtl: 61.449 } };
+  const t = normalizeTarget(peak);
+  assert.equal(t.at, 'peak');
+  assert.equal(t.feasibility.raceCtl, 61.4, 'to a tenth, like the rest');
+  assert.equal(t.feasibility.at, undefined, 'the marker is on the target, once');
+  for (const at of ['raceDay', 'Peak', 'taper', 5, null, true]) {
+    const odd = normalizeTarget({ ...goodTarget(), at });
+    assert.equal('at' in odd, false, `${JSON.stringify(at)} is read as an old, race-day target`);
+  }
+  const bad = normalizeTarget({ ...peak, feasibility: { ...peak.feasibility, raceCtl: 'low' } });
+  assert.equal('raceCtl' in bad.feasibility, false, 'a race-day figure that is not a number is dropped, the rest kept');
+  assert.deepEqual(normalizeTarget(normalizeTarget(peak)), normalizeTarget(peak), 'and cleaning twice changes nothing');
+});
+
 test('loadPlan keeps a good target, drops a bad one, and loading twice changes nothing', () => {
   const base = newPlan({ name: 'T', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: '70.3', now: 1 });
   const withTarget = { ...base, target: goodTarget() };
@@ -1014,15 +1029,20 @@ const legacyPlan = () => newPlan({
   name: 'Old', startISO: '2026-10-19', raceDate: '2027-03-27', raceType: '70.3', profile: { availability: TWELVE_HOURS }, now: 1,
 });
 const raceRead = (p) => fitnessSeries(p, { today: '2026-10-18' }).plannedRace.fit;
+const peakRead = (p) => Math.max(...fitnessSeries(p, { today: '2026-10-18' }).weeks.map((w) => w.planned));
 
-test('a new plan built to a target records it, and arrives at it', () => {
+test('a new plan built to a target records it, and peaks at it', () => {
   const p = targetPlan();
   assert.equal(p.target.ctl, 75, 'the middle of the 70.3 band');
+  assert.equal(p.target.at, 'peak', 'the number is the peak before the taper');
   assert.deepEqual(p.target.start, START_FIT);
   assert.equal(p.target.feasibility.feasible, true);
   assert.equal(mainRace(cleanEvents(p.events)).ambition, 'intermediate');
   assert.ok(p.season.every((w) => Number.isFinite(w.ctl)), 'with the fitness it plans for at the end of every week');
-  assert.ok(Math.abs(raceRead(p) - 75) <= 2, `race-day fitness reads ${raceRead(p)}`);
+  assert.ok(Math.abs(peakRead(p) - 75) <= 2, `peak fitness reads ${peakRead(p)}`);
+  assert.ok(peakRead(p) <= 75 + 0.5, 'and does not rise past it');
+  assert.ok(raceRead(p) < peakRead(p) - 5, `race day, after the taper, is lower: ${raceRead(p)}`);
+  assert.ok(Math.abs(p.target.feasibility.raceCtl - raceRead(p)) < 1, 'and the plan says where race day comes out');
 });
 
 test('the same plan with no start fitness is built the way every plan always was', () => {
@@ -1063,7 +1083,7 @@ test('a plan with less time than its target needs is built the best it can be, a
   assert.equal(p.target.feasibility.feasible, false);
   assert.equal(p.target.feasibility.limitingFactor, 'availability');
   assert.ok(p.target.feasibility.achievableCtl < p.target.ctl);
-  assert.ok(Math.abs(raceRead(p) - p.target.feasibility.achievableCtl) < 1, 'what it says it reaches is what the line reads');
+  assert.ok(Math.abs(peakRead(p) - p.target.feasibility.achievableCtl) < 1, 'what it says it reaches is what the line reads');
 });
 
 test('refit leaves a plan with no target sized as it always was', () => {
@@ -1088,6 +1108,44 @@ test('upgrading keeps the ambition the athlete already gave the race', () => {
   const p = legacyPlan();
   p.events = p.events.map((e) => ({ ...e, ambition: 'competitive' }));
   assert.equal(refit(p, { upgrade: true, start: START_FIT }).target.ctl, targetFor('70.3', 'competitive'));
+});
+
+/* A target made before the target was the peak has no `at`: race day was what it was
+   built to land on. Such a plan is not re-aimed behind the athlete's back: the weekly
+   review and the coach's week tools re-size it as they always did, and only Plan setup,
+   a change of race and the wizard (which pass `upgrade`) move it to the peak. */
+const legacyTargetPlan = () => {
+  const p = targetPlan({ ambition: 'competitive' });
+  const old = structuredClone(p);
+  delete old.target.at;
+  delete old.target.feasibility.raceCtl;
+  return old;
+};
+
+test('a plan whose target was made for race day is re-sized for race day until it is deliberately moved', () => {
+  const old = legacyTargetPlan();
+  const kept = refit(old, { keepBefore: 3 });
+  assert.equal('at' in kept.target, false, 'still a race-day target');
+  assert.ok(Math.abs(raceRead(kept) - 90) <= 2, `it still lands race day on 90: ${raceRead(kept)}`);
+  assert.ok(peakRead(kept) > 98, `which is what a race-day target has always meant: the peak is ${peakRead(kept)}`);
+});
+
+test('upgrading a plan with a race-day target moves it to the peak', () => {
+  const moved = refit(legacyTargetPlan(), { upgrade: true });
+  assert.equal(moved.target.at, 'peak');
+  assert.ok(peakRead(moved) <= 90 + 0.5, `peak ${peakRead(moved)}`);
+  assert.ok(raceRead(moved) < 80, `race day settles lower: ${raceRead(moved)}`);
+});
+
+test('a plan made to peak stays a peak target through a refit that does not ask to upgrade', () => {
+  const p = targetPlan();
+  assert.equal(refit(p, { keepBefore: 3 }).target.at, 'peak');
+  assert.equal(refit(p, { upgrade: true }).target.at, 'peak');
+});
+
+test('what the planner is given for a plan says which kind of target it has', () => {
+  assert.equal(targetInputOf(targetPlan()).targetAt, 'peak');
+  assert.equal(targetInputOf(legacyTargetPlan()).targetAt, 'raceDay');
 });
 
 test('weeks already trained come back exactly as they were, and the rest is built from where they ended', () => {

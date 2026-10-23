@@ -39,11 +39,16 @@ function built(hours, raceType, { ambition, ...extra } = {}) {
 const near = (actual, expected, tol, msg) =>
   assert.ok(Math.abs(actual - expected) <= tol, `${msg}: ${actual} is not within ${tol} of ${expected}`);
 
-test('the fitness a season arrives with is what the race and the ambition call for, not what the hours would allow', () => {
+test('the fitness a season peaks at is what the race and the ambition call for, not what the hours would allow', () => {
   // Before: 17 h gave about 115 for a 70.3 and an Ironman alike, and 8 h about 51 with nothing said.
-  near(built(17, '70.3', { ambition: 'competitive' }).raceDay, 90, 2, '17 h 70.3 competitive');
-  near(built(17, 'ironman', { ambition: 'competitive' }).raceDay, 115, 2, '17 h Ironman competitive');
-  near(built(12, '70.3', { ambition: 'finish' }).raceDay, 60, 2, '12 h 70.3 finish');
+  near(built(17, '70.3', { ambition: 'competitive' }).peak, 90, 2, '17 h 70.3 competitive');
+  near(built(17, 'ironman', { ambition: 'competitive' }).peak, 115, 2, '17 h Ironman competitive');
+  // (An athlete who trains 8 hours a week is already at about 63, above this peak, and is held there.)
+  near(built(12, '70.3', { ambition: 'finish', recentWeeklyHours: 4 }).peak, 60, 2, '12 h 70.3 finish');
+  // The peak is the target and a ceiling, and race day is what the taper leaves of it.
+  const top = built(17, '70.3', { ambition: 'competitive' });
+  assert.ok(top.peak <= 90 + 0.5, `a 70.3 built for 90 peaks at ${top.peak}`);
+  assert.ok(top.raceDay < top.peak - 8, `and arrives lower: ${top.raceDay}`);
 });
 
 test('an Ironman and a 70.3 on the same hours are not the same season', () => {
@@ -54,13 +59,13 @@ test('an Ironman and a 70.3 on the same hours are not the same season', () => {
 });
 
 test('an 8-hour athlete aiming at an Ironman is told so, and given the best that 8 hours can do', () => {
-  const { plan, raceDay } = built(8, 'ironman', { ambition: 'competitive' });
+  const { plan, raceDay, peak } = built(8, 'ironman', { ambition: 'competitive' });
   assert.equal(plan.target.ctl, 115);
   assert.equal(plan.target.feasibility.feasible, false);
   assert.equal(plan.target.feasibility.limitingFactor, 'availability');
   assert.ok(plan.target.feasibility.shortfall > 20);
-  near(raceDay, plan.target.feasibility.achievableCtl, 1, 'and it reads back what it said');
-  assert.ok(raceDay < 115, 'it does not overshoot');
+  near(peak, plan.target.feasibility.achievableCtl, 1, 'and it reads back what it said');
+  assert.ok(peak < 115 && raceDay < peak, 'it does not overshoot, and race day is below the peak');
   assert.equal(plan.release.through, 0);
 });
 

@@ -44,6 +44,11 @@ export const PLANNED = Object.freeze({
   zoneIF: Object.freeze({ 1: 0.55, 2: 0.7, 3: 0.85, 4: 1.0, 5: 1.15 }),
   strengthRpe: 5,           // load.js counts RPE 7 as threshold
   adherenceDays: 28,
+  // The window the trend is read over must hold at least this many days of plan.
+  // A few days is a handful of sessions, not a rate: early in a plan a long ride
+  // against a short week reads as the capped 1.5, and the trend then draws a line
+  // far above the plan to a race-day figure half as high again.
+  adherenceMinDays: 14,
   maxAdherence: 1.5,        // doing three times the plan does not project three times the fitness
   form: Object.freeze({ low: -10, high: 10 }),
   // A range of form often used on race day. Illustrative like the bands, not a target.
@@ -218,7 +223,8 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
   let actualIn = 0;
   for (const [iso, v] of Object.entries(planned.byDate)) if (iso >= windowFrom && iso <= today) plannedIn += v;
   for (const [iso, v] of Object.entries(d.byDate)) if (iso >= windowFrom && iso <= today) actualIn += v;
-  const adherence = covers && plannedIn > 0
+  const windowLength = Math.round((parseISO(today) - parseISO(windowFrom)) / 86400000) + 1;
+  const adherence = covers && plannedIn > 0 && windowLength >= PLANNED.adherenceMinDays
     ? Math.round(Math.min(PLANNED.maxAdherence, actualIn / plannedIn) * 1000) / 1000
     : null;
 

@@ -1,9 +1,12 @@
-/* What a season is built to arrive with, and the constants the target-driven
-   planner reads.
+/* What a season is built to reach, and the constants the target-driven planner
+   reads.
 
    A target is a chronic training load (load.js: an hour at threshold is 100,
-   averaged over 42 days) for race day. It comes from one place — the bands the
-   Fitness chart draws (`FITNESS_BANDS`) — so the chart and the plan cannot
+   averaged over 42 days) for the top of the build: the peak before the taper,
+   with race day settling lower by what the taper takes out (backplan.js). A
+   target made before 23 Oct 2026 was race day itself, and a plan that carries
+   one says so by having no `at` (plan.js). It comes from one place — the bands
+   the Fitness chart draws (`FITNESS_BANDS`) — so the chart and the plan cannot
    disagree about what a distance asks for:
 
      finish        the band's low end
@@ -52,6 +55,16 @@ export const PLAN_MODEL = freeze({
      the athlete holds where they are until it is time to start. */
   ramp: {
     max: 7,
+    // The most the acute load (7-day average) may run above the chronic load
+    // (42-day average), as a ratio, on any day of a week the planner sizes. A
+    // perfectly steady training week, with its long day, already reads about 1.13
+    // on this daily measure, so the room above that is what a climb may use: for
+    // a steady rise of r points a week the gap is about 5r, so 1.5 allows roughly
+    // 0.07 × fitness a week (4 at a fitness of 60, 7 at 100). It binds on short
+    // runways and low starts, and where it leaves the target out of reach the
+    // plan says so. Unfitted: at 1.3 a third of the builds a plain ramp allows
+    // came out short (FINDINGS, 23 Oct).
+    acuteRatioMax: 1.5,
     floor: 1,
     // The first week of a season is held to a tenth above what the athlete trains
     // now — the time that holds their fitness at an ordinary hour's load
@@ -99,7 +112,7 @@ export const PLAN_MODEL = freeze({
 });
 
 /**
- * The fitness a season is built to arrive with on race day, or null for a
+ * The fitness a season is built to peak at, or null for a
  * distance the chart has no band for (a sprint, a marathon). An absent or
  * unrecognised ambition is read as the default level, the same way a plan
  * stored before ambitions existed is.
@@ -178,20 +191,28 @@ export function describeTarget({ target, levers = null } = {}) {
   if (!target || !f) return null;
   const goal = Math.round(target.ctl);
   const reaches = Math.round(f.achievableCtl);
+  // Aimed at the peak before the taper, race day is a result and is said so; a
+  // target made for race day (no `at`) is worded as it always was.
+  const peak = target.at === 'peak';
+  const race = peak && Number.isFinite(f.raceCtl) ? ` and about ${Math.round(f.raceCtl)} on race day, once the taper has taken its share` : '';
 
   if (f.status === 'hold') {
     return {
       state: 'hold',
       headline: `You are already at or above the fitness this race calls for (${goal}).`,
-      detail: `The plan holds what you have rather than building more; it reaches about ${reaches} on race day. That is an estimate from the planned sessions.`,
+      detail: peak
+        ? `The plan holds what you have rather than building more; it reaches about ${reaches} at its peak${race}. Those are estimates from the planned sessions.`
+        : `The plan holds what you have rather than building more; it reaches about ${reaches} on race day. That is an estimate from the planned sessions.`,
       choices: [],
     };
   }
   if (f.feasible) {
     return {
       state: 'reached',
-      headline: `Built to arrive at a fitness of ${goal} on race day.`,
-      detail: `The plan reaches about ${reaches}. That is an estimate from the planned sessions and describes training, not you.`,
+      headline: peak ? `Built to peak at a fitness of ${goal} before the taper.` : `Built to arrive at a fitness of ${goal} on race day.`,
+      detail: peak
+        ? `The plan reaches about ${reaches} at its peak${race}. Those are estimates from the planned sessions and describe training, not you.`
+        : `The plan reaches about ${reaches}. That is an estimate from the planned sessions and describes training, not you.`,
       choices: [],
     };
   }
@@ -217,7 +238,9 @@ export function describeTarget({ target, levers = null } = {}) {
   }
   return {
     state: 'short',
-    headline: `A fitness of ${goal} is out of reach as things stand: this plan reaches about ${reaches} on race day, ${Math.round(f.shortfall)} short.`,
+    headline: peak
+      ? `A peak fitness of ${goal} is out of reach as things stand: this plan reaches about ${reaches} at its peak, ${Math.round(f.shortfall)} short.`
+      : `A fitness of ${goal} is out of reach as things stand: this plan reaches about ${reaches} on race day, ${Math.round(f.shortfall)} short.`,
     detail: BLOCKED_BY[f.limitingFactor] ?? '',
     choices,
   };

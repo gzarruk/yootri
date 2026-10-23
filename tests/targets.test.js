@@ -116,6 +116,18 @@ const shortTarget = (limitingFactor = 'availability') => goodTarget({
   feasibility: { feasible: false, status: 'build', targetCtl: 98, achievableCtl: 64.3, shortfall: 33.7, limitingFactor },
 });
 
+/* A target aimed at the peak before the taper says so, and says where race day comes out. One made
+   for race day, before the peak existed, says what it always did. */
+const peakTarget = (over = {}) => goodTarget({
+  at: 'peak',
+  feasibility: { feasible: true, status: 'build', targetCtl: 75, achievableCtl: 74.9, shortfall: 0, limitingFactor: null, raceCtl: 61.7 },
+  ...over,
+});
+const shortPeak = (limitingFactor = 'runway') => peakTarget({
+  ctl: 98,
+  feasibility: { feasible: false, status: 'build', targetCtl: 98, achievableCtl: 64.3, shortfall: 33.7, limitingFactor, raceCtl: 53 },
+});
+
 test('each level has a name and a plain-language description', () => {
   assert.deepEqual(Object.keys(AMBITION_INFO), [...AMBITIONS]);
   for (const a of AMBITIONS) {
@@ -138,6 +150,51 @@ test('a target that is reached says so, in plain words, and calls the figure an 
   assert.match(d.headline, /75/);
   assert.match(d.detail, /estimate/i);
   assert.deepEqual(d.choices, []);
+});
+
+test('a target aimed at the peak says peak, and where race day comes out', () => {
+  const d = describeTarget({ target: peakTarget() });
+  assert.equal(d.state, 'reached');
+  assert.match(d.headline, /peak/i);
+  assert.match(d.headline, /75/);
+  assert.doesNotMatch(d.headline, /on race day/i, 'race day is not what it was built to arrive at');
+  assert.match(d.detail, /75/, 'about what the plan reaches');
+  assert.match(d.detail, /62/, 'and about what race day comes to');
+  assert.match(d.detail, /race day/i);
+  assert.match(d.detail, /estimate/i);
+});
+
+test('a peak target made before race-day figures were kept still reads, without one', () => {
+  const t = peakTarget();
+  delete t.feasibility.raceCtl;
+  const d = describeTarget({ target: t });
+  assert.match(d.headline, /peak/i);
+  assert.doesNotMatch(d.detail, /NaN|undefined|null/);
+});
+
+test('a target made for race day says what it always said', () => {
+  const d = describeTarget({ target: goodTarget() });
+  assert.equal(d.headline, 'Built to arrive at a fitness of 75 on race day.');
+  assert.match(d.detail, /The plan reaches about 75\./);
+});
+
+test('an athlete already above a peak target is told the plan holds what they have', () => {
+  const t = peakTarget({ feasibility: { feasible: true, status: 'hold', targetCtl: 75, achievableCtl: 88, shortfall: 0, limitingFactor: null, raceCtl: 72 } });
+  const d = describeTarget({ target: t });
+  assert.equal(d.state, 'hold');
+  assert.match(d.headline, /already/i);
+  assert.match(d.detail, /88/);
+  assert.match(d.detail, /peak/i);
+});
+
+test('a peak target out of reach says so plainly, in terms of the peak', () => {
+  const d = describeTarget({ target: shortPeak() });
+  assert.equal(d.state, 'short');
+  assert.match(d.headline, /out of reach/i);
+  assert.match(d.headline, /peak/i);
+  assert.match(d.headline, /64/);
+  assert.match(d.headline, /98/);
+  assert.match(d.detail, /enough weeks/i);
 });
 
 test('an athlete already above the target is told the plan holds what they have', () => {
@@ -192,6 +249,7 @@ test('what is said about a target never promises a result or talks about the bod
   const levers = { raceDate: { weeks: 40, raceDate: '2027-09-12' }, ambition: { ambition: 'finish', targetCtl: 80 }, hours: { weeklyHours: 16 }, distance: { raceType: '70.3', ambition: 'competitive', targetCtl: 90 } };
   const text = JSON.stringify([
     AMBITION_INFO, describeTarget({ target: goodTarget() }), describeTarget({ target: shortTarget(), levers }),
+    describeTarget({ target: peakTarget() }), describeTarget({ target: shortPeak(), levers }),
     describeTarget({ target: goodTarget({ feasibility: { feasible: true, status: 'hold', targetCtl: 75, achievableCtl: 88, shortfall: 0, limitingFactor: null } }) }),
   ]);
   for (const re of [/guarantee/i, /will (reach|qualify|finish|achieve|hit)/i, /injur/i, /readiness/i, /\brisk/i, /overtrain/i, /medical/i, /\bready\b/i]) {

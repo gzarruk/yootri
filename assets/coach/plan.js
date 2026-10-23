@@ -96,10 +96,13 @@ const tenth = (n) => Math.round(n * 10) / 10;
  * could put a stray value in: nothing derived from heart rate is stored here,
  * and a hand-edited file cannot put it back.
  *
- * `ctl` is the chronic training load the season was built to arrive with on race
- * day; `start` the load the athlete started from and where that figure came from
- * (startfit.js); `feasibility` the planner's own record of whether the target
- * could be reached, and how far short it came if not (backplan.js).
+ * `ctl` is the chronic training load the season was built to reach: the peak
+ * before the taper when `at` is `'peak'`, and race day itself when `at` is absent,
+ * which is how every target made before the peak existed reads. Only `'peak'` is
+ * ever stored; `start` is the load the athlete started from and where that figure
+ * came from (startfit.js); `feasibility` the planner's own record of whether the
+ * target could be reached, how far short it came if not, and where race day comes
+ * out when it was aimed at the peak (`raceCtl`; backplan.js).
  */
 export function normalizeTarget(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
@@ -113,6 +116,7 @@ export function normalizeTarget(raw) {
   if (inRange(s.scoredShare, 0, 1)) start.scoredShare = Math.round(s.scoredShare * 1000) / 1000;
 
   const out = { ctl: tenth(raw.ctl), start };
+  if (raw.at === 'peak') out.at = 'peak';
   const f = raw.feasibility;
   if (f && typeof f === 'object' && typeof f.feasible === 'boolean' && FEASIBILITY_STATUSES.includes(f.status)
     && inRange(f.targetCtl, 0.1, 400) && inRange(f.achievableCtl, 0, 400) && inRange(f.shortfall, 0, 400)) {
@@ -124,6 +128,7 @@ export function normalizeTarget(raw) {
       shortfall: tenth(f.shortfall),
       limitingFactor: LIMITING_FACTORS.includes(f.limitingFactor) ? f.limitingFactor : null,
     };
+    if (inRange(f.raceCtl, 0, 400)) out.feasibility.raceCtl = tenth(f.raceCtl);
   }
   return out;
 }
@@ -141,7 +146,7 @@ export function targetInputOf(plan) {
   if (!t || !goalEvent(events) || !Array.isArray(plan?.season) || !plan.season.length) return null;
   return {
     start: plan.start, weeks: plan.season.length, profile: normalizeProfile(plan.profile), events,
-    startCtl: t.start.ctl, targetCtl: t.ctl, weekBudgets: plan.weekBudgets ?? {},
+    startCtl: t.start.ctl, targetCtl: t.ctl, targetAt: t.at === 'peak' ? 'peak' : 'raceDay', weekBudgets: plan.weekBudgets ?? {},
   };
 }
 
@@ -293,7 +298,7 @@ export function freshWeek(plan, absWeek) {
    band to take a target from, and there is a fitness to start from. Anything
    the planner cannot be given sensible input for is sized the old way too — a
    refit never throws a new kind of error. */
-function solveSeason({ start, weeks, profile, events, weekBudgets, keep, frozen, anchorCtl, startInfo, upgraded }) {
+function solveSeason({ start, weeks, profile, events, weekBudgets, keep, frozen, anchorCtl, startInfo, upgraded, targetAt = 'peak' }) {
   const list = normalizeEvents(events);
   const main = goalEvent(list);
   if (!main || !startInfo || !(Number(startInfo.ctl) >= 0)) return null;
@@ -302,13 +307,13 @@ function solveSeason({ start, weeks, profile, events, weekBudgets, keep, frozen,
   let result;
   try {
     result = planSeason({
-      start, weeks, profile, events: list, startCtl: Number(startInfo.ctl), targetCtl: goal,
+      start, weeks, profile, events: list, startCtl: Number(startInfo.ctl), targetCtl: goal, targetAt,
       weekBudgets, keepBefore: keep, frozen, anchorCtl,
     });
   } catch {
     return null;
   }
-  const target = normalizeTarget({ ctl: goal, start: startInfo, feasibility: result.feasibility });
+  const target = normalizeTarget({ ctl: goal, at: targetAt === 'peak' ? 'peak' : undefined, start: startInfo, feasibility: result.feasibility });
   if (!target) return null;
   // A plan made before ambitions existed is read as the default level; written
   // onto the race, it is part of what the athlete sees when they apply this.
@@ -355,13 +360,18 @@ export function refit(plan, {
   const pinned = draft.weekBudgets ?? {};
 
   const wanted = plan.target || upgrade ? (start ?? plan.target?.start ?? null) : null;
+  // A target made before it meant the peak has no `at`, and goes on being
+  // re-sized for race day until somebody deliberately moves it: only Plan setup,
+  // a change of race and the wizard pass `upgrade`. The weekly review and the
+  // coach's week tools must never re-aim a season that is under way.
+  const targetAt = plan.target && plan.target.at !== 'peak' && !upgrade ? 'raceDay' : 'peak';
   const frozen = (plan.season ?? []).slice(0, Math.min(keep, n));
   const solved = wanted ? solveSeason({
     start: draft.start, weeks: n, profile: draft.profile, events: draft.events, weekBudgets: pinned,
     keep: frozen.length, frozen,
     anchorCtl: Number.isFinite(anchorCtl) ? anchorCtl
       : (frozen.length && Number.isFinite(frozen.at(-1)?.ctl) ? frozen.at(-1).ctl : undefined),
-    startInfo: wanted, upgraded: !plan.target,
+    startInfo: wanted, upgraded: !plan.target, targetAt,
   }) : null;
 
   if (solved) {

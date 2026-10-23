@@ -420,6 +420,7 @@ test('the review reports a refused taper, not a short race', () => {
 import { fitnessSeries } from '../assets/coach/fitness.js';
 
 const raceRead = (p) => fitnessSeries(p, { today: TODAY }).plannedRace.fit;
+const peakRead = (p) => Math.max(...fitnessSeries(p, { today: TODAY }).weeks.map((w) => w.planned));
 
 test('the plan the wizard builds records its target and where the athlete starts', () => {
   const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1 });
@@ -427,7 +428,9 @@ test('the plan the wizard builds records its target and where the athlete starts
   assert.equal(p.target.start.source, 'estimate');
   assert.equal(p.target.start.ctl, 62.9, 'eight hours a week, from About you');
   assert.equal(goalEvent(normalizeEvents(p.events)).ambition, 'intermediate');
-  assert.ok(Math.abs(raceRead(p) - 75) <= 2, `race-day fitness reads ${raceRead(p)}`);
+  assert.equal(p.target.at, 'peak', 'the target is the peak before the taper');
+  assert.ok(Math.abs(peakRead(p) - 75) <= 2, `peak fitness reads ${peakRead(p)}`);
+  assert.ok(raceRead(p) < peakRead(p) - 5, `and race day is lower: ${raceRead(p)}`);
 });
 
 test('the ambition the athlete chose sets the target', () => {
@@ -477,13 +480,13 @@ test('nothing derived from heart rate is on a plan the wizard builds', () => {
   for (const re of [/avgHr/i, /maxHr/i, /heart/i, /hrById/i, /trimp/i]) assert.doesNotMatch(text, re);
 });
 
-test('tune-ups are landed inside a season built to a target, and it still arrives', () => {
+test('tune-ups are landed inside a season built to a target, and it still peaks at it', () => {
   const p = buildPlanFromAnswers(filled({ tuneUps: [
     { name: 'Marathon', date: '2027-01-30', raceType: 'marathon' },
     { name: '10k', date: '2027-03-06', raceType: '10k' },
   ] }), { today: TODAY, now: 1 });
   assert.ok(p.season.some((w) => w.block === 'Taper'), 'the marathon is tapered for');
-  assert.ok(Math.abs(raceRead(p) - 75) <= 2, `race-day fitness reads ${raceRead(p)}`);
+  assert.ok(Math.abs(peakRead(p) - 75) <= 2, `peak fitness reads ${peakRead(p)}`);
 });
 
 test('a plan the wizard builds has no more asked of any week than the athlete has', () => {

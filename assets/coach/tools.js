@@ -106,6 +106,7 @@ function targetNote(plan) {
   const t = plan?.target;
   const f = t?.feasibility;
   if (!f) return '';
+  const peak = t.at === 'peak';
   if (f.status === 'hold') {
     return `The athlete is already at or above the fitness this race calls for (${t.ctl}), so the season holds it rather than building.`;
   }
@@ -115,7 +116,7 @@ function targetNote(plan) {
     runway: 'the weeks left before the race',
     ramp: 'the weeks that are pinned or already trained',
   }[f.limitingFactor] ?? 'the plan as it stands';
-  return `The target fitness of ${t.ctl} cannot be reached: the best this plan can do is about ${f.achievableCtl}, ` +
+  return `The ${peak ? 'peak ' : 'target '}fitness of ${t.ctl} cannot be reached: the best this plan can do is about ${f.achievableCtl}${peak ? ' at its peak' : ''}, ` +
     `${f.shortfall} short. What stands in the way is ${why}. Say so plainly and offer a different goal, ` +
     'more time or the best the plan can do; do not imply the target will be met.';
 }
@@ -296,7 +297,7 @@ function writeEvents(s, base, next, lead) {
     said.push('There is no race the season is built around now, so it keeps its current length.');
   }
   if (draft.target && !base.target) {
-    said.push(`This also sized the rest of the season to a target fitness of ${draft.target.ctl}, from where the athlete's synced sessions put them.`);
+    said.push(`This also sized the rest of the season to ${draft.target.at === 'peak' ? 'peak at' : 'a target fitness of'} ${draft.target.ctl}, from where the athlete's synced sessions put them.`);
   }
   const note = targetNote(draft);
   if (note) said.push(note);
@@ -617,7 +618,7 @@ export const TOOL_DEFS = [
         ambition: {
           type: 'string',
           enum: [...AMBITIONS],
-          description: "Only for the race the season is built around ('primary'): what the athlete wants from it. It sets the fitness the season is built to arrive with. Optional: without it the middle level is used.",
+          description: "Only for the race the season is built around ('primary'): what the athlete wants from it. It sets the fitness the season is built to peak at before the taper. Optional: without it the middle level is used.",
         },
       },
       required: ['date'],
@@ -652,7 +653,7 @@ export const TOOL_DEFS = [
   {
     name: 'set_event_details',
     description:
-      "Change what an event says about itself without moving it: the ambition of the race the season is built around (it sets the fitness the season is built to arrive with, and re-sizes the season to it), and how long the athlete expects a race to take them (it decides whether a tune-up gets a taper week). Call get_events first for the id.",
+      "Change what an event says about itself without moving it: the ambition of the race the season is built around (it sets the fitness the season is built to peak at before the taper, and re-sizes the season to it), and how long the athlete expects a race to take them (it decides whether a tune-up gets a taper week). Call get_events first for the id.",
     input_schema: {
       type: 'object',
       properties: {
@@ -666,7 +667,7 @@ export const TOOL_DEFS = [
   {
     name: 'get_target',
     description:
-      "What the season was built to arrive with and whether it can be reached: the target fitness (chronic training load, a number worked out from the athlete's sessions that describes their training and not them), where the athlete's starting figure came from, whether the target can be reached with the time they have and the weeks that are left, how far short it falls if not, and what would change that. Use it before saying anything about whether the plan will be enough for the race; say what it shows, and when it cannot be reached say so plainly and offer a choice.",
+      "What the season was built to reach and whether it can be reached: the target fitness, the peak before the taper, with race day coming out lower (chronic training load, a number worked out from the athlete's sessions that describes their training and not them), where the athlete's starting figure came from, whether the target can be reached with the time they have and the weeks that are left, how far short it falls if not, and what would change that. Use it before saying anything about whether the plan will be enough for the race; say what it shows, and when it cannot be reached say so plainly and offer a choice.",
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
@@ -1222,7 +1223,11 @@ const HANDLERS = {
     const { draft, said } = writeEvents(s, base, upsertEvent(eventsOf(base), next),
       `${ev.name || 'The event'} on ${ev.date} is now ${what}.`);
     const parts = [...said];
-    if (hasAmbition && draft.target) parts.push(`The season is now built to a target fitness of ${draft.target.ctl}.`);
+    if (hasAmbition && draft.target) {
+      parts.push(draft.target.at === 'peak'
+        ? `The season is now built to peak at a fitness of ${draft.target.ctl} before the taper.`
+        : `The season is now built to a target fitness of ${draft.target.ctl}.`);
+    }
     if (hasTime) parts.push(landingNote(draft, findEvent(draft, ev.id)));
     return ok(parts.filter(Boolean).join(' '));
   },
@@ -1242,7 +1247,11 @@ const HANDLERS = {
     const levers = f && !f.feasible ? leversFor(p) : null;
     const out = {
       about: 'Fitness here is chronic training load: the 42-day average of training load, where an hour at threshold is 100. ' +
-        'The target is what the season is built to arrive with on race day, taper included. It describes training, not the athlete.',
+        (t.at === 'peak'
+          ? 'The target is the fitness the season is built to peak at, at the end of its last loading week and before the taper. Race day comes out lower, by what the taper takes out (raceDayAbout). '
+          : 'The target is what the season is built to arrive with on race day, taper included. ') +
+        'It describes training, not the athlete.',
+      targetIs: t.at === 'peak' ? 'peak' : 'race day',
       targetFitness: t.ctl,
       ambition: main?.ambition ?? null,
       raceType: p.profile.raceType,
@@ -1250,6 +1259,7 @@ const HANDLERS = {
       startedFrom: { fitness: t.start.ctl, how: startNote(t.start), asOf: t.start.asOf ?? null },
       reachable,
       ...(f ? { status: f.status, reachesAbout: f.achievableCtl, shortfall: f.shortfall, limitedBy: f.limitingFactor } : {}),
+      ...(t.at === 'peak' && Number.isFinite(f?.raceCtl) ? { raceDayAbout: f.raceCtl } : {}),
       levers: levers ? {
         raceDate: levers.raceDate ? { weeks: levers.raceDate.weeks, date: levers.raceDate.raceDate } : null,
         ambition: levers.ambition ? { ambition: levers.ambition.ambition, targetFitness: levers.ambition.targetCtl } : null,
