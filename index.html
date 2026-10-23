@@ -3059,7 +3059,7 @@
       const opts = ambitionOptions($('ev-type').value);
       const keep = $('ev-amb').value || (AMBITIONS.includes(ev.ambition) ? ev.ambition : DEFAULT_AMBITION);
       $('ev-amb').innerHTML = opts.map((o) => '<option value="' + esc(o.key) + '"' + (o.key === keep ? ' selected' : '') + '>' +
-        esc(o.label + ' — target ' + o.target) + '</option>').join('');
+        esc(o.label + ' — peak ' + o.target) + '</option>').join('');
       $('ev-amb').closest('.pnl-f').classList.toggle('hidden', !isMain || !opts.length);
       $('ev-time').closest('.pnl-f').classList.toggle('hidden', $('ev-kind').value !== 'race');
     };
@@ -3498,11 +3498,13 @@
      starts and what the plan reaches. */
   function targetFactsHTML(target, ambition) {
     const f = target.feasibility;
+    const atPeak = target.at === 'peak';
     return '<dl class="imp-facts">' +
       '<div><dt>Aiming for</dt><dd>' + esc(ambitionLabel(ambition) || '—') + '</dd></div>' +
-      '<div><dt>Target on race day</dt><dd>' + tgtNum(target.ctl) + '</dd></div>' +
+      '<div><dt>' + (atPeak ? 'Peak fitness, before the taper' : 'Target on race day') + '</dt><dd>' + tgtNum(target.ctl) + '</dd></div>' +
       '<div><dt>Where you start</dt><dd>' + tgtNum(target.start.ctl) + '</dd></div>' +
-      (f ? '<div><dt>The plan reaches</dt><dd>about ' + tgtNum(f.achievableCtl) + '</dd></div>' : '') +
+      (f ? '<div><dt>The plan reaches</dt><dd>about ' + tgtNum(f.achievableCtl) + (atPeak ? ' at its peak' : '') + '</dd></div>' : '') +
+      (atPeak && f && Number.isFinite(f.raceCtl) ? '<div><dt>On race day</dt><dd>about ' + tgtNum(f.raceCtl) + '</dd></div>' : '') +
     '</dl>';
   }
 
@@ -3549,7 +3551,7 @@
     return '<span><b>A race</b> · ' + esc(name && kind && name !== kind ? name + ' · ' + kind : (name || kind || 'Race')) + '</span>' +
       '<span>' + esc(fmtLongDate(main.date)) + '</span>' +
       '<span class="rl-dim">' + when + '</span>' +
-      (t ? '<span>Target fitness <b>' + tgtNum(t.ctl) + '</b></span>' : '') +
+      (t ? '<span>' + (t.at === 'peak' ? 'Peak fitness' : 'Target fitness') + ' <b>' + tgtNum(t.ctl) + '</b></span>' : '') +
       (f && !f.feasible ? '<span class="rl-dim">the plan reaches about ' + tgtNum(f.achievableCtl) + '</span>' : '');
   }
   function renderRaceLabel() {
@@ -3582,7 +3584,7 @@
         : '') +
       '<div class="pnl-grid">' +
         field('How hard to aim', '<select class="input" id="f-ambition">' +
-          opts.map((o) => '<option value="' + esc(o.key) + '"' + (o.key === current ? ' selected' : '') + '>' + esc(o.label + ' — target ' + o.target) + '</option>').join('') + '</select>') +
+          opts.map((o) => '<option value="' + esc(o.key) + '"' + (o.key === current ? ' selected' : '') + '>' + esc(o.label + ' — peak ' + o.target) + '</option>').join('') + '</select>') +
         field('Your fitness today', '<input type="number" class="input" id="f-startctl" min="0" max="200" step="1" value="' + esc(typed) +
           '" placeholder="' + (startCtl !== null && startCtl !== undefined ? tgtNum(startCtl) : '') + '" />') +
       '</div>' +
@@ -3811,6 +3813,10 @@
     }
     return '<h3 class="pnl-h3">Target fitness</h3>' +
       (plan.target ? '' : '<p class="pnl-hint">This also builds the season to a target fitness. ' + esc(startNote(draft.target.start)) + '</p>') +
+      // A target made before it meant the peak: say what changes, so the lower race-day figure is not a surprise.
+      (plan.target && plan.target.at !== 'peak' && draft.target.at === 'peak'
+        ? '<p class="pnl-hint">The target now means the peak before the taper, where it used to mean race day. Race day comes out lower, by what the taper takes out.</p>'
+        : '') +
       targetFactsHTML(draft.target, main && main.ambition) + targetBlockHTML(draft.target, levers);
   }
 
@@ -4838,11 +4844,11 @@
       const current = AMBITIONS.includes(a.ambition) ? a.ambition : DEFAULT_AMBITION;
       const band = opts[0] && opts[0].band;
       return '<h2>How hard to build</h2>' +
-        '<p class="pnl-sub">The season is built to arrive at a level of fitness on race day. Choose how much to aim for; ' +
+        '<p class="pnl-sub">The season is built to peak at a level of fitness before the taper; race day settles a little lower. Choose how much to aim for; ' +
           'you can change it later in Plan setup.</p>' +
         (opts.length
           ? opts.map((o) => '<label class="amb"><input type="radio" name="wz-amb" value="' + esc(o.key) + '"' + (o.key === current ? ' checked' : '') + ' />' +
-              '<span><b>' + esc(o.label) + ' — target fitness ' + o.target + '</b><small>' + esc(o.blurb) + '</small></span></label>').join('')
+              '<span><b>' + esc(o.label) + ' — peak fitness ' + o.target + '</b><small>' + esc(o.blurb) + '</small></span></label>').join('')
           : '<p class="pnl-hint">There is no range for that distance, so the season is sized by the time you have each day.</p>') +
         '<p class="pnl-hint">Fitness here is the 42-day average of training load, the number the Fitness chart draws' +
           (band ? '; the illustrative range for ' + esc(raceTypeLabel(r.raceType)) + ' runs from ' + band.lo + ' to ' + band.hi : '') +
@@ -7317,6 +7323,15 @@
       whyEmptyHTML(fs) + '</article>';
   }
 
+  /* The week a season peaks in: the one whose planned fitness at the end of it is highest, or
+     `fallback` for a season that carries none. */
+  function peakWeekOf(season, fallback) {
+    let best = -Infinity;
+    let at = fallback;
+    (season || []).forEach((w, i) => { if (Number.isFinite(w.ctl) && w.ctl > best) { best = w.ctl; at = i; } });
+    return at;
+  }
+
   /* The Fitness view of the Season panel. x is the week; y runs 0 to `top`. */
   function fitnessChart(fs, N, nowWeek) {
     const peak = Math.max(120, ...fs.weeks.flatMap((w) => [w.planned, w.actual ?? 0, w.trend ?? 0]));
@@ -7359,10 +7374,12 @@
     const raceW = fs.race ? Math.min(last, fs.race.week) : last;
     const raceV = fs.race ? fs.race.fit : fs.weeks[last].planned;
     svg += dot(X(raceW), Y(raceV), 'var(--color-accent-300)', 'var(--color-surface)');
-    // What the season was built to arrive with: a mark on race day at the target.
+    // What the season was built to reach: a mark at the target, on the week it peaks in, or
+    // on race day for a target made before the peak was the target.
     if (plan.target) {
       const ty = f1(Y(plan.target.ctl));
-      svg += '<line x1="' + f1(X(last) - 34) + '" y1="' + ty + '" x2="' + f1(X(last) + 34) + '" y2="' + ty +
+      const tx = plan.target.at === 'peak' ? peakWeekOf(plan.season, last) : last;
+      svg += '<line x1="' + f1(X(tx) - 34) + '" y1="' + ty + '" x2="' + f1(X(tx) + 34) + '" y2="' + ty +
         '" stroke-linecap="round" style="stroke: var(--color-text); stroke-width: 3; vector-effect: non-scaling-stroke"></line>';
     }
     if (fs.trend !== null) svg += dot(X(raceW), Y(fs.trend), 'var(--color-accent)', 'var(--color-surface)');
@@ -7423,7 +7440,7 @@
         '<svg viewBox="0 0 1000 380" preserveAspectRatio="none" role="img" aria-label="Fitness by week. Planned fitness (an estimate) goes from ' + fs.weeks[0].planned + ' in week 1 to ' + fs.weeks[N - 1].planned + ' in week ' + N + '.' +
           (fs.today ? ' Actual fitness is ' + Math.round(fs.today.fit) + ' now.' + (fs.race ? ' The plan followed from today reaches ' + Math.round(fs.race.fit) + ' on race day.' : '') : ' There is no actual line yet.') +
           (fs.trend !== null ? ' On the current trend it reaches ' + Math.round(fs.trend) + ' on race day.' : '') +
-          (plan.target ? ' The plan target is ' + Math.round(plan.target.ctl) + ' on race day.' : '') + ' ' +
+          (plan.target ? ' The plan target is ' + Math.round(plan.target.ctl) + (plan.target.at === 'peak' ? ' at its peak, in week ' + (peakWeekOf(plan.season, N - 1) + 1) + '.' : ' on race day.') : '') + ' ' +
           BANDS.map((b) => b.name + ' band, illustrative, runs ' + b.lo + ' to ' + b.hi).join(', ') + '.">' + c.svg + '</svg>' +
         '<div class="bands" aria-hidden="true">' + c.bands + '</div>' +
         '<div class="plot-x">' + c.xlab + '</div>' +
@@ -7434,7 +7451,8 @@
         '<span class="lg">' + swatch('var(--color-accent-300)', 2, LINE_DASH.planned) + 'Planned, estimated <span>' + whole(fs.weeks[N - 1].planned) + ' in week ' + N + '</span></span>' +
         (fs.race ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.followed) + 'Plan from today <span>' + whole(fs.race.fit) + ' on race day</span></span>' : '') +
         (fs.trend !== null ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.trend) + 'On current trend <span>' + whole(fs.trend) + ' on race day</span></span>' : '') +
-        (plan.target ? '<span class="lg">' + swatch('var(--color-text)', 3) + 'Plan target <span>' + whole(plan.target.ctl) + ' on race day</span></span>' : '') +
+        (plan.target ? '<span class="lg">' + swatch('var(--color-text)', 3) + 'Plan target <span>' + whole(plan.target.ctl) +
+          (plan.target.at === 'peak' ? ' at its peak, week ' + (peakWeekOf(plan.season, N - 1) + 1) : ' on race day') + '</span></span>' : '') +
         '<span class="lg">' + swatch('var(--color-text)', 1.5, null, 0.5) + 'Race day, week ' + N + '</span>' +
       '</div>' + preparationHTML(fs);
 
@@ -7506,9 +7524,9 @@
       '<p class="pnl-sub">Every session gets one load number, where an hour at threshold is 100: from power for rides, pace for runs and swims, effort rating for strength, and heart rate when nothing better exists.</p>' +
       '<p class="pnl-hint"><b>Fitness</b> is the average of that over the last 42 days and <b>fatigue</b> the average over the last 7. ' +
         '<b>Form</b> is fitness minus fatigue. They are worked out each time the page opens from sessions synced through your Garmin bridge, and are never stored or put on your plan.</p>' +
-      '<p class="pnl-hint">A season built to a target keeps that <b>target</b>, and the figure it started from, on your plan: the mark on race day is the target. Nothing else here is stored.</p>' +
+      '<p class="pnl-hint">A season built to a target keeps that <b>target</b>, and the figure it started from, on your plan: the mark on the chart is the target: the peak before the taper. Nothing else here is stored.</p>' +
       '<p class="pnl-hint">The <b>planned</b> line and the <b>race day</b> figures cannot be measured, so each planned session is scored from its length and zone with one fixed intensity per zone. ' +
-        'The <b>trend</b> carries today’s figures to race day with the rest of the plan done at the rate of the last four weeks. The cut-offs for low and high form and the bands are starting values, not findings.</p>' +
+        'The <b>trend</b> carries today’s figures to race day with the rest of the plan done at the rate of the last four weeks, and appears once two weeks of the plan are behind you. The cut-offs for low and high form and the bands are starting values, not findings.</p>' +
       '<div class="pnl-act"><button type="button" class="btn btn-primary" id="ffm-close">Close</button></div>',
       'Fitness, fatigue and form',
     );

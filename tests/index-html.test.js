@@ -822,14 +822,42 @@ test('the race this season is for is shown above the week and the month, with it
   assert.match(body, /fmtLongDate\(main\.date\)/);
   assert.match(body, /Target fitness/);
   assert.match(body, /the plan reaches about/, 'and says so when it falls short');
+  assert.match(body, /t\.at === 'peak'/, 'and says peak, not target, when the season was built to peak');
+  assert.match(body, /Peak fitness/);
 });
 
-test('the Fitness chart marks the plan target on race day, and says so in words', () => {
+test('a target made to peak is shown as the peak before the taper, with race day beside it; an older one as it was', () => {
+  const body = fnBody('targetFactsHTML');
+  assert.match(body, /target\.at === 'peak'/);
+  assert.match(body, /Peak fitness, before the taper/);
+  assert.match(body, /Target on race day/, 'a target made for race day is still labelled so');
+  assert.match(body, /On race day/);
+  assert.match(body, /feasibility|f\.raceCtl/);
+});
+
+test('moving an older target to the peak says what changed, in the review of the change', () => {
+  const body = fnBody('draftTargetHTML');
+  assert.match(body, /plan\.target\.at !== 'peak'/);
+  assert.match(body, /used to mean race day/);
+});
+
+test('the wizard and the help text say the season is built to peak, and that race day settles lower', () => {
+  assert.match(HTML, /The season is built to peak at a level of fitness before the taper; race day settles a little lower/);
+  assert.match(HTML, /peak fitness ' \+ o\.target|peak fitness ' \+ esc/, 'each level names the peak it sets');
+  assert.doesNotMatch(HTML, /built to arrive at a level of fitness on race day/);
+  assert.match(HTML, /the mark on the chart is the target: the peak before the taper/);
+});
+
+test('the Fitness chart marks the plan target on the peak week, or on race day for an older target, and says so in words', () => {
   const chart = fnBody('fitnessChart');
   assert.match(chart, /plan\.target/);
+  assert.match(chart, /plan\.target\.at === 'peak'/);
+  assert.match(chart, /peakWeekOf\(/, 'the week the plan peaks in, read off the plan\'s own fitness for each week');
   const section2 = section('/* ---- Fitness, fatigue and form', '/* ---- Init ---- */');
   assert.match(section2, /Plan target/);
   assert.match(section2, /The plan target is /, 'for a screen reader too');
+  assert.match(section2, /at its peak/);
+  assert.match(section2, /on race day/, 'and an older target still says race day');
 });
 
 test('where the athlete starts from is worked out with no heart-rate store', () => {

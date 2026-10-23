@@ -1,4 +1,4 @@
-/* Build a season backwards from where the athlete should be on race day.
+/* Build a season backwards from where the athlete should be at the top of the build.
 
    `fitToRace` (season.js) sizes a season from the hours the athlete has and
    nothing else: it never asks what the race needs or where the athlete is
@@ -8,9 +8,15 @@
    and says how far short it is. It never blocks and never overshoots.
 
    Fitness is load.js's chronic training load: the 42-day average, where an
-   hour at threshold is 100. **Race-day fitness** is that average on the race
-   date, with the taper already in it, which is why the target is landed there
-   and not on the peak before it.
+   hour at threshold is 100. **The target is the peak**: the highest fitness
+   the build reaches, at the end of its last loading week, before the taper.
+   Race day settles lower, by what the taper takes out (about a fifth with the
+   model's own tail), and is reported, not aimed at (`raceCtl`). Landing race
+   day on the target instead — the first version, 18 Oct 2026 — meant solving
+   for a peak well above it to pay for the taper's decay: a 70.3 built for 90
+   peaked near 108, inside the Ironman range. That solve is still here as
+   `targetAt: 'raceDay'`, for a plan whose stored target was made that way and
+   which has not been re-sized on purpose since.
 
    How a season is worked out:
 
@@ -40,6 +46,14 @@
       validator's volume steps (a loading week may be 10 % above the last one in
       its block, a new block 25 % above the last block's hardest week), so a
       season it builds is one the validator has nothing to say about.
+   7. Two ceilings are hard, not aims: a week the planner sizes is cut back
+      until fitness stays at or under the target on every day of it (a build
+      never rises above its target; an athlete who starts at or above it is
+      held where they are, never eased and never capped), and until the acute
+      load stays within `PLAN_MODEL.ramp.acuteRatioMax` times the chronic load
+      on every day. A week the athlete pinned is a fixed input and is never cut
+      back, and a ceiling the plan is already past is not made worse, never
+      turned into a week of nothing.
 
    A tune-up race longer than two hours gets a taper week and a race week
    carrying `1 − depth` of the load the trajectory called for there
@@ -62,6 +76,7 @@ import { DAYS, weeklyAvailableMinutes } from './profile.js';
 import { dateOf, weekIndexOf } from './calendar.js';
 import { parseISO, toISO, addDays } from './dates.js';
 
+const TARGET_AT = ['peak', 'raceDay'];
 const STEP = 5;                                       // minutes: sessions are built in whole 5-minute blocks
 const round1 = (n) => Math.round(n * 10) / 10;
 const round3 = (n) => Math.round(n * 1000) / 1000;
@@ -177,15 +192,19 @@ function check(input) {
     throw new Error(`the target fitness has to be a number from 1 to 400; got ${JSON.stringify(input.targetCtl)}`);
   }
   if (!input.profile?.availability) throw new Error('a season is built for an athlete\'s week: a profile with availability is needed');
+  if (input.targetAt !== undefined && !TARGET_AT.includes(input.targetAt)) {
+    throw new Error(`targetAt has to be 'peak' (the top of the build) or 'raceDay'; got ${JSON.stringify(input.targetAt)}`);
+  }
   return n;
 }
 
 /* ---- one pass: build the season for a given level at the end of the build --- */
 
 function buildPass(ctx, preTail) {
-  const { N, labels, tailStart, keep, c0, week, closures, extra, pins, frozen, depths, start, raceDate, availability } = ctx;
+  const { N, labels, tailStart, keep, c0, week, closures, extra, pins, frozen, depths, start, raceDate, availability, ceiling, acuteMax, chronicFloor } = ctx;
   const entries = [];
   let ctl = c0;                         // the average as the days actually carry it
+  let fat = c0;                         // the acute average beside it: the athlete is taken to have been training steadily
   let ideal = c0;                       // the average as the plan means it to run: what the weeks are asked of
   let lastLoadMinutes = null;           // the last loading week's requested minutes: what the tail is a multiple of
   let lastLoadMultiplier = null;
@@ -235,7 +254,10 @@ function buildPass(ctx, preTail) {
     waypoint.set(w, gap <= 0 || done <= 0 ? c0 : c0 + (gap * Math.min(done, climbing)) / climbing);
   });
 
-  const advance = (fit, i, byDay) => {
+  // One week carried day by day from where the two averages stand: where they
+  // end, the highest fitness any day reaches and the highest acute-to-chronic
+  // ratio.
+  const advance = (fit, acute, i, byDay) => {
     const monday = dateOf(start, i, 'Mon');
     const dayBefore = toISO(addDays(parseISO(monday), -1));
     const through = i === N - 1 ? raceDate : dateOf(start, i, 'Sun');
@@ -244,7 +266,14 @@ function buildPass(ctx, preTail) {
       const iso = dateOf(start, i, d);
       loads[iso] = byDay[j] + (extra[iso] ?? 0);
     });
-    return carry({ fit, fat: 0 }, dayBefore, through, (iso) => loads[iso] ?? (extra[iso] ?? 0)).fit;
+    let maxFit = fit;
+    let maxRatio = 0;
+    const end = carry({ fit, fat: acute }, dayBefore, through, (iso) => loads[iso] ?? (extra[iso] ?? 0), (_, s) => {
+      if (s.fit > maxFit) maxFit = s.fit;
+      const ratio = s.fat / Math.max(s.fit, chronicFloor);
+      if (ratio > maxRatio) maxRatio = ratio;
+    });
+    return { fit: end.fit, fat: end.fat, maxFit, maxRatio };
   };
 
   for (let i = keep; i < N; i++) {
@@ -255,6 +284,24 @@ function buildPass(ctx, preTail) {
     const special = !tail && !L.recovery && isTaperBlock(L.block);     // a tune-up's taper or race week
     let minutes;
     const pinned = pins[weekKey(i)];
+    // Cut `minutes` back, a block at a time, until the week, carried day by day by
+    // the two averages, is inside the limits asked of it: the climb a loading week
+    // may make (`ramp`), the acute-to-chronic ratio (`ratio`; or no worse than the
+    // week began, so a week already past it is never cut to nothing for something
+    // an earlier week did), and the ceiling on fitness (unless already past it).
+    // Each length is carried once, however many limits there are.
+    const cutBack = ({ ramp, ratio }) => {
+      const rampMax = ramp ? ctl + PLAN_MODEL.ramp.max + 1e-9 : Infinity;
+      const ratioMax = ratio && acuteMax !== null ? Math.max(acuteMax, fat / Math.max(ctl, chronicFloor)) + 1e-9 : Infinity;
+      const fitMax = Math.max(ceiling, ctl) + 1e-9;
+      if (rampMax === Infinity && ratioMax === Infinity && fitMax === Infinity) return;
+      while (minutes > 0) {
+        const c = advance(ctl, fat, i, week(minutes, L.block, closure.raceDay, closure.raceOnly).byDay);
+        if (c.fit <= rampMax && c.maxRatio <= ratioMax && c.maxFit <= fitMax) return;
+        minutes -= STEP;
+      }
+    };
+    let loadingWeek = false;
 
     // What the trajectory would have asked of this week, as a load.
     const goalOf = () => Math.min(waypoint.get(i) ?? ideal, ideal + PLAN_MODEL.ramp.max);
@@ -291,16 +338,25 @@ function buildPass(ctx, preTail) {
       // The generated week can come in a few minutes over what was asked for.
       while (minutes > 0 && week(minutes, L.block, closure.raceDay, closure.raceOnly).minutes > cap) minutes -= STEP;
       // And the average, carried day by day, can rise a little more than the
-      // week's even-load figure says; the ramp is held to what it actually does.
-      while (minutes > 0 && advance(ctl, i, week(minutes, L.block, closure.raceDay, closure.raceOnly).byDay) > ctl + PLAN_MODEL.ramp.max + 1e-9) minutes -= STEP;
+      // week's even-load figure says; the ramp is held to what it actually does,
+      // and the two hard ceilings (acute load, fitness) with it.
+      cutBack({ ramp: true, ratio: true });
+      loadingWeek = true;
       // A week that carries what was asked of it puts the plan exactly on its
       // waypoint; one held back by a cap puts it where that load really takes it.
       if (week(minutes, L.block, closure.raceDay, closure.raceOnly).load >= asked - 1e-6) idealNext = goalOf();
     }
 
+    // The ceiling on fitness holds for every week the planner sizes, not only the
+    // loading ones: at a low target the first week of the taper carries about as
+    // much as the athlete's fitness and would lift it a little past the build's
+    // last week.
+    if (!loadingWeek && !(Number.isFinite(pinned) && pinned >= 0)) cutBack({ ramp: false, ratio: false });
+
     const g = week(minutes, L.block, closure.raceDay, closure.raceOnly);
     ideal = idealNext ?? afterWeek(ideal, g.load);
-    const next = advance(ctl, i, g.byDay);
+    const after = advance(ctl, fat, i, g.byDay);
+    const next = after.fit;
     // A week the athlete pinned down to a recovery week's size or less is one:
     // the weeks after it come back to where they were, not 10 % at a time from
     // there, which is what the validator would otherwise ask of them.
@@ -314,6 +370,7 @@ function buildPass(ctx, preTail) {
     track(i, L.block, g.minutes, loadingKind && !light);
     if (loadingKind && !light) { lastLoadMinutes = minutes; lastLoadMultiplier = L.multiplier; lastLoad = g.load; }
     ctl = next;
+    fat = after.fat;
   }
 
   // `load` is how hard a week is against the season's own loading weeks, so a
@@ -322,7 +379,12 @@ function buildPass(ctx, preTail) {
   const mean = loading.length ? loading.reduce((a, e) => a + e.hours, 0) / loading.length : 0;
   const season = entries.map((e, i) => (i < keep ? e : { ...e, load: mean > 0 ? round3(e.hours / mean) : 1 }));
   const preTailCtl = tailStart > 0 ? season[tailStart - 1].ctl : c0;
-  return { season, raceCtl: ctl, preTailCtl };
+  // The peak: the highest week-end fitness the season builds. The taper only
+  // brings it down, so it is the end of the last loading week, but it is read off
+  // every week it sizes so that a season cannot rise past it unnoticed.
+  const built = season.slice(keep).map((e) => e.ctl);
+  const peakCtl = built.length ? Math.max(...built) : c0;
+  return { season, raceCtl: ctl, preTailCtl, peakCtl };
 }
 
 /* Chronic load after a week that carried `load` in all, spread evenly. */
@@ -343,6 +405,7 @@ function virtualBuildMinutes(ctx, ctl) {
 function solveCore(input) {
   const N = check(input);
   const { start, profile, startCtl: c0Start, targetCtl: target } = input;
+  const atPeak = (input.targetAt ?? 'peak') === 'peak';
   const events = normalizeEvents(input.events);
   const shell = { start, events };
   const keep = Math.max(0, Math.min(N, Math.floor(Number(input.keepBefore) || 0)));
@@ -377,6 +440,17 @@ function solveCore(input) {
     N, labels, tailStart, keep, c0: anchor, week: weekModel(profile), closures, extra,
     pins: input.weekBudgets ?? {}, frozen, depths, start, raceDate,
     availability: Math.floor(weeklyAvailableMinutes(profile) / STEP) * STEP || STEP,
+    // The two hard ceilings (see the header); aimed at race day, the first version
+    // of this planner had neither, and solved for whatever peak paid for the taper.
+    // An athlete already at or above the target has no fitness ceiling to be held
+    // to: they are held where they are, and fitness wanders a point or two either
+    // side of that inside any week.
+    ceiling: atPeak && target > anchor ? target : Infinity,
+    acuteMax: atPeak ? PLAN_MODEL.ramp.acuteRatioMax : null,
+    // Against a chronic load this small the ratio means nothing (an athlete from
+    // nothing has a week of any size at several times it), so it is measured
+    // against the load of the smallest week a season opens on.
+    chronicFloor: (PLAN_MODEL.ramp.minWeekMinutes / 60) * (PLAN_MODEL.estimate.loadPerHour / 7),
     // What the athlete trains now, in minutes a week: the time that holds their
     // starting fitness at an ordinary hour's load, unless the caller knows better.
     baselineMinutes: Math.max(
@@ -386,42 +460,45 @@ function solveCore(input) {
     ),
   };
 
+  // What the target is read against: the peak before the taper, or the old way, race day.
+  const read = atPeak ? (pass) => pass.peakCtl : (pass) => pass.raceCtl;
   const tol = PLAN_MODEL.tolerance;
   const hold = buildPass(ctx, anchor);
   let best;
   let status = 'build';
   let feasible;
 
-  if (hold.raceCtl >= target - tol) {
+  if (read(hold) >= target - tol) {
     // Already as fit as the season needs: hold it, and say so.
     best = hold;
     status = 'hold';
     feasible = true;
   } else {
-    const ceiling = buildPass(ctx, 1000);                      // everything the caps allow
-    if (ceiling.raceCtl < target - tol) {
-      const smooth = buildPass(ctx, ceiling.preTailCtl);       // the same arrival, climbed evenly
-      best = smooth.raceCtl >= ceiling.raceCtl - 0.5 ? smooth : ceiling;
+    const most = buildPass(ctx, 1000);                         // everything the caps allow
+    if (read(most) < target - tol) {
+      const smooth = buildPass(ctx, atPeak ? most.peakCtl : most.preTailCtl);   // the same arrival, climbed evenly
+      best = read(smooth) >= read(most) - 0.5 ? smooth : most;
       feasible = false;
     } else {
       let lo = anchor;
-      let hi = Math.max(ceiling.preTailCtl, anchor + 1);
-      best = ceiling;
+      let hi = Math.max(atPeak ? target : most.preTailCtl, anchor + 1);
+      best = most;
       for (let i = 0; i < 40; i++) {
         const mid = (lo + hi) / 2;
         const pass = buildPass(ctx, mid);
-        if (Math.abs(pass.raceCtl - target) < Math.abs(best.raceCtl - target) || best === ceiling) best = pass;
-        if (Math.abs(pass.raceCtl - target) < 0.25) { best = pass; break; }
-        if (pass.raceCtl < target) lo = mid; else hi = mid;
+        if (Math.abs(read(pass) - target) < Math.abs(read(best) - target) || best === most) best = pass;
+        if (Math.abs(read(pass) - target) < 0.25) { best = pass; break; }
+        if (read(pass) < target) lo = mid; else hi = mid;
       }
-      feasible = best.raceCtl >= target - tol;
+      feasible = read(best) >= target - tol;
     }
   }
 
-  const achievable = round1(best.raceCtl);
+  const achievable = round1(read(best));
   return {
     season: best.season,
-    raceCtl: achievable,
+    raceCtl: round1(best.raceCtl),
+    peakCtl: round1(best.peakCtl),
     feasibility: {
       feasible,
       status,
@@ -429,6 +506,9 @@ function solveCore(input) {
       achievableCtl: achievable,
       shortfall: feasible ? 0 : round1(Math.max(0, target - achievable)),
       limitingFactor: null,
+      // The record says what `targetCtl` and `achievableCtl` are read at, and
+      // where race day comes out. A record made the old way carries neither.
+      ...(atPeak ? { at: 'peak', raceCtl: round1(best.raceCtl) } : {}),
     },
   };
 }

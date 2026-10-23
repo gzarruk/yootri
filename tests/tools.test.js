@@ -1076,6 +1076,34 @@ test('get_target explains the target, where it started from and whether it can b
   assert.equal(s.draft, null, 'a read never starts a draft');
 });
 
+test('get_target says the target is the peak before the taper, and where race day comes out', () => {
+  const out = parse(call(createSession(targetSeason()), 'get_target'));
+  assert.equal(out.targetIs, 'peak');
+  assert.match(out.about, /peak/i);
+  assert.match(out.about, /taper/i);
+  assert.equal(typeof out.raceDayAbout, 'number');
+  assert.ok(out.raceDayAbout < out.targetFitness - 5, `race day ${out.raceDayAbout} is below the peak ${out.targetFitness}`);
+});
+
+test('get_target on a plan whose target was made for race day says so, and gives no race-day figure of its own', () => {
+  const old = structuredClone(targetSeason());
+  delete old.target.at;
+  delete old.target.feasibility.raceCtl;
+  const out = parse(call(createSession(old), 'get_target'));
+  assert.equal(out.targetIs, 'race day');
+  assert.match(out.about, /race day/i);
+  assert.equal('raceDayAbout' in out, false);
+});
+
+test('changing the ambition says the season is now built to a peak, not to arrive at a number on race day', () => {
+  const s = createSession(targetSeason());
+  const r = call(s, 'set_event_details', { event_id: idOf(s, 'Race day'), ambition: 'competitive' });
+  assert.equal(r.isError, false, r.content);
+  assert.match(r.content, /peak/i);
+  assert.match(r.content, /90/);
+  assert.doesNotMatch(r.content, /target fitness of 90/i);
+});
+
 test('get_target says plainly when the target cannot be reached, and what would help', () => {
   const tight = targetSeason({
     raceType: 'ironman', raceDate: '2027-03-21', ambition: 'competitive',

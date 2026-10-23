@@ -148,6 +148,23 @@ test('adherence is capped, and absent when the plan asked for nothing', () => {
   assert.equal(none.trend, null);
 });
 
+test('the trend waits for a window long enough to read: a few days of plan are not a rate', () => {
+  // Day 4 of a plan whose first days were each a half-day over the plan would read 1.5 and
+  // draw a line to a race-day figure half as high again as the plan's own.
+  const at = (n) => fitnessSeries(plan({ activities: rides(n + 1, 3), activitySync: { source: 'garmin', from: START, through: dayISO(n) } }), { today: dayISO(n), thresholds: T });
+  const days = PLANNED.adherenceMinDays;
+  for (const n of [0, 3, days - 2]) {
+    const r = at(n);
+    assert.equal(r.adherence, null, `${n + 1} days in`);
+    assert.equal(r.trend, null);
+    assert.ok(r.weeks.every((w) => w.trend === null), 'and no line is drawn');
+    assert.ok(r.race && Number.isFinite(r.race.fit), 'the plan from today is still there');
+  }
+  const ok = at(days - 1);
+  assert.equal(ok.adherence, PLANNED.maxAdherence, `${days} days in is a window`);
+  assert.ok(ok.trend !== null);
+});
+
 test('a plan with no race date projects to the end of the season', () => {
   const p = plan({ ...history(), activitySync: history().sync });
   p.profile = { raceType: '70.3' };
