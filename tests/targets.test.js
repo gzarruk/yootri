@@ -68,6 +68,14 @@ test('the constants table is frozen all the way down', () => {
 
 const race = (raceType, expectedMinutes) => ({ kind: 'race', raceType, priority: 'secondary', ...(expectedMinutes ? { expectedMinutes } : {}) });
 
+test('the taper into the race is two weeks of shares that only come down, each less than the week before', () => {
+  const shares = PLAN_MODEL.taperTail.hoursShare;
+  assert.equal(shares.length, 2, 'two weeks, as the studies favour for a race of this length');
+  assert.ok(shares.every((x) => x > 0 && x < 1), 'each is a part of the last loading week');
+  assert.ok(shares[1] < shares[0], 'and the second is smaller than the first');
+  assert.ok(shares[0] >= 0.5 && shares[1] >= 0.4, 'a volume cut of a half or so at the deepest, not the whole week');
+});
+
 test('a taper is a share of the week it replaces, deeper for a longer race', () => {
   assert.equal(taperDepth(race('10k')), 0, 'no taper at all');
   assert.equal(taperDepth(race('olympic')), 0.2, 'two to three hours');

@@ -101,11 +101,12 @@ test('recent weekly hours are asked for, because the season is built up from whe
   assert.deepEqual(stepProblems('background', filled({ recentWeeklyHours: 90 }), { today: TODAY }).map((x) => x.field), ['recentWeeklyHours'], 'and a nonsense figure is refused');
 });
 
-test('a fitness the athlete types stands in for the hours', () => {
-  assert.deepEqual(stepProblems('background', filled({ recentWeeklyHours: undefined, startCtlEntered: 70 }), { today: TODAY }), []);
-  assert.deepEqual(stepProblems('review', filled({ startCtlEntered: 70 }), { today: TODAY }), []);
-  for (const bad of [-5, 250, 'lots']) {
-    assert.deepEqual(stepProblems('review', filled({ startCtlEntered: bad }), { today: TODAY }).map((x) => x.field), ['startCtlEntered'], String(bad));
+test('a typed fitness no longer stands in for the hours, and a stale draft that carries one is not read', () => {
+  // The wizard keeps its answers between visits, so a draft saved before the field went away may still have one.
+  const stale = { recentWeeklyHours: undefined, startCtlEntered: 70 };
+  assert.deepEqual(stepProblems('background', filled(stale), { today: TODAY }).map((x) => x.field), ['recentWeeklyHours']);
+  for (const v of [70, -5, 250, 'lots']) {
+    assert.deepEqual(stepProblems('review', filled({ startCtlEntered: v }), { today: TODAY }), [], `nothing is validated for ${v}`);
   }
 });
 
@@ -448,10 +449,11 @@ test('an Olympic season is built to the Olympic band', () => {
   assert.equal(p.profile.raceType, 'olympic');
 });
 
-test('a fitness the athlete typed is where it starts from, and says so', () => {
+test('a fitness left in an old draft is not where the season starts from', () => {
   const p = buildPlanFromAnswers(filled({ startCtlEntered: 72 }), { today: TODAY, now: 1 });
-  assert.equal(p.target.start.ctl, 72);
-  assert.equal(p.target.start.source, 'entered');
+  assert.equal(p.target.start.source, 'estimate');
+  assert.notEqual(p.target.start.ctl, 72);
+  assert.equal(p.target.start.ctl, buildPlanFromAnswers(filled(), { today: TODAY, now: 1 }).target.start.ctl, 'the same as with no figure at all');
 });
 
 test('a returning athlete\'s synced history is where they start from, when it can be scored', () => {
@@ -547,5 +549,5 @@ test('where the athlete starts is worked out once, for the review and for the pl
   assert.equal(start.ctl, plan.target.start.ctl);
   assert.equal(start.source, plan.target.start.source);
   assert.match(start.note, /estimate/i, 'with the sentence the review shows');
-  assert.equal(startFitnessFor(filled({ startCtlEntered: 80 }), { today: TODAY, now: 1 }).source, 'entered');
+  assert.equal(startFitnessFor(filled({ startCtlEntered: 80 }), { today: TODAY, now: 1 }).source, 'estimate', 'a typed figure is not read');
 });

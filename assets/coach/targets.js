@@ -25,9 +25,19 @@
    and the surfaces that draw it to a stricter word list, and the name of the
    highest level is one of the words on it. */
 
-import { FITNESS_BANDS } from './fitness.js';
 import { AMBITIONS, DEFAULT_AMBITION, TAPER_MIN_MINUTES, raceMinutes, raceTypeLabel } from './events.js';
 import { sayDate } from './dates.js';
+
+/** Illustrative fitness ranges for each race distance: a guide to the eye, not a finding.
+    They live here, with the targets read off them, so fitness.js can read the
+    constants below (the synced-history bar) without importing a module that
+    imports it; fitness.js re-exports the table, where the chart and the
+    checklist have always found it. */
+export const FITNESS_BANDS = Object.freeze([
+  Object.freeze({ key: 'olympic', name: 'Olympic', lo: 40, hi: 70 }),
+  Object.freeze({ key: '70.3', name: '70.3', lo: 60, hi: 90 }),
+  Object.freeze({ key: 'ironman', name: 'Ironman', lo: 80, hi: 115 }),
+]);
 
 const freeze = (o) => {
   for (const v of Object.values(o)) if (v && typeof v === 'object') freeze(v);
@@ -46,6 +56,18 @@ export const PLAN_MODEL = freeze({
     { over: 360, depth: 0.5 },
   ],
   taperUnknown: 0.35,
+
+  /* The taper into the race a season built for the peak is made for (backplan.js): the
+     last two weeks, each carrying this share of the *time* of the last loading week. A
+     two-week taper that cuts the volume and keeps the work is what the studies favour
+     (Bosquet 2007: two weeks, volume down 41 to 60 %, intensity kept), and with a 42-day
+     average it takes under a tenth off fitness and about a third off fatigue. The model's
+     own tail was four weeks coming down, a recovery week and then the three of the Peak
+     block, and took a fifth. Everything before these two weeks, the first Peak week
+     included, is sized like any loading week. The shares are the model's own last two
+     weeks' (0.88 and 0.56 of Build) brought up to what the same hours did to Build's
+     load before the zone labels came down. Unfitted. */
+  taperTail: { hoursShare: [0.75, 0.5] },
 
   /* How fast fitness may be built (backplan.js). `max` is the most chronic
      training load a loading week may add, a figure often quoted as the top of

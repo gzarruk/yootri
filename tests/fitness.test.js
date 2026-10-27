@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 
 import { PLANNED, FITNESS_BANDS, zoneIntensity, plannedLoad, formZone, raceFormPosition, fitnessSeries, minutesByDiscipline, carry } from '../assets/coach/fitness.js';
 import { trainingLoad } from '../assets/coach/load.js';
+import { PLAN_MODEL } from '../assets/coach/targets.js';
+import { HISTORY_THRESHOLDS } from '../assets/coach/history.js';
 
 /* Fitness, fatigue and form: the 42-day and 7-day averages of training load as
    of today, their difference, a line for what the plan asks, a line for what
@@ -59,6 +61,8 @@ const plan = (extra = {}) => ({
   ...extra,
 });
 const T = { ftpW: 250 };
+// The coach's number and the card's start from the same level: the window's first days.
+const WARM = { warmStartDays: PLAN_MODEL.garmin.warmStartDays };
 const dayISO = (n) => new Date(Date.UTC(2026, 8, 7 + n)).toISOString().slice(0, 10);
 // An hour at 70% of FTP scores exactly what the planned Z2 hour does.
 const ride = (n, share = 1) => ({
@@ -91,18 +95,20 @@ test('activities that cannot be scored are not history, and what they lack is na
 test("today's fitness and fatigue are load.js's chronic and acute, unchanged", () => {
   const { activities, sync } = history();
   const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
-  const base = trainingLoad(activities, { today: TODAY, thresholds: T, sync });
+  const base = trainingLoad(activities, { today: TODAY, thresholds: T, sync, ...WARM });
   assert.equal(r.hasHistory, true);
   assert.equal(r.today.fit, base.chronic);
   assert.equal(r.today.fat, base.acute);
   assert.equal(r.today.form, Math.round((base.chronic - base.acute) * 10) / 10);
-  assert.ok(r.today.fat > r.today.fit, 'a new block: the fast average is ahead of the slow one');
+  // A steady 49 a day from the first synced day is a steady 49: the two averages start from the level
+  // of the window's first week (warm start), not from nothing, so neither is ahead of the other.
+  assert.ok(Math.abs(r.today.fit - 49) < 0.2 && Math.abs(r.today.fat - 49) < 0.2, `fit ${r.today.fit}, fat ${r.today.fat}`);
 });
 
 test('the change over seven days is today against the same figure a week ago', () => {
   const { activities, sync } = history();
   const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
-  const weekAgo = trainingLoad(activities, { today: dayISO(16), thresholds: T, sync });
+  const weekAgo = trainingLoad(activities, { today: dayISO(16), thresholds: T, sync, ...WARM });
   assert.equal(r.today.dFit, Math.round((r.today.fit - weekAgo.chronic) * 10) / 10);
   assert.equal(r.today.dFat, Math.round((r.today.fat - weekAgo.acute) * 10) / 10);
 });
@@ -123,7 +129,7 @@ test('race day, followed exactly, is where the plan takes the averages from wher
   const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
   assert.equal(r.race.date, '2026-10-17');
   assert.equal(r.race.week, 5);
-  assert.ok(r.race.fit > r.today.fit, 'eleven more weeks of the same hour a day keep adding fitness');
+  assert.ok(Math.abs(r.race.fit - r.today.fit) < 1, 'six more weeks of the same hour a day hold the average where it is');
   assert.equal(r.race.form, Math.round((r.race.fit - r.race.fat) * 10) / 10);
   assert.equal(r.race.dFit, Math.round((r.race.fit - r.today.fit) * 10) / 10);
   assert.equal(r.adherence, 1);
@@ -150,11 +156,17 @@ test('adherence is capped, and absent when the plan asked for nothing', () => {
 
 test('the trend waits for a window long enough to read: a few days of plan are not a rate', () => {
   // Day 4 of a plan whose first days were each a half-day over the plan would read 1.5 and
-  // draw a line to a race-day figure half as high again as the plan's own.
-  const at = (n) => fitnessSeries(plan({ activities: rides(n + 1, 3), activitySync: { source: 'garmin', from: START, through: dayISO(n) } }), { today: dayISO(n), thresholds: T });
+  // draw a line to a race-day figure half as high again as the plan's own. The athlete has
+  // synced for weeks before the plan began, so the basis is there; it is the plan that is young.
+  const before = Array.from({ length: 28 }, (_, i) => ride(i - 28));
+  const at = (n) => fitnessSeries(
+    plan({ activities: [...before, ...rides(n + 1, 3)], activitySync: { source: 'garmin', from: dayISO(-28), through: dayISO(n) } }),
+    { today: dayISO(n), thresholds: T },
+  );
   const days = PLANNED.adherenceMinDays;
   for (const n of [0, 3, days - 2]) {
     const r = at(n);
+    assert.equal(r.basis.enough, true, `${n + 1} days in`);
     assert.equal(r.adherence, null, `${n + 1} days in`);
     assert.equal(r.trend, null);
     assert.ok(r.weeks.every((w) => w.trend === null), 'and no line is drawn');
@@ -197,7 +209,7 @@ test('garbage in is an empty answer, not a throw', () => {
 test('each week carries the fatigue as well as the fitness it ended on', () => {
   const { activities, sync } = history();
   const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
-  const base = trainingLoad(activities, { today: dayISO(6), thresholds: T, sync });
+  const base = trainingLoad(activities, { today: dayISO(6), thresholds: T, sync, ...WARM });
   assert.equal(r.weeks[0].actualFat, base.acute);
   assert.equal(r.weeks[0].actual, base.chronic);
   assert.equal(r.weeks[5].actualFat, null);
@@ -223,7 +235,7 @@ test('the plan followed from today is a line to race day that ends where the rac
   assert.ok(r.weeks.slice(0, 4).every((w) => w.followed === null), 'nothing before the week today falls in');
   assert.ok(r.weeks[4].followed !== null, 'the weeks still to come carry it');
   assert.equal(r.weeks[5].followed, r.race.fit, 'the race week reads the race-day figure, even for a Saturday race');
-  assert.ok(r.weeks[4].followed > r.today.fit, 'and it rises from where fitness stands now');
+  assert.ok(Math.abs(r.weeks[4].followed - r.today.fit) < 1, 'and it carries on from where fitness stands now');
 });
 
 test('there is no followed line without a projection', () => {
@@ -265,7 +277,7 @@ test('a plan that starts after today is seeded from where the athlete is today, 
     profile: { raceDate: dayISO(28 + 6 * 7 - 1), raceType: '70.3' },
   });
   const r = fitnessSeries(later, { today: TODAY, thresholds: T });
-  const base = trainingLoad(activities, { today: TODAY, thresholds: T, sync });
+  const base = trainingLoad(activities, { today: TODAY, thresholds: T, sync, ...WARM });
   // An hour of zone 2 a day is what the history was, so the line should carry on from about there.
   assert.ok(r.weeks[0].planned > base.chronic - 1, `week 1 planned ${r.weeks[0].planned}, athlete today ${base.chronic}`);
   assert.ok(r.weeks[0].planned < base.chronic + 12, 'and rise, not jump');
@@ -368,12 +380,16 @@ test('synced history from before the plan began still wins over the stored start
   assert.deepEqual(b.weeks.map((w) => w.planned), a.weeks.map((w) => w.planned));
 });
 
-test('history that begins with the plan leaves the stored start as the plan\'s own', () => {
-  // The synced line cannot say where the athlete stood before its first day; the plan can.
+test('history that begins with the plan leaves the stored start as the plan\'s own, and without one the window opens at its own level', () => {
+  // The synced line cannot say where the athlete stood before its first day; the plan can. Without a
+  // stored start the line begins at the level the window opened at, as the actual one does.
   const { activities, sync } = history();
-  const withStart = fitnessSeries(plan({ activities, activitySync: sync, target: { start: { ctl: 30 } } }), { today: TODAY, thresholds: T });
-  const without = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
-  assert.ok(withStart.weeks[0].planned > without.weeks[0].planned);
+  const at = (target) => fitnessSeries(plan({ activities, activitySync: sync, ...(target ? { target } : {}) }), { today: TODAY, thresholds: T }).weeks[0].planned;
+  const none = at(null);
+  const low = at({ start: { ctl: 30 } });
+  const zero = at({ start: { ctl: 0 } });
+  assert.ok(zero < low && low < none, `0 → ${zero}, 30 → ${low}, none → ${none}`);
+  assert.ok(Math.abs(none - 49) < 0.2, 'the level the window opened at');
 });
 
 test('the plan alone says where fitness is on race day, with no history at all', () => {
@@ -386,11 +402,13 @@ test('the plan alone says where fitness is on race day, with no history at all',
   assert.ok(Math.abs(r.plannedRace.fit - sunday) < 1, 'the Saturday and the Sunday of that week are a day apart');
 });
 
-test('planned race-day fitness is the value on the race date, not the end of its week', () => {
+test('planned race-day fitness is the race morning, not the end of its week', () => {
   const p = plan({ target: { start: { ctl: 40 } }, profile: { raceDate: '2026-10-14', raceType: '70.3' } });  // a Wednesday of week 6
   const r = fitnessSeries(p, { today: TODAY, thresholds: T });
-  const sunday = r.weeks[5].planned;
+  const sunday = Math.round(carry({ fit: 40, fat: 40 }, '2026-09-06', '2026-10-18', () => 49).fit * 10) / 10;
   assert.notEqual(r.plannedRace.fit, sunday, 'four more days of an hour a day change it');
+  assert.equal(r.plannedRace.fit, Math.round(carry({ fit: 40, fat: 40 }, '2026-09-06', '2026-10-13', () => 49).fit * 10) / 10, 'the Tuesday evening');
+  assert.equal(r.weeks[5].planned, r.plannedRace.fit, 'the race week is drawn at the morning of the race');
   assert.equal(r.plannedRace.date, '2026-10-14');
 });
 
@@ -403,4 +421,221 @@ test('with no race date, race day is the last day of the season', () => {
 test('a race date outside the plan has no planned race day', () => {
   const r = fitnessSeries(plan({ profile: { raceDate: '2027-06-01', raceType: '70.3' } }), { today: TODAY, thresholds: T });
   assert.equal(r.plannedRace, null);
+});
+
+/* ---- race morning ----
+   "On race day" is the state the athlete wakes up to: the end of the day before.
+   The race the season is built for adds no load of its own (the line stops at the
+   day it arrives), so reading the end of race day itself would count a rest day
+   that is not one: fitness two points low, fatigue eight, form six too high. */
+
+// Five weeks of an hour a day, then a race-week Monday to Friday and nothing on the Saturday race day.
+const raceWeekOffPlan = (extra = {}) => plan({
+  weeks: Object.fromEntries(Array.from({ length: 6 }, (_, w) => [
+    `w${w}`, (w === 5 ? DAYS.slice(0, 5) : DAYS).map((d) => bike('1:00', 'Z2', d)),
+  ])),
+  ...extra,
+});
+
+test('planned race-day fitness and fatigue are read the morning of the race, not after its zero-load day', () => {
+  const r = fitnessSeries(raceWeekOffPlan({ target: { start: { ctl: 40 } } }), { today: TODAY, thresholds: T });
+  const eve = carry({ fit: 40, fat: 40 }, '2026-09-06', '2026-10-16', () => 49);       // an hour at Z2 a day, up to the Friday
+  assert.equal(r.plannedRace.date, '2026-10-17', 'it is still the race date');
+  assert.equal(r.plannedRace.fit, Math.round(eve.fit * 10) / 10);
+  assert.equal(r.plannedRace.fat, Math.round(eve.fat * 10) / 10);
+  assert.equal(r.weeks[5].planned, r.plannedRace.fit, 'the race week is drawn where the race morning is, not on the Sunday after it');
+  assert.equal(r.weeks[5].plannedFat, r.plannedRace.fat);
+});
+
+test('the plan followed from today ends on race morning too', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(raceWeekOffPlan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  const eve = carry({ fit: r.today.fit, fat: r.today.fat }, TODAY, '2026-10-16', () => 49);
+  assert.ok(Math.abs(r.race.fit - eve.fit) < 0.2, `fit ${r.race.fit} against ${eve.fit}`);
+  assert.ok(Math.abs(r.race.fat - eve.fat) < 0.2, `fat ${r.race.fat} against ${eve.fat}`);
+  assert.equal(r.race.date, '2026-10-17');
+  assert.equal(r.weeks[5].followed, r.race.fit);
+  assert.equal(r.weeks[5].followedFat, r.race.fat);
+});
+
+test('a plan with no race date still ends on the last day of the season', () => {
+  const r = fitnessSeries(raceWeekOffPlan({ profile: { raceDate: null, raceType: '70.3' }, target: { start: { ctl: 40 } } }), { today: TODAY, thresholds: T });
+  assert.equal(r.plannedRace.date, '2026-10-18');
+  assert.equal(r.plannedRace.fit, r.weeks[5].planned);
+  const eve = carry({ fit: 40, fat: 40 }, '2026-09-06', '2026-10-18', (iso) => (iso <= '2026-10-16' ? 49 : 0));
+  assert.equal(r.plannedRace.fit, Math.round(eve.fit * 10) / 10, 'nothing is shifted when there is no race to wake up to');
+});
+
+/* ---- characterization: what the actual and planned lines read today ----
+   A sync window whose first week held nothing has a zero warm start, so any
+   change to how the averages begin (a warm start from the window's first days)
+   must leave these figures exactly as they were. Recorded from the code as it
+   stood before CTL and ATL got a shared basis. */
+
+test('CTL outputs are unchanged when the first synced week was empty', () => {
+  const activities = Array.from({ length: 17 }, (_, i) => ride(i + 7));
+  const r = fitnessSeries(plan({ activities, activitySync: { source: 'garmin', from: START, through: TODAY } }), { today: TODAY, thresholds: T });
+  assert.deepEqual(r.today, { fit: 16.3, fat: 44.7, form: -28.4, dFit: 5.9, dFat: 7.4, dForm: -1.5 });
+  // The race-day figures were recorded at the end of the race day (27.2, 30.5, 22.4, 31, 27.2);
+  // they are now the morning of it, the Friday evening, so each is one day's load earlier. The
+  // race week also has a trend point now: it is read inside the window the trend is carried over.
+  assert.deepEqual(r.race, { date: '2026-10-17', week: 5, fit: 26.7, fat: 48.6, form: -21.9, dFit: 10.4, dFat: 3.9, dForm: 6.5 });
+  const { fat: _plannedFat, ...plannedRace } = r.plannedRace;           // the ATL beside it is new
+  assert.deepEqual(plannedRace, { date: '2026-10-17', week: 5, fit: 30.1 });
+  assert.equal(r.trend, 22.1);
+  assert.equal(r.adherence, 0.708);
+  assert.deepEqual(r.weeks.map((w) => [w.actual, w.actualFat, w.planned, w.followed, w.trend]), [
+    [0, 0, 7.5, null, null],
+    [7.5, 31, 13.9, null, null],
+    [13.9, 42.4, 19.3, null, null],
+    [16.3, 44.7, 23.8, null, null],
+    [null, null, 27.7, 23.8, 20.5],
+    [null, null, 30.1, 26.7, 22.1],
+  ]);
+});
+
+
+/* ---- CTL and ATL read from one basis, and the plan has an ATL of its own ---- */
+
+const noPower = (n) => Array.from({ length: n }, (_, i) => ({ ...ride(i), normPowerW: undefined }));
+const synced = (from, through = TODAY) => ({ source: 'garmin', from, through });
+
+test('every answer carries the basis it was read on, and an empty one says there is no sync', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  assert.deepEqual(r.basis, {
+    enough: true, reason: null, coveredWeeks: 3, neededWeeks: HISTORY_THRESHOLDS.minCovered,
+    scoredShare: 1, neededShare: PLAN_MODEL.garmin.scoredShare,
+  });
+  for (const bad of [null, {}, { start: 'x' }]) {
+    const e = fitnessSeries(bad, { today: TODAY, thresholds: T });
+    assert.equal(e.basis.enough, false);
+    assert.equal(e.basis.reason, 'no-sync');
+    assert.equal(e.basis.neededWeeks, HISTORY_THRESHOLDS.minCovered);
+  }
+});
+
+test('without a basis there is no actual, no today, no race day and no trend, for CTL or for ATL', () => {
+  const cases = {
+    'no-sync': plan(),
+    'too-short': plan({ activities: rides(24), activitySync: synced(dayISO(14)) }),
+    unscorable: plan({ activities: noPower(24), activitySync: synced(START) }),
+  };
+  for (const [reason, p] of Object.entries(cases)) {
+    const r = fitnessSeries(p, { today: TODAY, thresholds: T });
+    assert.equal(r.basis.enough, false, reason);
+    assert.equal(r.basis.reason, reason);
+    assert.equal(r.today, null, reason);
+    assert.equal(r.race, null, reason);
+    assert.equal(r.trend, null, reason);
+    assert.equal(r.trendFat, null, reason);
+    for (const w of r.weeks) {
+      for (const k of ['actual', 'actualFat', 'followed', 'followedFat', 'trend', 'trendFat']) assert.equal(w[k], null, `${reason} week ${w.week + 1} ${k}`);
+      assert.ok(Number.isFinite(w.planned) && Number.isFinite(w.plannedFat), 'the plan alone still has both lines');
+    }
+  }
+});
+
+test('too short says how many weeks it has; unscorable says how much it can read', () => {
+  const short = fitnessSeries(plan({ activities: rides(24), activitySync: synced(dayISO(7)) }), { today: TODAY, thresholds: T }).basis;
+  assert.equal(short.coveredWeeks, HISTORY_THRESHOLDS.minCovered - 1);
+  const none = fitnessSeries(plan({ activities: noPower(24), activitySync: synced(START) }), { today: TODAY, thresholds: T }).basis;
+  assert.equal(none.scoredShare, 0);
+  assert.equal(none.neededShare, PLAN_MODEL.garmin.scoredShare);
+});
+
+test('the figures appear at exactly the minimum number of covered weeks and not one week short of it', () => {
+  const at = (from) => fitnessSeries(plan({ activities: rides(24), activitySync: synced(from) }), { today: TODAY, thresholds: T });
+  const short = at(dayISO(7));                                   // two whole weeks covered
+  assert.equal(short.basis.coveredWeeks, HISTORY_THRESHOLDS.minCovered - 1);
+  assert.equal(short.today, null);
+  assert.equal(short.weeks[0].actualFat, null);
+  const enough = at(START);                                      // three
+  assert.equal(enough.basis.coveredWeeks, HISTORY_THRESHOLDS.minCovered);
+  assert.ok(enough.today && Number.isFinite(enough.today.fat));
+  assert.ok(Number.isFinite(enough.weeks[0].actualFat));
+});
+
+test('heart rate cannot make a session count toward the basis; it may still colour a session that has one', () => {
+  const hr = { lthr: 170, maxHr: 190, restHr: 50, trimp: 'male' };
+  const hrById = new Map(Array.from({ length: 24 }, (_, i) => [`garmin:${i}`, { avg: 150 }]));
+  const r = fitnessSeries(plan({ activities: noPower(24), activitySync: synced(START) }), { today: TODAY, thresholds: { ...T, ...hr }, hrById });
+  assert.equal(r.basis.reason, 'unscorable');
+  assert.equal(r.today, null, 'sessions only heart rate could score are not a basis');
+});
+
+test('carry hands each day\'s fatigue to the caller as well as its fitness', () => {
+  const seen = [];
+  const end = carry({ fit: 10, fat: 20 }, '2026-09-30', '2026-10-02', () => 100, (iso, s) => seen.push([iso, s.fit, s.fat]));
+  // Two days of 100 from fit 10 and fat 20, worked by hand:
+  //   fit  10 → 10 + (1 − e^(−1/42))·90 = 12.1175 → 14.1853
+  //   fat  20 → 20 + (1 − e^(−1/7))·80  = 30.6498 → 39.8818
+  assert.deepEqual(seen.map(([iso]) => iso), ['2026-10-01', '2026-10-02']);
+  assert.ok(Math.abs(seen[0][1] - 12.1175) < 1e-4 && Math.abs(seen[0][2] - 30.6498) < 1e-4);
+  assert.ok(Math.abs(seen[1][1] - 14.1853) < 1e-4 && Math.abs(seen[1][2] - 39.8818) < 1e-4);
+  assert.deepEqual({ fit: end.fit, fat: end.fat }, { fit: seen[1][1], fat: seen[1][2] });
+});
+
+test('with nothing synced, planned ATL starts where planned CTL does: the athlete is taken to have been training steadily', () => {
+  // A planned Z2 hour is 49 a day. Seven days of it from a steady 40 end the week at 49 + (40 − 49)·e^(−1).
+  const seeded = fitnessSeries(plan({ target: { start: { ctl: 40 } } }), { today: TODAY, thresholds: T });
+  assert.ok(Math.abs(seeded.weeks[0].plannedFat - 45.7) < 0.05, `week 1 planned ATL is ${seeded.weeks[0].plannedFat}`);
+  // With no start at all both begin at nothing: 49·(1 − e^(−1)).
+  const zero = fitnessSeries(plan(), { today: TODAY, thresholds: T });
+  assert.ok(Math.abs(zero.weeks[0].plannedFat - 31.0) < 0.05);
+});
+
+test('planned ATL is seeded from the actual acute load the day before the plan starts', () => {
+  // One hard week and then nothing, so the acute average has fallen a long way and the chronic one has not.
+  const acts = rides(7);
+  const sync = synced(START);
+  const later = plan({ start: dayISO(28), activities: acts, activitySync: sync, profile: { raceDate: dayISO(28 + 6 * 7 - 1), raceType: '70.3' } });
+  const r = fitnessSeries(later, { today: TODAY, thresholds: T });
+  const base = trainingLoad(acts, { today: TODAY, thresholds: T, sync, ...WARM });
+  assert.ok(base.acute < base.chronic - 20, `the fixture has the two apart: acute ${base.acute}, chronic ${base.chronic}`);
+  const fromActual = 49 + (base.acute - 49) * Math.exp(-1);
+  const fromChronic = 49 + (base.chronic - 49) * Math.exp(-1);
+  assert.ok(Math.abs(r.weeks[0].plannedFat - fromActual) < 0.2, `planned ATL ${r.weeks[0].plannedFat}, from the actual acute ${fromActual}`);
+  assert.ok(Math.abs(r.weeks[0].plannedFat - fromChronic) > 5, 'and not from the chronic load');
+});
+
+test('the plan from today and the trend each carry an ATL, and race day carries the planned one', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  assert.ok(r.weeks.slice(0, 4).every((w) => w.followedFat === null && w.trendFat === null), 'nothing before the week today falls in');
+  assert.ok(Number.isFinite(r.weeks[4].followedFat));
+  assert.equal(r.weeks[5].followedFat, r.race.fat, 'the race week reads the race-day figure');
+  assert.ok(Number.isFinite(r.plannedRace.fat));
+  assert.ok(Math.abs(r.plannedRace.fat - r.weeks[5].plannedFat) < 3, 'a day apart at the end of the same week');
+  const half = history(0.5);
+  const slow = fitnessSeries(plan({ activities: half.activities, activitySync: half.sync }), { today: TODAY, thresholds: T });
+  assert.ok(slow.trendFat !== null && slow.trendFat < slow.race.fat, 'doing half of it carries less fatigue to race day');
+  assert.ok(slow.weeks[4].trendFat !== null);
+});
+
+test('there is no trend ATL where there is no trend', () => {
+  const r = fitnessSeries(plan({ ...history(), activitySync: history().sync }), { today: '2026-10-25', thresholds: T });
+  assert.equal(r.trendFat, null);
+  assert.ok(r.weeks.every((w) => w.followedFat === null && w.trendFat === null));
+});
+
+test('days after the last synced day are not read as days off', () => {
+  // Three weeks and a day synced, the last day being day 21; today is two days later and nothing has come in since.
+  const activities = rides(22);
+  const sync = { source: 'garmin', from: START, through: dayISO(21) };
+  const stale = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  const atSync = fitnessSeries(plan({ activities, activitySync: sync }), { today: dayISO(21), thresholds: T });
+  assert.equal(stale.today.fit, atSync.today.fit, 'fitness stays where the last synced day left it');
+  assert.equal(stale.today.fat, atSync.today.fat, 'and so does fatigue, which would fall by a quarter in two days of nothing');
+  assert.ok(stale.race.fit > stale.today.fit - 1, 'the plan followed from today starts from that held level, not from a decayed one');
+  assert.ok(Number.isFinite(stale.today.dFit) && Number.isFinite(stale.today.dFat), 'a week ago is a day the window has');
+  assert.ok(stale.weeks[3].actual !== null && Number.isFinite(stale.weeks[3].actual), 'the current week reads the last synced day');
+});
+
+test('actual CTL and ATL start from the level of the window\'s first days, as the planner reads it', () => {
+  const { activities, sync } = history();
+  const r = fitnessSeries(plan({ activities, activitySync: sync }), { today: TODAY, thresholds: T });
+  // A steady 49 a day from the first synced day is 49 from the first day, not a climb out of zero.
+  assert.ok(Math.abs(r.weeks[0].actual - 49) < 0.2, `end of week 1 reads ${r.weeks[0].actual}`);
+  assert.ok(Math.abs(r.weeks[0].actualFat - 49) < 0.2);
 });

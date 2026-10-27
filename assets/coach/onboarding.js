@@ -159,11 +159,11 @@ export function stepProblems(step, a, { today } = {}) {
       break;
     }
     case 'background': {
-      // Where the season starts from is worked out from this (startfit.js), unless
-      // the athlete types their own figure or their synced sessions say.
+      // Where the season starts from is worked out from this (startfit.js) until
+      // their synced sessions say. A returning athlete's hours are filled in from them.
       if (given(a.recentWeeklyHours) && (!(Number(a.recentWeeklyHours) > 0) || !keeps('recentWeeklyHours', a.recentWeeklyHours))) {
         out.push(problem('recentWeeklyHours', 'Hours a week is between 0.5 and 40.'));
-      } else if (!given(a.recentWeeklyHours) && !given(a.startCtlEntered)) {
+      } else if (!given(a.recentWeeklyHours)) {
         out.push(problem('recentWeeklyHours', 'Give the hours a week you train now: the season is built up from where you are.'));
       }
       if (given(a.yearsInSport) && !keeps('yearsInSport', a.yearsInSport)) out.push(problem('yearsInSport', 'Years in triathlon is a whole number.'));
@@ -236,12 +236,6 @@ export function stepProblems(step, a, { today } = {}) {
       }
       break;
     }
-    case 'review': {
-      if (given(a.startCtlEntered) && !(Number.isFinite(Number(a.startCtlEntered)) && Number(a.startCtlEntered) >= 0 && Number(a.startCtlEntered) <= 200)) {
-        out.push(problem('startCtlEntered', 'Fitness is a number from 0 to 200.'));
-      }
-      break;
-    }
     case 'goal': {
       if (a.goal === 'time' && normalizeAthlete({ goal: 'time', goalTime: a.goalTime }).goalTime === undefined) {
         out.push(problem('goalTime', 'A time goal needs the time, like 5:30.'));
@@ -292,9 +286,9 @@ const sameResult = (bm, r) => bm && r
   && bm.distanceMeters === r.distanceMeters && bm.timeSeconds === r.timeSeconds && bm.date === r.date;
 
 /**
- * Where the athlete starts, as `startFitness` answers it, for these answers: the
- * figure they typed, their synced sessions (a returning athlete's, carried in
- * `base`) or an estimate from their recent hours. The review shows it with its
+ * Where the athlete starts, as `startFitness` answers it, for these answers: their
+ * synced sessions (a returning athlete's, carried in `base`) or an estimate from
+ * their recent hours. Nobody types a figure in. The review shows it with its
  * `note`, and the plan keeps the figure and where it came from.
  */
 export function startFitnessFor(a, { today, now = Date.now(), base = null, benchmarks, loadRefs } = {}) {
@@ -313,7 +307,6 @@ export function startFitnessFor(a, { today, now = Date.now(), base = null, bench
     benchmarks: marks,
     loadRefs: refs,
     athlete: athleteFromAnswers(a, { now }),
-    entered: a.startCtlEntered,
   });
 }
 

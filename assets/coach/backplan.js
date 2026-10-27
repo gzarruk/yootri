@@ -10,13 +10,17 @@
    Fitness is load.js's chronic training load: the 42-day average, where an
    hour at threshold is 100. **The target is the peak**: the highest fitness
    the build reaches, at the end of its last loading week, before the taper.
-   Race day settles lower, by what the taper takes out (about a fifth with the
-   model's own tail), and is reported, not aimed at (`raceCtl`). Landing race
-   day on the target instead — the first version, 18 Oct 2026 — meant solving
-   for a peak well above it to pay for the taper's decay: a 70.3 built for 90
-   peaked near 108, inside the Ironman range. That solve is still here as
-   `targetAt: 'raceDay'`, for a plan whose stored target was made that way and
-   which has not been re-sized on purpose since.
+   Race day settles lower, by what the taper takes out, and is reported, not
+   aimed at (`raceCtl`): with the two-week taper below, under a tenth. Race
+   day is read as the chart reads it, the morning of it (the end of the day
+   before): the race adds no load, and its own day would count a rest day that
+   is not one. Landing race day on the target instead — the first version, 18
+   Oct 2026 — meant solving for a peak well above it to pay for the model's own
+   tail, which took a fifth: a 70.3 built for 90 peaked near 108, inside the
+   Ironman range. That solve is still here as `targetAt: 'raceDay'`, for a plan
+   whose stored target was made that way and which has not been re-sized on
+   purpose since; its tail, its numbers and its reading of race day are
+   unchanged.
 
    How a season is worked out:
 
@@ -25,8 +29,14 @@
       and zone tables read them unchanged. A runway longer than the model is
       padded, as it always was, with more Prep; every fourth week of Prep is an
       easy one, as it is in every other block.
-   2. The last three weeks are the model's own tail, as hours: the same
-      multiples of the last build week it has always used.
+   2. The last two weeks are the taper: `PLAN_MODEL.taperTail` shares of the
+      last loading week's time, never more than the week before them had. The
+      first Peak week before them is not part of it. It is a loading week,
+      asked to bring fitness back to where the build left it after the easy
+      week before it (it opens a block, so it is held to the block step), and
+      the climb itself is over the weeks before the model's tail, as it was. A
+      season aimed at race day keeps the model's whole tail, three weeks of
+      the same multiples of the last build week it has always used.
    3. Fitness is built at an even rate over the loading weeks from where the
       athlete is to a level at the end of the build, chosen so that the tail
       then leaves them on the target. Where the gap is tiny they hold until it
@@ -201,7 +211,7 @@ function check(input) {
 /* ---- one pass: build the season for a given level at the end of the build --- */
 
 function buildPass(ctx, preTail) {
-  const { N, labels, tailStart, keep, c0, week, closures, extra, pins, frozen, depths, start, raceDate, availability, ceiling, acuteMax, chronicFloor } = ctx;
+  const { N, labels, tailStart, modelTailStart, taperShare, keep, c0, week, closures, extra, pins, frozen, depths, start, raceDate, availability, ceiling, acuteMax, chronicFloor } = ctx;
   const entries = [];
   let ctl = c0;                         // the average as the days actually carry it
   let fat = c0;                         // the acute average beside it: the athlete is taken to have been training steadily
@@ -209,6 +219,7 @@ function buildPass(ctx, preTail) {
   let lastLoadMinutes = null;           // the last loading week's requested minutes: what the tail is a multiple of
   let lastLoadMultiplier = null;
   let lastLoad = null;                  // its load
+  let prevGenerated = null;             // the minutes the week before this one was generated with: a taper never adds time
   let sameBlockMinutes = null;          // the last loading week in this block, as generated
   let blockPeak = 0;                    // the hardest loading week in this block
   let prevBlockPeak = null;             // the hardest week of the last block that had one
@@ -236,13 +247,17 @@ function buildPass(ctx, preTail) {
     const g = week(minutes, f.block, closureOf(i).raceDay, closureOf(i).raceOnly);
     const loading = !f.recovery && !isTaperBlock(f.block);
     track(i, f.block, g.minutes, loading);
+    prevGenerated = g.minutes;
     if (loading) { lastLoadMinutes = minutes; lastLoadMultiplier = labels[i].multiplier; lastLoad = g.load; }
   }
 
   // Waypoints: an even climb over the weeks the trajectory loads, from here to
   // the level at the end of the build.
   const loadingWeeks = [];
-  for (let i = keep; i < tailStart; i++) if (!labels[i].base.recovery) loadingWeeks.push(i);
+  // The climb is over the weeks before the model's own tail, as it always was: the first Peak
+  // week of a season aimed at the peak is not a rung of it, only asked to bring fitness back to
+  // where the build left it (below), after the easy week that comes before it.
+  for (let i = keep; i < Math.max(keep, modelTailStart); i++) if (!labels[i].base.recovery) loadingWeeks.push(i);
   const K = loadingWeeks.length;
   const gap = preTail - c0;
   let climbing = K;
@@ -253,6 +268,7 @@ function buildPass(ctx, preTail) {
     const done = k + 1 - (K - climbing);
     waypoint.set(w, gap <= 0 || done <= 0 ? c0 : c0 + (gap * Math.min(done, climbing)) / climbing);
   });
+  if (taperShare) for (let i = Math.max(keep, modelTailStart); i < tailStart; i++) if (!labels[i].base.recovery) waypoint.set(i, gap <= 0 ? c0 : preTail);
 
   // One week carried day by day from where the two averages stand: where they
   // end, the highest fitness any day reaches and the highest acute-to-chronic
@@ -280,8 +296,12 @@ function buildPass(ctx, preTail) {
     const L = labels[i];
     const closure = closureOf(i);
     const tail = i >= tailStart;
-    const loadingKind = !tail && !L.recovery && !isTaperBlock(L.block);
-    const special = !tail && !L.recovery && isTaperBlock(L.block);     // a tune-up's taper or race week
+    // A season aimed at the peak tapers over the last two weeks only: the first week of the
+    // model's own tail (Peak 1) is a loading week there, and a week of the model's own tail
+    // is never a tune-up's taper.
+    const inModelTail = i >= modelTailStart;
+    const loadingKind = !tail && !L.recovery && (!isTaperBlock(L.block) || inModelTail);
+    const special = !tail && !L.recovery && isTaperBlock(L.block) && !inModelTail;     // a tune-up's taper or race week
     let minutes;
     const pinned = pins[weekKey(i)];
     // Cut `minutes` back, a block at a time, until the week, carried day by day by
@@ -313,6 +333,14 @@ function buildPass(ctx, preTail) {
 
     if (Number.isFinite(pinned) && pinned >= 0) {
       minutes = Math.round((pinned * 60) / STEP) * STEP;
+    } else if (tail && taperShare) {
+      // The taper of a season aimed at the peak: a share of the last loading week's time,
+      // never more than the week before it had.
+      const share = taperShare[Math.min(i - tailStart, taperShare.length - 1)];
+      const ref = lastLoadMinutes ?? virtualBuildMinutes(ctx, ctl);
+      const cap = Math.min(availability, prevGenerated === null ? availability : prevGenerated);
+      minutes = Math.min(Math.round((ref * share) / STEP) * STEP, Math.floor(cap / STEP) * STEP);
+      while (minutes > 0 && week(minutes, L.block, closure.raceDay, closure.raceOnly).minutes > cap) minutes -= STEP;
     } else if (tail) {
       const ref = lastLoadMinutes ?? virtualBuildMinutes(ctx, ctl);
       const refMultiplier = lastLoadMultiplier ?? multiplier('Build 2', 2);
@@ -326,8 +354,13 @@ function buildPass(ctx, preTail) {
     } else {
       // A loading week: as much as the waypoint asks, no more than the athlete's
       // week, and no more than the validator's volume step allows.
-      const step = sameBlockMinutes !== null ? MAX_RAMP : (prevBlockPeak !== null ? MAX_BLOCK_STEP : Infinity);
-      const base = sameBlockMinutes !== null ? sameBlockMinutes : prevBlockPeak;
+      // The first Peak week of a season aimed at the peak opens a block, and is held to the
+      // block step over the hardest week of the block before it, as the validator reads it. (The
+      // tracking below only learns of a new block once its first week is built, so left alone the
+      // week would be held to a tenth over the last loading week and could not carry the peak.)
+      const opensBlock = Boolean(taperShare) && inModelTail && L.block !== curBlock && blockPeak > 0;
+      const step = opensBlock ? MAX_BLOCK_STEP : (sameBlockMinutes !== null ? MAX_RAMP : (prevBlockPeak !== null ? MAX_BLOCK_STEP : Infinity));
+      const base = opensBlock ? blockPeak : (sameBlockMinutes !== null ? sameBlockMinutes : prevBlockPeak);
       let stepCap = base === null || base === undefined ? Infinity : Math.floor((base * step) / STEP) * STEP;
       // The first week of the season has no week before it in the plan: it is
       // held to what the athlete does now.
@@ -368,6 +401,7 @@ function buildPass(ctx, preTail) {
       hours: round3(minutes / 60), ctl: round1(next),
     });
     track(i, L.block, g.minutes, loadingKind && !light);
+    prevGenerated = g.minutes;
     if (loadingKind && !light) { lastLoadMinutes = minutes; lastLoadMultiplier = L.multiplier; lastLoad = g.load; }
     ctl = next;
     fat = after.fat;
@@ -420,7 +454,11 @@ function solveCore(input) {
   const detail = landings.map((l) => ({ absWeek: l.absWeek, taper: taperDepth(l.ev) > 0 }));
   const labels = layout(N, detail);
   const plainLabels = labels.map((l) => ({ block: l.base.block }));
-  const tailStart = Math.max(keep, N - tailLength(plainLabels));
+  // The model's own tail (Peak, Peak, Race) and, for a season aimed at the peak, the two weeks
+  // of it that are the taper (PLAN_MODEL.taperTail). The old solve keeps the whole tail as it was.
+  const modelTailStart = N - tailLength(plainLabels);
+  const taperShare = atPeak && modelTailStart < N ? PLAN_MODEL.taperTail.hoursShare : null;
+  const tailStart = Math.max(keep, taperShare ? Math.max(modelTailStart, N - taperShare.length) : modelTailStart);
 
   // Each landing's depth, keyed by the weeks it takes over: the taper week and the race week.
   const depths = new Map();
@@ -433,12 +471,17 @@ function solveCore(input) {
   const closures = Array.from({ length: N }, (_, i) => raceClosure(shell, i));
   const extra = plannedRaceLoads(shell, N);
   const primary = goalEvent(events);
-  const raceDate = primary && parseISO(primary.date) && weekIndexOf(start, primary.date) === N - 1
-    ? primary.date : dateOf(start, N - 1, 'Sun');
+  const raceInWeek = Boolean(primary && parseISO(primary.date) && weekIndexOf(start, primary.date) === N - 1);
+  const raceDate = raceInWeek ? primary.date : dateOf(start, N - 1, 'Sun');
+  // Where the last week is read. For a season aimed at the peak, race day is the
+  // morning of it (the chart reads it so: fitness.js), the end of the day before, since
+  // the race adds no load and its own day would count a rest day that is not one. The old
+  // solve, aimed at race day, is left as it was made: its numbers do not move.
+  const readThrough = atPeak && raceInWeek ? toISO(addDays(parseISO(raceDate), -1)) : raceDate;
 
   const ctx = {
-    N, labels, tailStart, keep, c0: anchor, week: weekModel(profile), closures, extra,
-    pins: input.weekBudgets ?? {}, frozen, depths, start, raceDate,
+    N, labels, tailStart, modelTailStart, taperShare, keep, c0: anchor, week: weekModel(profile), closures, extra,
+    pins: input.weekBudgets ?? {}, frozen, depths, start, raceDate: readThrough,
     availability: Math.floor(weeklyAvailableMinutes(profile) / STEP) * STEP || STEP,
     // The two hard ceilings (see the header); aimed at race day, the first version
     // of this planner had neither, and solved for whatever peak paid for the taper.

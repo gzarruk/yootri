@@ -937,8 +937,6 @@
   .tgt-short { border-left-color: var(--color-danger); }
   .tgt p { margin: 0 0 .35rem; }
   .tgt ul { margin: .3rem 0 0; padding-left: 1.1rem; }
-  .tgt-edit { display: flex; gap: .5rem; align-items: flex-end; flex-wrap: wrap; margin: .5rem 0 .4rem; }
-  .tgt-edit .pnl-f { width: 9.5rem; }
   .tgt-spark { width: 100%; height: 70px; display: block; margin: .5rem 0 .1rem; }
   .race-label { margin: 0 0 .8rem; padding: .5rem .85rem; border-radius: 10px; font-size: .84rem;
     display: flex; flex-wrap: wrap; gap: .2rem .9rem; align-items: baseline;
@@ -1198,9 +1196,9 @@
       </div>
     </header>
 
-    <section class="stack ffm" aria-label="Fitness, fatigue and form">
+    <section class="stack ffm" aria-label="Fitness (CTL), fatigue (ATL) and form">
       <div class="k-row">
-        <span class="card-kicker">Fitness, fatigue and form</span>
+        <span class="card-kicker">Fitness (CTL), fatigue (ATL) and form</span>
         <span class="chip-sample" id="ffm-chip"></span>
       </div>
       <div class="ind-grid" id="ffm-root"></div>
@@ -1278,11 +1276,11 @@
 
     <p class="foot-note">Drag a session card between days to reschedule it, or click the pencil to edit its details. Changes save to this device automatically — sign in to sync across devices, or export a plan as a file to keep and reuse as a template. <b>Plan setup</b> fits the whole season to the hours you actually have; it always shows you the changes before anything is written, and <b>Reset week</b> rebuilds a single week from that fit.</p>
 
-    <section class="panel season" aria-label="Season fitness and training load">
+    <section class="panel season" aria-label="Season fitness (CTL), fatigue (ATL) and training load">
       <div class="season-top">
         <span class="card-kicker">Season</span>
         <div class="seg" role="radiogroup" aria-label="Chart view" id="seasonview-seg">
-          <label class="seg-opt"><input type="radio" name="seasonview" value="fit" checked />Fitness</label>
+          <label class="seg-opt"><input type="radio" name="seasonview" value="fit" checked />Fitness &amp; fatigue</label>
           <label class="seg-opt"><input type="radio" name="seasonview" value="load" />Training load</label>
         </div>
       </div>
@@ -1450,8 +1448,9 @@
     normalizeEvents, upsertEvent, removeEvent,
     goalEvent, eventsByDate, raceFieldsOf, seedEventsFromProfile, hasTaper, AMBITIONS, DEFAULT_AMBITION,
   } from './assets/coach/events.js';
-  import { AMBITION_INFO, ambitionOptions, describeTarget } from './assets/coach/targets.js';
-  import { startFitness, startNote } from './assets/coach/startfit.js';
+  import { AMBITION_INFO, PLAN_MODEL, ambitionOptions, describeTarget } from './assets/coach/targets.js';
+  import { startFitness, startNote, startLine } from './assets/coach/startfit.js';
+  import { HISTORY_THRESHOLDS } from './assets/coach/history.js';
   import { suggest } from './assets/coach/adapt.js';
   import { runTurn } from './assets/coach/agent.js';
   import { PROVIDERS, getProvider, resolveModel } from './assets/coach/providers.js';
@@ -3485,14 +3484,26 @@
 
   /* Where this plan's athlete would start from if it were built to a target
      now: their synced sessions on the plan, or an estimate from About you.
-     startFitness takes no heart-rate store and none is given one. */
-  function startFor(entered) {
+     startFitness takes no heart-rate store and none is given one. With `raw`,
+     the answer even when there is nothing to estimate from (ctl null), which
+     is what the read-only line beside the plan says. */
+  function startFor({ raw = false } = {}) {
     const r = startFitness({
       today: tgtToday(), activities: plan.activities, activitySync: plan.activitySync,
-      benchmarks: plan.benchmarks, loadRefs: plan.loadRefs, athlete: loadAthlete(), entered,
+      benchmarks: plan.benchmarks, loadRefs: plan.loadRefs, athlete: loadAthlete(),
     });
-    return r.ctl === null ? null : r;
+    return raw || r.ctl !== null ? r : null;
   }
+
+  /* What a stored start is, in the row that shows it: a figure from the athlete's own
+     sessions is their CTL; one worked out from their hours is an estimate that sizes the
+     season and is not drawn as their CTL; one from a plan made when a figure could be
+     typed says so. */
+  const START_ROWS = {
+    garmin: ['Where you start (CTL)', ''],
+    estimate: ['Starting point (estimated from your hours)', 'about '],
+    entered: ['Starting point (entered earlier)', ''],
+  };
 
   /* The target's numbers: what it aims at, what it asks, where the athlete
      starts and what the plan reaches. */
@@ -3501,8 +3512,9 @@
     const atPeak = target.at === 'peak';
     return '<dl class="imp-facts">' +
       '<div><dt>Aiming for</dt><dd>' + esc(ambitionLabel(ambition) || '—') + '</dd></div>' +
-      '<div><dt>' + (atPeak ? 'Peak fitness, before the taper' : 'Target on race day') + '</dt><dd>' + tgtNum(target.ctl) + '</dd></div>' +
-      '<div><dt>Where you start</dt><dd>' + tgtNum(target.start.ctl) + '</dd></div>' +
+      '<div><dt>' + (atPeak ? 'Peak fitness (CTL), before the taper' : 'Target on race day (CTL)') + '</dt><dd>' + tgtNum(target.ctl) + '</dd></div>' +
+      '<div><dt>' + (START_ROWS[target.start.source] || START_ROWS.estimate)[0] + '</dt><dd>' +
+        (START_ROWS[target.start.source] || START_ROWS.estimate)[1] + tgtNum(target.start.ctl) + '</dd></div>' +
       (f ? '<div><dt>The plan reaches</dt><dd>about ' + tgtNum(f.achievableCtl) + (atPeak ? ' at its peak' : '') + '</dd></div>' : '') +
       (atPeak && f && Number.isFinite(f.raceCtl) ? '<div><dt>On race day</dt><dd>about ' + tgtNum(f.raceCtl) + '</dd></div>' : '') +
     '</dl>';
@@ -3551,7 +3563,7 @@
     return '<span><b>A race</b> · ' + esc(name && kind && name !== kind ? name + ' · ' + kind : (name || kind || 'Race')) + '</span>' +
       '<span>' + esc(fmtLongDate(main.date)) + '</span>' +
       '<span class="rl-dim">' + when + '</span>' +
-      (t ? '<span>' + (t.at === 'peak' ? 'Peak fitness' : 'Target fitness') + ' <b>' + tgtNum(t.ctl) + '</b></span>' : '') +
+      (t ? '<span>' + (t.at === 'peak' ? 'Peak fitness (CTL)' : 'Target fitness (CTL)') + ' <b>' + tgtNum(t.ctl) + '</b></span>' : '') +
       (f && !f.feasible ? '<span class="rl-dim">the plan reaches about ' + tgtNum(f.achievableCtl) + '</span>' : '');
   }
   function renderRaceLabel() {
@@ -3569,14 +3581,12 @@
     const t = plan.target;
     const current = AMBITIONS.includes(main.ambition) ? main.ambition : DEFAULT_AMBITION;
     const estimate = t ? null : startFor();
-    const startCtl = t ? t.start.ctl : estimate && estimate.ctl;
     let levers = null;
     if (t && t.feasibility && !t.feasibility.feasible) {
       try { levers = leversFor(plan); } catch (e) { console.error(e); }
     }
-    const typed = t && t.start.source === 'entered' ? t.start.ctl : '';
     return '<div class="pnl-sec" id="f-target">' +
-      '<h3 class="pnl-h3" style="margin-top:0">Target fitness</h3>' +
+      '<h3 class="pnl-h3" style="margin-top:0">Target fitness (CTL)</h3>' +
       (t ? '' : '<p class="pnl-hint">This season was sized by the time you have each day, not by what the race calls for. ' +
         (estimate ? 'It can be built to a target instead.' : 'Give the hours a week you train now in About you, and it can be built to a target.') + '</p>') +
       (!t && estimate
@@ -3585,12 +3595,9 @@
       '<div class="pnl-grid">' +
         field('How hard to aim', '<select class="input" id="f-ambition">' +
           opts.map((o) => '<option value="' + esc(o.key) + '"' + (o.key === current ? ' selected' : '') + '>' + esc(o.label + ' — peak ' + o.target) + '</option>').join('') + '</select>') +
-        field('Your fitness today', '<input type="number" class="input" id="f-startctl" min="0" max="200" step="1" value="' + esc(typed) +
-          '" placeholder="' + (startCtl !== null && startCtl !== undefined ? tgtNum(startCtl) : '') + '" />') +
       '</div>' +
-      '<p class="pnl-hint">' + esc((t ? startNote(t.start) : estimate && estimate.note) || '') +
-        ' Type your own number in the box to replace it' + (typed !== '' ? '; clear the box to use the estimate' : '') +
-        '. The ranges the targets come from are illustrative, not findings.</p>' +
+      '<p class="pnl-hint" id="f-startline">' + esc(startLine(startFor({ raw: true }))) +
+        ' The ranges the targets come from are illustrative, not findings.</p>' +
       (t ? targetFactsHTML(t, current) + targetBlockHTML(t, levers) : '') +
     '</div>';
   }
@@ -3787,13 +3794,14 @@
     const events = state.events.map((e) => (e.priority === 'primary'
       ? { ...e, raceType: profile.raceType, ...(AMBITIONS.includes(picked) ? { ambition: picked } : {}) } : e));
 
-    // A season with a target starts from the figure it was built from, unless a
-    // number is typed. One sized the old way is built to a target only if asked.
-    const typedStart = $('f-startctl') && $('f-startctl').value.trim() !== '' ? Number($('f-startctl').value) : NaN;
-    const entered = Number.isFinite(typedStart) && typedStart >= 0 && typedStart <= 200
-      ? { ctl: typedStart, source: 'entered', asOf: tgtToday() } : null;
+    // A season with a target keeps the start it was built from, and one sized the old way is
+    // built to a target only if asked, from where the athlete is now. A start that was an
+    // estimate (or typed, in a plan made when that was possible) gives way to the athlete's
+    // own sessions once they say; the review shows the change before anything is written.
     const upgrade = !plan.target && !!$('f-target-on') && $('f-target-on').checked;
-    const start = entered || (upgrade ? startFor() : null);
+    const now = plan.target || upgrade ? startFor() : null;
+    const start = upgrade ? now
+      : (now && now.source === 'garmin' && plan.target.start.source !== 'garmin' ? now : null);
 
     draft = refit({ ...plan, events }, {
       profile, keepBefore: trainedWeeks(),
@@ -3811,7 +3819,7 @@
     if (draft.target.feasibility && !draft.target.feasibility.feasible) {
       try { levers = leversFor(draft); } catch (e) { console.error(e); }
     }
-    return '<h3 class="pnl-h3">Target fitness</h3>' +
+    return '<h3 class="pnl-h3">Target fitness (CTL)</h3>' +
       (plan.target ? '' : '<p class="pnl-hint">This also builds the season to a target fitness. ' + esc(startNote(draft.target.start)) + '</p>') +
       // A target made before it meant the peak: say what changes, so the lower race-day figure is not a surprise.
       (plan.target && plan.target.at !== 'peak' && draft.target.at === 'peak'
@@ -4449,7 +4457,7 @@
     if ((plan.activities || []).length) {
       const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
       const t = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
-      const L = trainingLoad(plan.activities, { today, weeks: 4, thresholds: t, hrById: hrLookup(readHrStore()), sync: plan.activitySync });
+      const L = trainingLoad(plan.activities, { today, weeks: 4, thresholds: t, hrById: hrLookup(readHrStore()), sync: plan.activitySync, warmStartDays: PLAN_MODEL.garmin.warmStartDays });
       if (Object.values(L.byMethod).some((n) => n > 0)) {
         load = '<dl class="imp-facts">' +
           '<div><dt>' + esc(L.labels.chronic) + '</dt><dd>' + L.chronic + '</dd></div>' +
@@ -4850,7 +4858,7 @@
           ? opts.map((o) => '<label class="amb"><input type="radio" name="wz-amb" value="' + esc(o.key) + '"' + (o.key === current ? ' checked' : '') + ' />' +
               '<span><b>' + esc(o.label) + ' — peak fitness ' + o.target + '</b><small>' + esc(o.blurb) + '</small></span></label>').join('')
           : '<p class="pnl-hint">There is no range for that distance, so the season is sized by the time you have each day.</p>') +
-        '<p class="pnl-hint">Fitness here is the 42-day average of training load, the number the Fitness chart draws' +
+        '<p class="pnl-hint">Fitness here is CTL, the 42-day average of training load, the number the Fitness chart draws' +
           (band ? '; the illustrative range for ' + esc(raceTypeLabel(r.raceType)) + ' runs from ' + band.lo + ' to ' + band.hi : '') +
           '. The ranges are not findings, and the figures are estimates from planned sessions. ' +
           'This is separate from the finish-or-a-time goal on the next step.</p>';
@@ -4871,20 +4879,6 @@
   };
 
   const WIZ_STEP_BIND = {
-    review() {
-      // Where the season starts from can be replaced with a number of the athlete's own.
-      const set = $('wz-startctl-set');
-      if (!set) return;
-      set.addEventListener('click', () => {
-        const x = $('wz-startctl').value.trim();
-        if (x === '') { delete wiz.answers.startCtlEntered; } else wiz.answers.startCtlEntered = Number(x);
-        wiz.problems = stepProblems('review', wiz.answers, { today: wizToday() });
-        wizSave();
-        renderWizard();
-      });
-      const clear = $('wz-startctl-clear');
-      if (clear) clear.addEventListener('click', () => { delete wiz.answers.startCtlEntered; wizSave(); renderWizard(); });
-    },
     races() {
       $('wz-addtune').addEventListener('click', () => {
         readWizardStep();
@@ -4981,17 +4975,10 @@
     const withLevers = built.target && built.target.feasibility && !built.target.feasibility.feasible
       ? planReview(built, { levers: true }) : r;
     const start = built.target ? startFitnessFor(wiz.answers, { today: wizToday(), now: now(), base: wizBase() }) : null;
-    const entered = wiz.answers.startCtlEntered !== undefined && wiz.answers.startCtlEntered !== '';
     const targetHTML = built.target
-      ? '<h3 class="pnl-h3">Target fitness</h3>' +
+      ? '<h3 class="pnl-h3">Target fitness (CTL)</h3>' +
         targetFactsHTML(built.target, race.ambition) +
-        '<p class="pnl-hint">' + esc(start ? start.note : '') + '</p>' +
-        '<div class="tgt-edit">' +
-          field('Your fitness today', '<input type="number" class="input" id="wz-startctl" min="0" max="200" step="1" value="' +
-            esc(entered ? wiz.answers.startCtlEntered : '') + '" placeholder="' + tgtNum(built.target.start.ctl) + '" />') +
-          '<button type="button" class="btn btn-secondary" id="wz-startctl-set">Use this number</button>' +
-          (entered ? '<button type="button" class="btn btn-ghost" id="wz-startctl-clear">Use the estimate</button>' : '') +
-        '</div>' +
+        '<p class="pnl-hint" id="wz-startline">' + esc(startLine(start)) + '</p>' +
         targetSparkHTML(built.season, built.target) +
         targetBlockHTML(built.target, withLevers.levers)
       : '';
@@ -6051,6 +6038,7 @@
     const t = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
     const r = trainingLoad(plan.activities || [], {
       today: toISO(new Date()), weeks: 4, thresholds: t, hrById: hrLookup(readHrStore()), sync: plan.activitySync,
+      warmStartDays: PLAN_MODEL.garmin.warmStartDays,
     });
     const scored = Object.values(r.byMethod).reduce((a, b) => a + b, 0);
     const unscored = r.weeks.reduce((a, w) => a + w.unscored, 0);
@@ -7282,16 +7270,48 @@
     return '<span class="delta">' + arrow + (r === 0 ? 'No change ' : signed(n) + ' ') + tail + '</span>';
   }
 
-  /* Why there is no figure, in the athlete's words. */
-  function whyEmptyHTML(fs) {
-    const acts = (plan.activities || []).length;
-    const lacks = fs.missing.map((m) => MISSING_WORDS[m]).filter(Boolean);
-    return '<p class="note">' +
-      (!acts
-        ? 'No synced sessions yet. Sync from Garmin and your sessions are scored here.'
-        : fs.unscored + ' synced session' + (fs.unscored === 1 ? '' : 's') + ' could not be scored' +
-          (lacks.length ? ' — it needs ' + esc(lacks.join(', ')) + '. Add them on the Biometrics page.' : '.')) +
-      '</p>';
+  /* What CTL and ATL show until there is a basis to read them from (syncBasis, one bar for
+     the planner and every surface that shows them): one calm placeholder in place of figures or empty axes.
+     It says what is missing and how far along the athlete is, and sizes itself to what it
+     stands in for ('cards', 'chart', 'status') so nothing moves when figures arrive. Nothing
+     here asks this computer for anything: the button only opens a panel or, in a browser
+     already paired with the bridge, starts the sync the Garmin item starts. */
+  function basisPlaceholderHTML(fs, kind) {
+    const b = fs.basis;
+    const need = b.neededWeeks;
+    const pct = (x) => Math.round(x * 100) + '%';
+    let msg = 'CTL and ATL appear once your Garmin sessions are synced.';
+    let extra = '';
+    let action = true;
+    if (b.reason === 'too-short') {
+      msg = 'CTL and ATL appear once about ' + need + ' weeks of your Garmin sessions are in. ' +
+        (b.coveredWeeks > 0 ? 'You have ' + b.coveredWeeks + ' so far.' : 'You have none yet.');
+      extra = '<span class="fit-weeks" role="img" aria-label="' + b.coveredWeeks + ' of ' + need + ' weeks">' +
+        Array.from({ length: need }, (_, i) => '<i' + (i < b.coveredWeeks ? ' class="on"' : '') + '></i>').join('') + '</span>';
+    } else if (b.reason === 'unscorable') {
+      const lacks = fs.missing.map((m) => MISSING_WORDS[m]).filter(Boolean);
+      msg = 'CTL and ATL appear once most of your synced sessions can be scored. A session is scored from power, pace or an effort rating.';
+      extra = '<p class="note">About ' + pct(b.scoredShare ?? 0) + ' of your recorded time can be scored so far; ' + pct(b.neededShare) + ' is needed.' +
+        (lacks.length ? ' What is missing: ' + esc(lacks.join(', ')) + '. Add them on the Biometrics page.' : '') + '</p>';
+      action = false;
+    }
+    const ghost = kind === 'cards' ? '' :
+      '<svg class="fit-ghost" viewBox="0 0 1000 380" preserveAspectRatio="none" aria-hidden="true">' +
+        [0, 1, 2, 3].map((k) => '<line class="grid-l" x1="0" y1="' + (k * 120 || 0.5) + '" x2="1000" y2="' + (k * 120 || 0.5) + '"></line>').join('') +
+        '<polyline class="ghost-line" points="' + Array.from({ length: 13 }, (_, i) => {
+          const t = i / 12;
+          return (20 + t * 960).toFixed(1) + ',' + (310 - 190 * t * t * (3 - 2 * t)).toFixed(1);
+        }).join(' ') + '"></polyline>' +
+      '</svg>';
+    // The Status page's chart sits right under its cards' placeholder, which already has the button.
+    return '<div class="fit-empty fit-empty-' + kind + '">' + ghost +
+      '<div class="fit-empty-body">' +
+        '<b class="fit-empty-t">Fitness (CTL) and fatigue (ATL)</b>' +
+        '<p class="note">' + msg + '</p>' + extra +
+        (action && kind !== 'status' ? '<button type="button" class="btn btn-secondary" data-fit-garmin>' +
+          (garminConfig() ? 'Sync from Garmin' : 'Set up Garmin sync') + '</button>' : '') +
+      '</div>' +
+    '</div>';
   }
 
   function ffmCardHTML(title, sub, d, tail, foot, estimate) {
@@ -7300,12 +7320,12 @@
     return '<article class="ind" aria-label="' + esc(title) + '">' +
       '<div class="ind-h"><div class="ind-t"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></div>' +
         '<span class="sample-h">' + (estimate ? '<span class="tag tag-neutral">Estimate</span>' : '') +
-        '<button type="button" class="icon-btn" data-ffm-info aria-label="How fitness, fatigue and form are worked out"><i class="ic i-info" aria-hidden="true"></i></button></span></div>' +
+        '<button type="button" class="icon-btn" data-ffm-info aria-label="How fitness (CTL), fatigue (ATL) and form are worked out"><i class="ic i-info" aria-hidden="true"></i></button></span></div>' +
       '<div class="ind-body">' +
-        '<div class="ind-hero"><span class="kicker kicker-sm">Fitness</span><span class="ind-num">' + whole(d.fit) + '</span>' + deltaHTML(d.dFit, tail) + '</div>' +
+        '<div class="ind-hero"><span class="kicker kicker-sm">Fitness (CTL)</span><span class="ind-num">' + whole(d.fit) + '</span>' + deltaHTML(d.dFit, tail) + '</div>' +
         '<div class="ind-side">' +
-          '<div class="ind-row"><span class="ind-lbl">Fatigue' + deltaHTML(d.dFat, tail) + '</span><span class="ind-val">' + whole(d.fat) + '</span></div>' +
-          '<div class="ind-row"><span class="ind-lbl">Form' + deltaHTML(d.dForm, tail) + '</span><span class="ind-val">' + signed(d.form) + '</span></div>' +
+          '<div class="ind-row"><span class="ind-lbl">Fatigue (ATL)' + deltaHTML(d.dFat, tail) + '</span><span class="ind-val">' + whole(d.fat) + '</span></div>' +
+          '<div class="ind-row"><span class="ind-lbl">Form (CTL − ATL)' + deltaHTML(d.dForm, tail) + '</span><span class="ind-val">' + signed(d.form) + '</span></div>' +
         '</div>' +
       '</div>' +
       '<div class="scale-wrap"><div class="scale" role="img" aria-label="Form is ' + z.name.toLowerCase() + '">' +
@@ -7316,11 +7336,11 @@
     '</article>';
   }
 
-  function ffmEmptyHTML(title, sub, fs) {
+  /* A card with a sentence in place of figures: the race has passed, or the plan has none. */
+  function ffmNoteHTML(title, sub, text) {
     return '<article class="ind" aria-label="' + esc(title) + '">' +
       '<div class="ind-h"><div class="ind-t"><b>' + esc(title) + '</b><span>' + esc(sub) + '</span></div></div>' +
-      '<div class="ind-body"><div class="ind-hero"><span class="kicker kicker-sm">Fitness</span><span class="ind-num" style="opacity:.4">—</span></div></div>' +
-      whyEmptyHTML(fs) + '</article>';
+      '<p class="note">' + esc(text) + '</p></article>';
   }
 
   /* The week a season peaks in: the one whose planned fitness at the end of it is highest, or
@@ -7333,20 +7353,36 @@
   }
 
   /* The Fitness view of the Season panel. x is the week; y runs 0 to `top`. */
-  function fitnessChart(fs, N, nowWeek) {
-    const peak = Math.max(120, ...fs.weeks.flatMap((w) => [w.planned, w.actual ?? 0, w.trend ?? 0]));
-    const top = Math.ceil(peak / 40) * 40;
-    const X = (i) => (N > 1 ? 20 + (i * 940) / (N - 1) : 500);
+  /* The week axis both charts share, so a week sits at the same x in each. */
+  const weekX = (N) => (i) => (N > 1 ? 20 + (i * 940) / (N - 1) : 500);
+  const weekLabelsHTML = (N, X) => {
+    const step = Math.max(1, Math.ceil(N / 16));
+    return Array.from({ length: N }, (_, i) => i).filter((i) => i % step === 0 || i === N - 1)
+      .map((i) => '<span style="left: ' + (X(i) / 10).toFixed(1) + '%">' + (i + 1) + '</span>').join('');
+  };
+  /* The chart is stretched to its box, so a <circle> would come out an ellipse. A zero-length
+     line with a round cap and a non-scaling stroke stays round at any size: ring, then fill. */
+  const chartDot = (x, y, ring, fill) => {
+    const d = 'x1="' + x.toFixed(1) + '" y1="' + y.toFixed(1) + '" x2="' + x.toFixed(1) + '" y2="' + y.toFixed(1) + '" stroke-linecap="round" style="vector-effect: non-scaling-stroke; ';
+    return '<line ' + d + 'stroke: ' + ring + '; stroke-width: 11"></line><line ' + d + 'stroke: ' + fill + '; stroke-width: 5.5"></line>';
+  };
+
+  /* The chart's y maximum. CTL and ATL are the same units, so they share the one axis; it
+     includes every line that is drawn, ATL's as well. */
+  function chartTop(fs) {
+    const peak = Math.max(120, ...fs.weeks.flatMap((w) => [
+      w.planned, w.actual ?? 0, w.trend ?? 0, w.plannedFat, w.actualFat ?? 0, w.followedFat ?? 0,
+    ]));
+    return Math.ceil(peak / 40) * 40;
+  }
+
+  function fitnessChart(fs, N, nowWeek, top) {
+    const X = weekX(N);
     const H = 360;
     const Y = (v) => H - (v / top) * H;
     const f1 = (n) => n.toFixed(1);
     const last = N - 1;
-    /* The chart is stretched to its box, so a <circle> would come out an ellipse. A zero-length
-       line with a round cap and a non-scaling stroke stays round at any size: ring, then fill. */
-    const dot = (x, y, ring, fill) => {
-      const d = 'x1="' + f1(x) + '" y1="' + f1(y) + '" x2="' + f1(x) + '" y2="' + f1(y) + '" stroke-linecap="round" style="vector-effect: non-scaling-stroke; ';
-      return '<line ' + d + 'stroke: ' + ring + '; stroke-width: 11"></line><line ' + d + 'stroke: ' + fill + '; stroke-width: 5.5"></line>';
-    };
+    const dot = chartDot;
     const pts = (rows) => rows.map(([i, v]) => f1(X(i)) + ',' + f1(Y(v))).join(' ');
     const actual = fs.weeks.filter((w) => w.actual !== null).map((w) => [w.week, w.actual]);
 
@@ -7359,6 +7395,16 @@
     svg += '<line x1="' + f1(X(nowWeek)) + '" y1="0" x2="' + f1(X(nowWeek)) + '" y2="' + H + '" stroke-dasharray="3 4" style="stroke: var(--color-accent); stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
       '<line x1="' + f1(X(last)) + '" y1="0" x2="' + f1(X(last)) + '" y2="' + H + '" style="stroke: var(--color-text); opacity: .5; stroke-width: 1; vector-effect: non-scaling-stroke"></line>' +
       '<polyline class="ln" style="stroke: var(--color-accent-300); stroke-width: 2; stroke-dasharray: ' + LINE_DASH.planned + '" points="' + pts(fs.weeks.map((w) => [w.week, w.planned])) + '"></polyline>';
+    // ATL, on the same axis in the colour the Status page gives fatigue, with the dash pattern
+    // each kind of CTL line has: planned (a lighter dash), the plan from today, and what was done.
+    // Each week is read at its Sunday, as CTL is. The bands and the target mark are ranges for CTL.
+    const atl = 'var(--disc-bike)';
+    const atlActual = fs.weeks.filter((w) => w.actualFat !== null).map((w) => [w.week, w.actualFat]);
+    const atlFollowed = fs.weeks.filter((w) => w.followedFat !== null).map((w) => [w.week, w.followedFat]);
+    svg += '<polyline class="ln" style="stroke: ' + atl + '; opacity: .6; stroke-width: 2; stroke-dasharray: ' + LINE_DASH.planned + '" points="' + pts(fs.weeks.map((w) => [w.week, w.plannedFat])) + '"></polyline>';
+    if (fs.today && atlFollowed.length) {
+      svg += '<polyline class="ln" style="stroke: ' + atl + '; stroke-width: 2.5; stroke-dasharray: ' + LINE_DASH.followed + '" points="' + pts([[nowWeek, fs.today.fat], ...atlFollowed]) + '"></polyline>';
+    }
     const trend = fs.weeks.filter((w) => w.trend !== null).map((w) => [w.week, w.trend]);
     const followed = fs.weeks.filter((w) => w.followed !== null).map((w) => [w.week, w.followed]);
     if (fs.today && followed.length) {
@@ -7370,6 +7416,10 @@
     if (actual.length) {
       svg += '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 3" points="' + pts(actual) + '"></polyline>' +
         dot(X(actual[actual.length - 1][0]), Y(actual[actual.length - 1][1]), 'var(--color-accent)', 'var(--color-accent)');
+    }
+    if (atlActual.length) {
+      svg += '<polyline class="ln" style="stroke: ' + atl + '; stroke-width: 3" points="' + pts(atlActual) + '"></polyline>' +
+        dot(X(atlActual[atlActual.length - 1][0]), Y(atlActual[atlActual.length - 1][1]), atl, atl);
     }
     const raceW = fs.race ? Math.min(last, fs.race.week) : last;
     const raceV = fs.race ? fs.race.fit : fs.weeks[last].planned;
@@ -7384,11 +7434,9 @@
     }
     if (fs.trend !== null) svg += dot(X(raceW), Y(fs.trend), 'var(--color-accent)', 'var(--color-surface)');
 
-    const step = Math.max(1, Math.ceil(N / 16));
     return {
       svg, top,
-      xlab: Array.from({ length: N }, (_, i) => i).filter((i) => i % step === 0 || i === last)
-        .map((i) => '<span style="left: ' + f1(X(i) / 10) + '%">' + (i + 1) + '</span>').join(''),
+      xlab: weekLabelsHTML(N, X),
       bands: BANDS.map((b) => '<span style="top: ' + f1((Y(b.lo) + Y(b.hi)) / 2) + 'px"><b><u style="--bc: ' + b.color + '"></u>' + b.name + '</b><i>' + b.lo + ' to ' + b.hi + '</i></span>').join(''),
       key: BANDS.map((b) => '<span style="--bc: ' + b.color + '"><u></u>' + b.name + ' ' + b.lo + ' to ' + b.hi + '</span>').join(''),
     };
@@ -7419,27 +7467,37 @@
     const fs = fitnessNow();
     const w0 = weekIndexOf(state.start, toISO(new Date()));
     const nowWeek = Number.isInteger(w0) ? Math.max(0, Math.min(N - 1, w0)) : 0;
+    const ok = fs.basis.enough;
 
     $('ffm-chip').innerHTML = '<i class="ic i-info" aria-hidden="true"></i>' +
-      (fs.hasHistory ? 'Planned and race-day figures are estimates' : 'Needs synced sessions');
-    $('ffm-root').innerHTML = fs.hasHistory
+      (ok ? 'Planned and race-day figures are estimates' : 'Needs synced sessions');
+    $('ffm-root').innerHTML = ok
       ? ffmCardHTML('Today', 'Where your training stands right now', fs.today, 'in 7 days',
           fs.today.form > PLANNED.form.high ? 'Fitness is well above fatigue.' : fs.today.form < PLANNED.form.low ? 'Fatigue is well above fitness.' : 'Fitness and fatigue are close.', false) +
         (fs.race
           ? ffmCardHTML('Race day · ' + fmtLongDate(fs.race.date), 'The plan followed from today', fs.race, 'vs today',
               (fs.race.form > PLANNED.form.high ? 'Fitness is well above fatigue on the day.' : fs.race.form < PLANNED.form.low ? 'Fatigue is well above fitness on the day.' : 'Fitness and fatigue are close on the day.') +
               ' A range often used on race day (illustrative): +' + PLANNED.raceForm.low + ' to +' + PLANNED.raceForm.high + '.', true)
-          : ffmEmptyHTML('Race day', 'The plan followed from today', { ...fs, missing: [] }).replace(whyEmptyHTML({ ...fs, missing: [] }), '<p class="note">The race date has passed, or the plan has none.</p>'))
-      : ffmEmptyHTML('Today', 'Where your training stands right now', fs) + ffmEmptyHTML('Race day', 'The plan followed from today', fs);
+          : ffmNoteHTML('Race day', 'The plan followed from today', 'The race date has passed, or the plan has none.'))
+      : basisPlaceholderHTML(fs, 'cards');
 
-    const c = fitnessChart(fs, N, nowWeek);
+    if (!ok) {
+      $('v-fit').innerHTML = basisPlaceholderHTML(fs, 'chart');
+      renderStatusPage(fs);
+      return;
+    }
+
+    const top = chartTop(fs);
+    const c = fitnessChart(fs, N, nowWeek, top);
     $('v-fit').innerHTML =
-      (fs.hasHistory ? '' : whyEmptyHTML(fs)) +
+      '<div class="fhead"><b>Fitness (CTL) and fatigue (ATL)</b><span>The 42-day and 7-day averages of training load</span></div>' +
       '<div class="fplot">' +
-        '<div class="plot-y"><span>' + c.top + '</span><span>' + Math.round(c.top * 2 / 3) + '</span><span>' + Math.round(c.top / 3) + '</span><span>0</span></div>' +
-        '<svg viewBox="0 0 1000 380" preserveAspectRatio="none" role="img" aria-label="Fitness by week. Planned fitness (an estimate) goes from ' + fs.weeks[0].planned + ' in week 1 to ' + fs.weeks[N - 1].planned + ' in week ' + N + '.' +
-          (fs.today ? ' Actual fitness is ' + Math.round(fs.today.fit) + ' now.' + (fs.race ? ' The plan followed from today reaches ' + Math.round(fs.race.fit) + ' on race day.' : '') : ' There is no actual line yet.') +
+        '<div class="plot-y"><span>' + top + '</span><span>' + Math.round(top * 2 / 3) + '</span><span>' + Math.round(top / 3) + '</span><span>0</span></div>' +
+        '<svg viewBox="0 0 1000 380" preserveAspectRatio="none" role="img" aria-label="Fitness (CTL) and fatigue (ATL) by week. Planned fitness (an estimate) goes from ' + fs.weeks[0].planned + ' in week 1 to ' + fs.weeks[N - 1].planned + ' in week ' + N + '.' +
+          ' Actual fitness is ' + Math.round(fs.today.fit) + ' now.' + (fs.race ? ' The plan followed from today reaches ' + Math.round(fs.race.fit) + ' on race day.' : '') +
           (fs.trend !== null ? ' On the current trend it reaches ' + Math.round(fs.trend) + ' on race day.' : '') +
+          ' Planned fatigue (an estimate) goes from ' + fs.weeks[0].plannedFat + ' in week 1 to ' + fs.weeks[N - 1].plannedFat + ' in week ' + N + '.' +
+          ' Actual fatigue is ' + Math.round(fs.today.fat) + ' now.' + (fs.race ? ' The plan followed from today reaches ' + Math.round(fs.race.fat) + ' on race day.' : '') +
           (plan.target ? ' The plan target is ' + Math.round(plan.target.ctl) + (plan.target.at === 'peak' ? ' at its peak, in week ' + (peakWeekOf(plan.season, N - 1) + 1) + '.' : ' on race day.') : '') + ' ' +
           BANDS.map((b) => b.name + ' band, illustrative, runs ' + b.lo + ' to ' + b.hi).join(', ') + '.">' + c.svg + '</svg>' +
         '<div class="bands" aria-hidden="true">' + c.bands + '</div>' +
@@ -7447,33 +7505,40 @@
       '</div>' +
       '<div class="fplot-key" aria-hidden="true">' + c.key + '</div>' +
       '<div class="legend">' +
-        (fs.today ? '<span class="lg">' + swatch('var(--color-accent)', 3) + 'Actual, synced from Garmin <span>' + whole(fs.today.fit) + ' now</span></span>' : '') +
-        '<span class="lg">' + swatch('var(--color-accent-300)', 2, LINE_DASH.planned) + 'Planned, estimated <span>' + whole(fs.weeks[N - 1].planned) + ' in week ' + N + '</span></span>' +
-        (fs.race ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.followed) + 'Plan from today <span>' + whole(fs.race.fit) + ' on race day</span></span>' : '') +
-        (fs.trend !== null ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.trend) + 'On current trend <span>' + whole(fs.trend) + ' on race day</span></span>' : '') +
+        '<span class="lg">' + swatch('var(--color-accent)', 3) + 'CTL actual, synced from Garmin <span>' + whole(fs.today.fit) + ' now</span></span>' +
+        '<span class="lg">' + swatch('var(--color-accent-300)', 2, LINE_DASH.planned) + 'CTL planned, estimated <span>' + whole(fs.weeks[N - 1].planned) + ' in week ' + N + '</span></span>' +
+        (fs.race ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.followed) + 'CTL plan from today <span>' + whole(fs.race.fit) + ' on race day</span></span>' : '') +
+        (fs.trend !== null ? '<span class="lg">' + swatch('var(--color-accent)', 2.5, LINE_DASH.trend) + 'CTL on current trend <span>' + whole(fs.trend) + ' on race day</span></span>' : '') +
+        '<span class="lg">' + swatch('var(--disc-bike)', 3) + 'ATL actual, synced from Garmin <span>' + whole(fs.today.fat) + ' now</span></span>' +
+        '<span class="lg">' + swatch('var(--disc-bike)', 2, LINE_DASH.planned, 0.6) + 'ATL planned, estimated <span>' + whole(fs.weeks[N - 1].plannedFat) + ' in week ' + N + '</span></span>' +
+        (fs.race ? '<span class="lg">' + swatch('var(--disc-bike)', 2.5, LINE_DASH.followed) + 'ATL plan from today <span>' + whole(fs.race.fat) + ' on race day</span></span>' : '') +
         (plan.target ? '<span class="lg">' + swatch('var(--color-text)', 3) + 'Plan target <span>' + whole(plan.target.ctl) +
           (plan.target.at === 'peak' ? ' at its peak, week ' + (peakWeekOf(plan.season, N - 1) + 1) : ' on race day') + '</span></span>' : '') +
         '<span class="lg">' + swatch('var(--color-text)', 1.5, null, 0.5) + 'Race day, week ' + N + '</span>' +
-      '</div>' + preparationHTML(fs);
+      '</div>' +
+      '<p class="note">ATL is read at the end of each week; within a week it moves more than shown. Predicted ATL is an estimate and is noisier than predicted CTL.</p>' +
+      preparationHTML(fs);
 
     renderStatusPage(fs);
   }
 
   function renderStatusPage(fs) {
     const hm = (m) => fmtTotal(m) || '0m';
-    $('status-chip').innerHTML = '<i class="ic i-info" aria-hidden="true"></i>' + (fs.hasHistory ? 'From your synced sessions' : 'Needs synced sessions');
+    const ok = fs.basis.enough;
+    $('status-chip').innerHTML = '<i class="ic i-info" aria-hidden="true"></i>' + (ok ? 'From your synced sessions' : 'Needs synced sessions');
     const t = fs.today;
-    const cards =
-      '<div class="grid-3">' +
-        '<div class="panel"><span class="card-kicker">Fitness · 42-day load</span><span class="big">' + (t ? whole(t.fit) : '—') +
-          (t ? '<small>' + (Math.round(t.dFit) >= 0 ? '↑ ' : '↓ ') + Math.abs(Math.round(t.dFit)) + ' on last week</small>' : '') + '</span>' +
-          '<p class="note">The slow average of training load. It rises when training is steady for weeks.</p></div>' +
-        '<div class="panel"><span class="card-kicker">Fatigue · 7-day load</span><span class="big">' + (t ? whole(t.fat) : '—') +
-          (t ? '<small>' + (Math.round(t.dFat) >= 0 ? '↑ ' : '↓ ') + Math.abs(Math.round(t.dFat)) + ' on last week</small>' : '') + '</span>' +
-          '<p class="note">The fast average. It rises after a big week and falls after an easy one.</p></div>' +
-        '<div class="panel"><span class="card-kicker">Form</span><span class="big">' + (t ? signed(t.form) : '—') + '<small>Fitness minus fatigue</small></span>' +
-          '<p class="note">Positive when fitness is above fatigue, negative when it is below.</p></div>' +
-      '</div>';
+    const cards = ok
+      ? '<div class="grid-3">' +
+          '<div class="panel"><span class="card-kicker">Fitness (CTL) · 42-day load</span><span class="big">' + whole(t.fit) +
+            '<small>' + (Math.round(t.dFit) >= 0 ? '↑ ' : '↓ ') + Math.abs(Math.round(t.dFit)) + ' on last week</small></span>' +
+            '<p class="note">The slow average of training load. It rises when training is steady for weeks.</p></div>' +
+          '<div class="panel"><span class="card-kicker">Fatigue (ATL) · 7-day load</span><span class="big">' + whole(t.fat) +
+            '<small>' + (Math.round(t.dFat) >= 0 ? '↑ ' : '↓ ') + Math.abs(Math.round(t.dFat)) + ' on last week</small></span>' +
+            '<p class="note">The fast average. It rises after a big week and falls after an easy one.</p></div>' +
+          '<div class="panel"><span class="card-kicker">Form</span><span class="big">' + signed(t.form) + '<small>CTL minus ATL</small></span>' +
+            '<p class="note">Positive when fitness is above fatigue, negative when it is below.</p></div>' +
+        '</div>'
+      : basisPlaceholderHTML(fs, 'cards');
 
     // Last twelve plan weeks up to this one, at the end of each.
     const nowW = fs.weeks.filter((w) => w.actual !== null);
@@ -7483,16 +7548,17 @@
     const top = Math.ceil(peak / 50) * 50;
     const Y = (v) => (150 - (v / top) * 150).toFixed(1);
     const line = (key) => rows.map((w, i) => X(i).toFixed(1) + ',' + Y(w[key])).join(' ');
-    const chart = rows.length >= 2
-      ? '<div class="plot"><div class="plot-y"><span>' + top + '</span><span>' + top / 2 + '</span><span>0</span></div>' +
-          '<svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Fitness and fatigue at the end of each of the last ' + rows.length + ' plan weeks. Fitness ' + Math.round(rows[0].actual) + ' to ' + Math.round(rows[rows.length - 1].actual) + '; fatigue ' + Math.round(rows[0].actualFat) + ' to ' + Math.round(rows[rows.length - 1].actualFat) + '.">' +
-            [0, 0.5, 1].map((k) => '<line class="grid-l" x1="0" y1="' + (k * 150 || 0.5) + '" x2="1000" y2="' + (k * 150 || 0.5) + '"></line>').join('') +
-            '<polyline class="ln" style="stroke: var(--disc-bike); stroke-dasharray: 7 5" points="' + line('actualFat') + '"></polyline>' +
-            '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5" points="' + line('actual') + '"></polyline></svg>' +
-          '<div class="plot-x">' + rows.map((w) => '<span>' + (w.week + 1) + '</span>').join('') + '</div></div>' +
-        '<div class="legend"><span class="lg" style="--c: var(--color-accent)"><i></i>Fitness <span>' + whole(t.fit) + '</span></span>' +
-          '<span class="lg" style="--c: var(--disc-bike)"><i class="dash"></i>Fatigue <span>' + whole(t.fat) + '</span></span></div>'
-      : '<p class="note">A line needs at least two plan weeks of synced sessions.</p>';
+    const chart = !ok ? basisPlaceholderHTML(fs, 'status')
+      : rows.length >= 2
+        ? '<div class="plot"><div class="plot-y"><span>' + top + '</span><span>' + top / 2 + '</span><span>0</span></div>' +
+            '<svg viewBox="0 0 1000 170" preserveAspectRatio="none" role="img" aria-label="Fitness (CTL) and fatigue (ATL) at the end of each of the last ' + rows.length + ' plan weeks. Fitness ' + Math.round(rows[0].actual) + ' to ' + Math.round(rows[rows.length - 1].actual) + '; fatigue ' + Math.round(rows[0].actualFat) + ' to ' + Math.round(rows[rows.length - 1].actualFat) + '.">' +
+              [0, 0.5, 1].map((k) => '<line class="grid-l" x1="0" y1="' + (k * 150 || 0.5) + '" x2="1000" y2="' + (k * 150 || 0.5) + '"></line>').join('') +
+              '<polyline class="ln" style="stroke: var(--disc-bike); stroke-dasharray: 7 5" points="' + line('actualFat') + '"></polyline>' +
+              '<polyline class="ln" style="stroke: var(--color-accent); stroke-width: 2.5" points="' + line('actual') + '"></polyline></svg>' +
+            '<div class="plot-x">' + rows.map((w) => '<span>' + (w.week + 1) + '</span>').join('') + '</div></div>' +
+          '<div class="legend"><span class="lg" style="--c: var(--color-accent)"><i></i>Fitness (CTL) <span>' + whole(t.fit) + '</span></span>' +
+            '<span class="lg" style="--c: var(--disc-bike)"><i class="dash"></i>Fatigue (ATL) <span>' + whole(t.fat) + '</span></span></div>'
+        : '<p class="note">A line needs at least two plan weeks of synced sessions.</p>';
 
     const mins = minutesByDiscipline(plan.activities, { today: toISO(new Date()), days: 28 });
     const total = Object.values(mins).reduce((a, b) => a + b, 0);
@@ -7502,15 +7568,15 @@
         hm(mins[n]) + ' · ' + Math.round((mins[n] / total) * 100) + '%</span></div><div class="bar"><i style="width: ' + Math.round((mins[n] / total) * 100) + '%; background: ' + color + '"></i></div></div>').join('');
 
     $('status-root').innerHTML = cards +
-      '<section class="panel" aria-label="Fitness and fatigue by week"><div class="panel-h"><span class="card-kicker">Fitness and fatigue · by plan week</span></div>' +
-        (t ? chart : whyEmptyHTML(fs)) + '</section>' +
+      '<section class="panel" aria-label="Fitness (CTL) and fatigue (ATL) by week"><div class="panel-h"><span class="card-kicker">Fitness (CTL) and fatigue (ATL) · by plan week</span></div>' +
+        chart + '</section>' +
       '<div class="grid-2">' +
         '<section class="panel" aria-label="Time by discipline"><div class="panel-h"><span class="card-kicker">Time by discipline · last 28 days</span></div>' +
           (disc || '<p class="note">No synced sessions in the last 28 days.</p>') + '</section>' +
         '<section class="panel" aria-label="How this is worked out"><div class="panel-h"><span class="card-kicker">How this is worked out</span></div>' +
           '<div class="rows">' +
             '<div class="row"><span>Each session</span><b>One load number, an hour at threshold being 100</b></div>' +
-            '<div class="row"><span>Fitness and fatigue</span><b>The 42-day and 7-day averages of it</b></div>' +
+            '<div class="row"><span>Fitness (CTL) and fatigue (ATL)</span><b>The 42-day and 7-day averages of it</b></div>' +
             '<div class="row"><span>Sessions scored</span><b>' + fs.scored + (fs.unscored ? ' · ' + fs.unscored + ' could not be' : '') + '</b></div>' +
             '<div class="row"><span>Where it is kept</span><b>Nowhere: worked out when you open the page</b></div>' +
           '</div>' +
@@ -7520,15 +7586,18 @@
 
   function openFitnessInfo() {
     panelShell(
-      '<h2>Fitness, fatigue and form</h2>' +
+      '<h2>Fitness (CTL), fatigue (ATL) and form</h2>' +
       '<p class="pnl-sub">Every session gets one load number, where an hour at threshold is 100: from power for rides, pace for runs and swims, effort rating for strength, and heart rate when nothing better exists.</p>' +
-      '<p class="pnl-hint"><b>Fitness</b> is the average of that over the last 42 days and <b>fatigue</b> the average over the last 7. ' +
-        '<b>Form</b> is fitness minus fatigue. They are worked out each time the page opens from sessions synced through your Garmin bridge, and are never stored or put on your plan.</p>' +
+      '<p class="pnl-hint"><b>CTL</b> is chronic training load: the average of that over the last 42 days, shown as <b>fitness</b>. ' +
+        '<b>ATL</b> is acute training load: the average over the last 7 days, shown as <b>fatigue</b>. ' +
+        '<b>Form</b> is CTL minus ATL. They are worked out each time the page opens from sessions synced through your Garmin bridge, and are never stored or put on your plan. ' +
+        'They appear once about ' + HISTORY_THRESHOLDS.minCovered + ' weeks of sessions are in and most of the recorded time can be scored.</p>' +
       '<p class="pnl-hint">A season built to a target keeps that <b>target</b>, and the figure it started from, on your plan: the mark on the chart is the target: the peak before the taper. Nothing else here is stored.</p>' +
-      '<p class="pnl-hint">The <b>planned</b> line and the <b>race day</b> figures cannot be measured, so each planned session is scored from its length and zone with one fixed intensity per zone. ' +
+      '<p class="pnl-hint">The <b>planned</b> lines and the <b>race day</b> figures cannot be measured, so each planned session is scored from its length and zone with one fixed intensity per zone. ' +
+        'ATL is read at the end of each week, and moves more than that inside one, so predicted ATL is noisier than predicted CTL. ' +
         'The <b>trend</b> carries today’s figures to race day with the rest of the plan done at the rate of the last four weeks, and appears once two weeks of the plan are behind you. The cut-offs for low and high form and the bands are starting values, not findings.</p>' +
       '<div class="pnl-act"><button type="button" class="btn btn-primary" id="ffm-close">Close</button></div>',
-      'Fitness, fatigue and form',
+      'Fitness (CTL), fatigue (ATL) and form',
     );
     $('ffm-close').addEventListener('click', closePanel);
   }
@@ -7543,6 +7612,8 @@
   }
   $('seasonview-seg').addEventListener('change', (e) => setSeasonView(e.target.value));
   document.addEventListener('click', (e) => { if (e.target.closest('[data-ffm-info]')) openFitnessInfo(); });
+  // The placeholder's button: sync when this browser is paired with the bridge, set it up when it is not.
+  document.addEventListener('click', (e) => { if (e.target.closest('[data-fit-garmin]')) (garminConfig() ? syncFromGarmin() : openGarminSetupPanel()); });
   $('health-garmin').addEventListener('click', () => openGarminSetupPanel());
 
   /* ---- Init ---- */

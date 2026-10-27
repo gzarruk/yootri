@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  LOAD, normalizeLoadRefs, normalizeHrThresholds, loadThresholds, activityLoad, dailyLoads, ewma, trainingLoad,
+  LOAD, normalizeLoadRefs, normalizeHrThresholds, loadThresholds, activityLoad, dailyLoads, ewma, trainingLoad, warmStart,
 } from '../assets/coach/load.js';
 
 /* Training load: one number per session on a common scale, where an hour at
@@ -169,7 +169,7 @@ test('trainingLoad reports the two averages, weekly totals and what is behind th
   assert.ok(r.acute > r.chronic, 'a steady block raises the short average faster');
   assert.equal(r.historyDays, 89);
   assert.deepEqual(r.byMethod, { pace: 60 });
-  assert.deepEqual(r.labels, { chronic: 'chronic training load (42-day)', acute: 'acute training load (7-day)' });
+  assert.deepEqual(r.labels, { chronic: 'chronic training load (CTL, 42-day)', acute: 'acute training load (ATL, 7-day)' });
 });
 
 test('the load figures never carry heart rate', () => {
@@ -200,4 +200,47 @@ test('a seed is just the average the day before the first day', () => {
   const k = 1 - Math.exp(-1 / 42);
   const [p] = ewma({ '2026-09-01': 50 }, { from: '2026-09-01', to: '2026-09-01', days: 42, seed: 80 });
   assert.ok(Math.abs(p.value - (80 + k * (50 - 80))) < 1e-9);
+});
+
+/* ---- starting an average from a level ---- */
+
+test('a warm start is the mean daily load of the first days of the window', () => {
+  const byDate = { '2026-09-01': 70, '2026-09-03': 70, '2026-09-20': 500 };
+  assert.equal(warmStart(byDate, { from: '2026-09-01', to: '2026-09-30', days: 7 }), 20);
+});
+
+test('a window shorter than the warm-start span is averaged over its own days', () => {
+  assert.equal(warmStart({ '2026-09-01': 60 }, { from: '2026-09-01', to: '2026-09-03', days: 7 }), 20);
+});
+
+test('no days to average, or no start date, is no warm start', () => {
+  assert.equal(warmStart({ '2026-09-01': 60 }, { from: '2026-09-01', to: '2026-09-30', days: 0 }), 0);
+  assert.equal(warmStart({ '2026-09-01': 60 }, { from: 'nope', to: '2026-09-30', days: 7 }), 0);
+  assert.equal(warmStart(null, { from: '2026-09-01', to: '2026-09-30', days: 7 }), 0);
+});
+
+test('trainingLoad started warm is not read low on a short window; without the option it starts from zero as before', () => {
+  const rides = Array.from({ length: 21 }, (_, i) => ({
+    id: `g:${i}`, date: new Date(Date.UTC(2026, 8, 1 + i)).toISOString().slice(0, 10), disc: 'Bike', durationS: 3600, normPowerW: 250,
+  }));
+  const sync = { from: '2026-09-01', through: '2026-09-21' };
+  const cold = trainingLoad(rides, { today: '2026-09-21', thresholds: T, sync });
+  const warm = trainingLoad(rides, { today: '2026-09-21', thresholds: T, sync, warmStartDays: 7 });
+  assert.ok(Math.abs(cold.chronic - 100 * (1 - Math.exp(-21 / 42))) < 0.1, `three weeks from zero reads ${cold.chronic}`);
+  assert.equal(warm.chronic, 100, 'a steady 100 a day started at 100 stays there');
+  assert.equal(warm.acute, 100);
+});
+
+test('trainingLoad stops at the last synced day: nothing after it is read as a day off', () => {
+  const rides = Array.from({ length: 21 }, (_, i) => ({
+    id: `g:${i}`, date: new Date(Date.UTC(2026, 8, 1 + i)).toISOString().slice(0, 10), disc: 'Bike', durationS: 3600, normPowerW: 250,
+  }));
+  const sync = { from: '2026-09-01', through: '2026-09-21' };
+  const atSync = trainingLoad(rides, { today: '2026-09-21', thresholds: T, sync, warmStartDays: 7 });
+  const later = trainingLoad(rides, { today: '2026-09-24', thresholds: T, sync, warmStartDays: 7 });
+  assert.equal(later.chronic, atSync.chronic, 'three days with nothing synced hold fitness where it was');
+  assert.equal(later.acute, atSync.acute, 'and fatigue');
+  // With no sync record the window is whatever the activities say, as it always was: those days are days off.
+  const unsynced = trainingLoad(rides, { today: '2026-09-24', thresholds: T, warmStartDays: 7 });
+  assert.ok(unsynced.acute < atSync.acute, 'three days of nothing do pull fatigue down when nothing says they are unknown');
 });

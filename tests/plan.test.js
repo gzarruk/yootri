@@ -967,19 +967,18 @@ test('a start that says nothing of where it came from is read as no more than th
   assert.deepEqual(t.start, { ctl: 50, source: 'entered' });
 });
 
-test('a target made to peak says so, and where race day came out; any other `at` is no marker', () => {
-  const peak = { ...goodTarget(), at: 'peak', feasibility: { ...goodTarget().feasibility, at: 'peak', raceCtl: 61.449 } };
-  const t = normalizeTarget(peak);
-  assert.equal(t.at, 'peak');
-  assert.equal(t.feasibility.raceCtl, 61.4, 'to a tenth, like the rest');
-  assert.equal(t.feasibility.at, undefined, 'the marker is on the target, once');
-  for (const at of ['raceDay', 'Peak', 'taper', 5, null, true]) {
-    const odd = normalizeTarget({ ...goodTarget(), at });
-    assert.equal('at' in odd, false, `${JSON.stringify(at)} is read as an old, race-day target`);
-  }
-  const bad = normalizeTarget({ ...peak, feasibility: { ...peak.feasibility, raceCtl: 'low' } });
-  assert.equal('raceCtl' in bad.feasibility, false, 'a race-day figure that is not a number is dropped, the rest kept');
-  assert.deepEqual(normalizeTarget(normalizeTarget(peak)), normalizeTarget(peak), 'and cleaning twice changes nothing');
+/* A figure could once be typed in. Nothing can write one any more, but a plan made
+   then still carries `source: 'entered'`, and loads, syncs and exports as it did. */
+test('a plan made when a fitness could be typed still loads, and its start is kept as it was written', () => {
+  const base = newPlan({ name: 'T', startISO: '2026-11-02', raceDate: '2027-03-21', raceType: '70.3', now: 1 });
+  const old = { ...base, target: { ...goodTarget(), start: { ctl: 72, source: 'entered', asOf: '2026-10-20' } } };
+  const once = loadPlan(old);
+  assert.deepEqual(once.target.start, { ctl: 72, source: 'entered', asOf: '2026-10-20' });
+  assert.deepEqual(loadPlan(once), once, 'loading twice changes nothing');
+  assert.doesNotThrow(() => loadPlan(JSON.parse(JSON.stringify(old))), 'as a file somebody exported');
+  const draft = refit(once, { keepBefore: 0 });
+  assert.equal(draft.target.start.source, 'entered', 're-sizing it from its own start does not relabel it');
+  assert.equal(draft.target.start.ctl, 72);
 });
 
 test('loadPlan keeps a good target, drops a bad one, and loading twice changes nothing', () => {
@@ -1126,7 +1125,9 @@ test('a plan whose target was made for race day is re-sized for race day until i
   const old = legacyTargetPlan();
   const kept = refit(old, { keepBefore: 3 });
   assert.equal('at' in kept.target, false, 'still a race-day target');
-  assert.ok(Math.abs(raceRead(kept) - 90) <= 2, `it still lands race day on 90: ${raceRead(kept)}`);
+  // The old solve aims at the end of race day and its numbers do not move. The chart reads race day
+  // as the morning of it, the one rest day earlier (about two points), so it reads a little above 90.
+  assert.ok(raceRead(kept) >= 90 - 2 && raceRead(kept) <= 90 + 3, `it still lands race day on about 90: ${raceRead(kept)}`);
   assert.ok(peakRead(kept) > 98, `which is what a race-day target has always meant: the peak is ${peakRead(kept)}`);
 });
 
@@ -1134,7 +1135,7 @@ test('upgrading a plan with a race-day target moves it to the peak', () => {
   const moved = refit(legacyTargetPlan(), { upgrade: true });
   assert.equal(moved.target.at, 'peak');
   assert.ok(peakRead(moved) <= 90 + 0.5, `peak ${peakRead(moved)}`);
-  assert.ok(raceRead(moved) < 80, `race day settles lower: ${raceRead(moved)}`);
+  assert.ok(raceRead(moved) < peakRead(moved) - 4 && raceRead(moved) > peakRead(moved) * 0.85, `race day settles a little lower, by a two-week taper: ${raceRead(moved)}`);
 });
 
 test('a plan made to peak stays a peak target through a refit that does not ask to upgrade', () => {

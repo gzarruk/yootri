@@ -30,13 +30,20 @@
    the zone table, the RPE assumed for planned strength work, the cap on
    adherence, and the cut-offs for what the page calls low, neutral and high
    form. The 42/7-day windows are load.js's conventional ones. See
-   ../yootri-rnd/FINDINGS.md (28 Sep and 16 Oct). */
+   docs/FINDINGS.md (28 Sep and 16 Oct). */
 
 import { parseISO, toISO, addDays } from './dates.js';
 import { dateOf, weekIndexOf } from './calendar.js';
 import { durToMin } from './duration.js';
-import { LOAD, dailyLoads, ewma } from './load.js';
+import { HISTORY_THRESHOLDS } from './history.js';
+import { LOAD, dailyLoads, ewma, warmStart } from './load.js';
 import { plannedRaceLoads } from './races.js';
+import { FITNESS_BANDS, PLAN_MODEL } from './targets.js';
+import { syncBasis } from './startfit.js';
+
+/* The illustrative bands are defined beside the targets read off them (targets.js);
+   this is where the chart and the checklist have always imported them from. */
+export { FITNESS_BANDS };
 
 export const PLANNED = Object.freeze({
   // One intensity (a share of threshold) for each zone, evenly spaced so that
@@ -55,12 +62,6 @@ export const PLANNED = Object.freeze({
   raceForm: Object.freeze({ low: 5, high: 25 }),
 });
 
-/** Illustrative fitness ranges for each race distance: a guide to the eye, not a finding. */
-export const FITNESS_BANDS = Object.freeze([
-  Object.freeze({ key: 'olympic', name: 'Olympic', lo: 40, hi: 70 }),
-  Object.freeze({ key: '70.3', name: '70.3', lo: 60, hi: 90 }),
-  Object.freeze({ key: 'ironman', name: 'Ironman', lo: 80, hi: 115 }),
-]);
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const ENDURANCE = new Set(['Bike', 'Run', 'Swim', 'Brick']);
@@ -105,9 +106,15 @@ export function raceFormPosition(form) {
 
 const EMPTY = Object.freeze({
   hasHistory: false, scored: 0, unscored: 0, missing: [], unestimated: 0,
-  today: null, race: null, plannedRace: null, trend: null, adherence: null, weeks: [],
+  today: null, race: null, plannedRace: null, trend: null, trendFat: null, adherence: null, weeks: [],
 });
-const empty = () => ({ ...EMPTY, missing: [], weeks: [] });
+const empty = () => ({
+  ...EMPTY, missing: [], weeks: [],
+  basis: {
+    enough: false, reason: 'no-sync', coveredWeeks: 0, neededWeeks: HISTORY_THRESHOLDS.minCovered,
+    scoredShare: null, neededShare: PLAN_MODEL.garmin.scoredShare,
+  },
+});
 
 /** The planned estimate for every date the plan has a session on, and for the
     day of each tune-up race inside it: a race clears its day of training, so
@@ -157,6 +164,21 @@ export function carry(state, from, to, loadOn, each) {
 /**
  * Everything the Fitness chart, the two cards and the Status page show.
  * `today` is an ISO date; `thresholds` and `hrById` are what load.js takes.
+ *
+ * **CTL and ATL are read only from a basis** (`basis`, startfit.js `syncBasis`):
+ * enough weeks of synced sessions, enough of them scoreable by power, pace,
+ * swim pace or effort. It is the bar the planner holds the same history to, so
+ * nothing the page draws is a figure the planner would not size a season from. Without
+ * it `today`, `race`, `trend` and every `actual`, `followed` and `trend` entry
+ * are null; the plan alone (`planned`, `plannedFat`, `plannedRace`) is still
+ * worked out, and it is the page that decides not to draw it. Heart rate is
+ * never part of the basis; it may still score a session that has no better
+ * method once there is one.
+ *
+ * Both averages begin at the mean daily load of the sync window's first days
+ * (load.js `warmStart`), not at zero, as the planner's starting fitness does.
+ * Each week is read at its Sunday, for CTL and ATL alike; ATL moves more than
+ * that inside a week.
  */
 export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map() } = {}) {
   const N = Array.isArray(plan?.season) ? plan.season.length : 0;
@@ -168,38 +190,51 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
   const d = dailyLoads(acts, thresholds, hrById);
   const hasHistory = d.scored > 0;
 
+  const basis = syncBasis({ today, activities: acts, activitySync: plan.activitySync, thresholds });
   const firstDate = acts.map((a) => a?.date).filter(Boolean).sort()[0];
   const from = plan.activitySync?.from ?? firstDate ?? today;
-  const covers = hasHistory && from <= today;
+  const covers = basis.enough;
+  const warm = covers ? warmStart(d.byDate, { from, to: today, days: PLAN_MODEL.garmin.warmStartDays }) : 0;
+  // Nothing after the last synced day is read as days off: the averages stop there
+  // and hold, as the planner's own starting fitness does (startfit.js `syncedThrough`).
+  const through = plan.activitySync?.through;
+  const readTo = parseISO(through) && through < today ? through : today;
   const chronic = new Map();
   const acute = new Map();
   if (covers) {
-    for (const p of ewma(d.byDate, { from, to: today, days: LOAD.chronicDays })) chronic.set(p.date, p.value);
-    for (const p of ewma(d.byDate, { from, to: today, days: LOAD.acuteDays })) acute.set(p.date, p.value);
+    for (const p of ewma(d.byDate, { from, to: readTo, days: LOAD.chronicDays, seed: warm })) chronic.set(p.date, p.value);
+    for (const p of ewma(d.byDate, { from, to: readTo, days: LOAD.acuteDays, seed: warm })) acute.set(p.date, p.value);
   }
   // Before the first synced day there was, as far as anything knows, no load.
-  const at = (series, iso) => (iso < from ? 0 : series.get(iso));
+  const at = (series, iso) => (iso < from ? 0 : series.get(iso > readTo ? readTo : iso));
 
   // Planned line: the same average, fed by the plan, starting from wherever the
-  // actual one stood the day before the plan began (zero when it was not known).
-  // A plan that has not begun yet starts from where the athlete is today: the
-  // days between are not modelled, and zero would draw a plan for someone with
-  // no fitness at all.
+  // actual one stood the day before the plan began. A plan that has not begun
+  // yet starts from where the athlete is today: the days between are not
+  // modelled, and zero would draw a plan for someone with no fitness at all.
   //
-  // With no history there is still somewhere to start from if the plan was built
-  // from a fitness figure (`target.start.ctl`, which the planner stores): the
-  // line then begins where the plan began, not at nothing.
+  // A plan that began before the synced window has no actual figure for that day.
+  // It starts from the fitness it was built from (`target.start.ctl`, which the
+  // planner stores) if it has one, else from the level the window opened at, and
+  // with no history at all from that stored figure or zero.
+  //
+  // Fatigue starts where its own actual average stood, and where there is none
+  // from the same level as fitness: the athlete is taken to have been training
+  // steadily, as the planner takes them (backplan.js), rather than from rest.
   const dayBefore = toISO(addDays(parseISO(start), -1));
   const seedDay = dayBefore > today ? today : dayBefore;
   const storedStart = Number(plan.target?.start?.ctl);
   const planStart = Number.isFinite(storedStart) && storedStart >= 0 && storedStart <= 400 && plan.target.start.ctl !== null
-    ? storedStart : 0;
-  const seed = covers && seedDay >= from ? at(chronic, seedDay) : planStart;
+    ? storedStart : null;
+  const known = covers && seedDay >= from;
+  const seed = known ? at(chronic, seedDay) : (planStart ?? warm);
+  const seedFat = known ? at(acute, seedDay) : seed;
   const plannedChronic = new Map();
-  carry({ fit: seed, fat: 0 }, dayBefore, dateOf(start, N - 1, 'Sun'), (iso) => planned.byDate[iso] ?? 0,
-    (iso, s) => plannedChronic.set(iso, s.fit));
+  const plannedAcute = new Map();
+  carry({ fit: seed, fat: seedFat }, dayBefore, dateOf(start, N - 1, 'Sun'), (iso) => planned.byDate[iso] ?? 0,
+    (iso, s) => { plannedChronic.set(iso, s.fit); plannedAcute.set(iso, s.fat); });
 
-  const state = covers ? { fit: chronic.get(today), fat: acute.get(today) } : null;
+  const state = covers ? { fit: at(chronic, today), fat: at(acute, today) } : null;
   const weekAgo = toISO(addDays(parseISO(today), -7));
   const todayOut = state && (() => {
     const fit = round1(state.fit);
@@ -214,7 +249,13 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
 
   // The plan followed from today to race day, and the same at the rate the last
   // four weeks were followed.
-  const raceDate = parseISO(plan.profile?.raceDate) ? plan.profile.raceDate : dateOf(start, N - 1, 'Sun');
+  const hasRace = Boolean(parseISO(plan.profile?.raceDate));
+  const raceDate = hasRace ? plan.profile.raceDate : dateOf(start, N - 1, 'Sun');
+  // Race day is read the morning of it: the end of the day before. The race the
+  // season is built for adds no load (the line stops at the day it arrives), so the
+  // end of race day itself would hold a rest day that is not one. With no race to
+  // wake up to, the last day of the season is read as it always was.
+  const raceEve = hasRace ? toISO(addDays(parseISO(raceDate), -1)) : raceDate;
   const windowFrom = (() => {
     const a = toISO(addDays(parseISO(today), 1 - PLANNED.adherenceDays));
     return a < start ? start : a;
@@ -230,11 +271,14 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
 
   let race = null;
   let trend = null;
+  let trendFat = null;
   const trendByDate = new Map();
+  const trendFatByDate = new Map();
   const followedByDate = new Map();
+  const followedFatByDate = new Map();
   if (covers && today < raceDate) {
-    const end = carry(state, today, raceDate, (iso) => planned.byDate[iso] ?? 0,
-      (iso, s) => followedByDate.set(iso, s.fit));
+    const end = carry(state, today, raceEve, (iso) => planned.byDate[iso] ?? 0,
+      (iso, s) => { followedByDate.set(iso, s.fit); followedFatByDate.set(iso, s.fat); });
     const fit = round1(end.fit);
     const fat = round1(end.fat);
     race = {
@@ -242,41 +286,52 @@ export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map()
       dFit: round1(fit - todayOut.fit), dFat: round1(fat - todayOut.fat), dForm: round1(round1(fit - fat) - todayOut.form),
     };
     if (adherence !== null) {
-      const t = carry(state, today, raceDate, (iso) => (planned.byDate[iso] ?? 0) * adherence,
-        (iso, s) => trendByDate.set(iso, s.fit));
+      const t = carry(state, today, raceEve, (iso) => (planned.byDate[iso] ?? 0) * adherence,
+        (iso, s) => { trendByDate.set(iso, s.fit); trendFatByDate.set(iso, s.fat); });
       trend = round1(t.fit);
+      trendFat = round1(t.fat);
     }
   }
 
   const todayWeek = weekIndexOf(start, today);
+  const raceWeek = hasRace ? weekIndexOf(start, raceDate) : null;
   const weeks = Array.from({ length: N }, (_, w) => {
     const date = dateOf(start, w, 'Sun');
-    const reading = w === todayWeek && date > today ? today : date;
+    // A week is read at its Sunday; the week the race falls in at the race morning, when that is earlier.
+    const readAt = w === raceWeek && raceEve < date ? raceEve : date;
+    const reading = w === todayWeek && readAt > today ? today : readAt;
+    const ahead = (byDate, atRace) => (race !== null && w > todayWeek
+      ? (byDate.has(readAt) ? round1(byDate.get(readAt)) : w === race.week ? atRace : null)
+      : null);
     return {
       week: w,
       date,
-      planned: round1(plannedChronic.get(date) ?? 0),
-      actual: covers && w <= todayWeek && reading >= from ? round1(chronic.get(reading)) : null,
-      actualFat: covers && w <= todayWeek && reading >= from ? round1(acute.get(reading)) : null,
-      trend: trend !== null && w > todayWeek && trendByDate.has(date) ? round1(trendByDate.get(date)) : null,
-      // The plan followed from today. A race before the week's Sunday ends the line on the race.
-      followed: race !== null && w > todayWeek
-        ? (followedByDate.has(date) ? round1(followedByDate.get(date)) : w === race.week ? race.fit : null)
-        : null,
+      planned: round1(plannedChronic.get(readAt) ?? 0),
+      plannedFat: round1(plannedAcute.get(readAt) ?? 0),
+      actual: covers && w <= todayWeek && reading >= from ? round1(at(chronic, reading)) : null,
+      actualFat: covers && w <= todayWeek && reading >= from ? round1(at(acute, reading)) : null,
+      trend: trend !== null && w > todayWeek && trendByDate.has(readAt) ? round1(trendByDate.get(readAt)) : null,
+      trendFat: trend !== null && w > todayWeek && trendFatByDate.has(readAt) ? round1(trendFatByDate.get(readAt)) : null,
+      // The plan followed from today. A race before the week's Sunday ends the line on the race morning.
+      followed: ahead(followedByDate, race?.fit),
+      followedFat: ahead(followedFatByDate, race?.fat),
     };
   });
 
   // Race day as the plan alone takes the athlete there: the same planned
   // average, on the race date itself. `race` above is that from where they are
-  // today and needs history; this needs only the plan, and the figure it was
+  // today and needs a basis; this needs only the plan, and the figure it was
   // built from if it has one.
-  const plannedRace = plannedChronic.has(raceDate)
-    ? { date: raceDate, week: weekIndexOf(start, raceDate), fit: round1(plannedChronic.get(raceDate)) }
+  const plannedRace = plannedChronic.has(raceEve)
+    ? {
+      date: raceDate, week: weekIndexOf(start, raceDate),
+      fit: round1(plannedChronic.get(raceEve)), fat: round1(plannedAcute.get(raceEve)),
+    }
     : null;
 
   return {
-    hasHistory, scored: d.scored, unscored: d.unscored, missing: Object.keys(d.missing),
-    unestimated: planned.unestimated, today: todayOut, race, plannedRace, trend, adherence, weeks,
+    hasHistory, basis, scored: d.scored, unscored: d.unscored, missing: Object.keys(d.missing),
+    unestimated: planned.unestimated, today: todayOut, race, plannedRace, trend, trendFat, adherence, weeks,
   };
 }
 

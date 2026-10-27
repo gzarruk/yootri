@@ -142,8 +142,11 @@ test('what is estimated or illustrative says so wherever it is shown', () => {
   const { section } = fitnessSurfaces();
   assert.match(section, /Planned and race-day figures are estimates/, 'the cards say which figures are estimates');
   assert.match(section, /<span class="tag tag-neutral">Estimate<\/span>/, 'the race-day card is tagged Estimate');
-  assert.match(section, /Planned, estimated/, 'the planned line is called an estimate in the legend');
-  assert.match(section, /Planned fitness \(an estimate\)/, 'the chart is described as an estimate to a screen reader');
+  assert.match(section, /CTL planned, estimated/, 'the planned CTL line is called an estimate in the legend');
+  assert.match(section, /ATL planned, estimated/, 'and so is the planned ATL line');
+  assert.match(section, /Predicted ATL is an estimate and is noisier than predicted CTL/, 'with the reason ATL reads rougher');
+  assert.match(section, /Planned fitness \(an estimate\)/, 'the CTL chart is described as an estimate to a screen reader');
+  assert.match(section, /Planned fatigue \(an estimate\)/, 'and the ATL chart');
   assert.match(section, /illustrative/i, 'the bands are called illustrative');
 });
 
@@ -202,4 +205,16 @@ test('the privacy notice page and its text make no claim about the body or about
       assert.equal(hit, null, `${where} says "${hit && hit[0]}"`);
     }
   }
+});
+
+test('what the placeholder says is plain: it names what is missing and makes no claim', () => {
+  const { section } = fitnessSurfaces();
+  const from = section.indexOf('function basisPlaceholderHTML');
+  const body = section.slice(from, section.indexOf('function ffmCardHTML'));
+  assert.ok(from > 0 && body.length > 200, 'the placeholder is where this test looks');
+  for (const re of [...STRICTER, /\bready\b/i, /on track/i, /good to go/i]) {
+    const hit = body.match(re);
+    assert.equal(hit, null, `the placeholder says "${hit && hit[0]}"`);
+  }
+  assert.match(body, /CTL and ATL appear once/);
 });

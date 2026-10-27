@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { planSeason, weeklyLoadFor, planLevers } from '../assets/coach/backplan.js';
 import { PLAN_MODEL, targetCtl } from '../assets/coach/targets.js';
 import { AMBITIONS, normalizeEvents } from '../assets/coach/events.js';
-import { fitnessSeries, plannedLoad, carry } from '../assets/coach/fitness.js';
+import { fitnessSeries, plannedLoad, carry, PLANNED } from '../assets/coach/fitness.js';
 import { generateWeek } from '../assets/coach/generate.js';
 import { raceClosure, plannedRaceLoads } from '../assets/coach/races.js';
 import { dateOf } from '../assets/coach/calendar.js';
@@ -158,16 +158,66 @@ test('a competitive 70.3 never rises above the top of its band, on any day, what
   assert.deepEqual(bad, []);
 });
 
-test('race day is what the taper leaves of the peak: lower, and fitness falls through the last four weeks', () => {
+/* Race day is read the morning of it, as the chart reads it: the end of the day before. The race
+   adds no load, so the end of its own day would count a rest day that is not one. */
+const raceMorning = (line) => line[line.length - 2];
+const weekLoads = (inp, result) => {
+  const p = assemble(inp, result);
+  return result.season.map((w) => p.weeks[`w${w.absWeek}`].reduce((a, s) => a + (plannedLoad(s) ?? 0), 0));
+};
+
+test('race morning is what a two-week taper leaves of the peak: a little lower, form up, and only the last two weeks come down', () => {
   const inp = input({ raceType: '70.3', ambition: 'competitive', hours: 12, weeks: 40, startCtl: 53 });
   const r = planSeason(inp);
   const line = dailyLine(inp, r);
   const peak = peakOf(line);
-  const race = line[line.length - 1].fit;
-  assert.ok(race < peak - 8, `race day ${race.toFixed(1)} is well under the peak ${peak.toFixed(1)}`);
-  assert.ok(race / peak > 0.7 && race / peak < 0.92, `a taper takes about a fifth off, not a half: ${(race / peak).toFixed(2)}`);
-  const tail = r.season.slice(-5).map((w) => w.ctl);
-  for (let i = 1; i < tail.length; i++) assert.ok(tail[i] < tail[i - 1], `fitness only comes down into the race: ${tail}`);
+  const morning = raceMorning(line);
+  const N = r.season.length;
+  assert.ok(morning.fit / peak > 0.87 && morning.fit / peak < 0.96,
+    `two weeks of taper take under a tenth off, not a fifth: ${(morning.fit / peak).toFixed(2)}`);
+  const atPeak = line.find((d) => d.fit === peak);
+  assert.ok(morning.fat < atPeak.fat * 0.8, `fatigue falls by a fifth or more: ${atPeak.fat.toFixed(0)} → ${morning.fat.toFixed(0)}`);
+  const form = morning.fit - morning.fat;
+  assert.ok(form >= PLANNED.raceForm.low && form <= PLANNED.raceForm.high, `race-morning form ${form.toFixed(1)} is in the usual range`);
+  const ctl = r.season.map((w) => w.ctl);
+  assert.ok(ctl[N - 3] >= Math.max(...ctl) - 0.5, `the peak is the end of the last loading week, the first of the Peak block: ${ctl.slice(-4)}`);
+  assert.ok(ctl[N - 2] < ctl[N - 3] && ctl[N - 1] < ctl[N - 2], `fitness comes down only in the last two weeks: ${ctl.slice(-4)}`);
+  assert.ok(ctl[N - 3] > ctl[N - 4], `and the week before the taper is not a fourth easy week in a row: ${ctl.slice(-4)}`);
+});
+
+test('the taper cuts the load of the last two weeks, never adds time, and the week before them is a loading week', () => {
+  const inp = input({ raceType: '70.3', ambition: 'competitive', hours: 12, weeks: 40, startCtl: 53 });
+  const r = planSeason(inp);
+  const N = r.season.length;
+  const load = weekLoads(inp, r);
+  const mins = minutesOf(inp, r);
+  const last = load[N - 3];
+  assert.ok(load[N - 2] < last * 0.9 && load[N - 2] > last * 0.55, `the week before race week carries most of a loading week: ${(load[N - 2] / last).toFixed(2)}`);
+  assert.ok(load[N - 1] < last * 0.5, `race week carries under half: ${(load[N - 1] / last).toFixed(2)}`);
+  assert.ok(mins[N - 2] <= mins[N - 3] && mins[N - 1] <= mins[N - 2], `no taper week has more time than the one before: ${mins.slice(-3)}`);
+  assert.ok(load[N - 3] >= load[N - 5] * 0.9, 'the first Peak week is sized as a loading week, not as the first step down');
+});
+
+test('a taper that costs fitness a tenth leaves a competitive build one it can arrive with, over runways, weeks and starts', () => {
+  const bad = [];
+  for (const [raceType, ambition] of [['70.3', 'competitive'], ['70.3', 'intermediate'], ['ironman', 'intermediate']]) {
+    for (const weeks of [24, 40]) {
+      for (const hours of [12, 17]) {
+        const inp = input({ raceType, ambition, hours, weeks, startCtl: 50 });
+        const r = planSeason(inp);
+        if (!r.feasibility.feasible) continue;
+        const line = dailyLine(inp, r);
+        const peak = peakOf(line);
+        const morning = raceMorning(line);
+        const label = `${raceType} ${ambition}, ${weeks} wk, ${hours} h`;
+        const ratio = morning.fit / peak;
+        if (ratio < 0.85 || ratio > 0.97) bad.push(`${label}: arrives at ${(ratio * 100).toFixed(0)} % of the peak`);
+        const form = morning.fit - morning.fat;
+        if (form < PLANNED.raceForm.low || form > PLANNED.raceForm.high + 3) bad.push(`${label}: race-morning form ${form.toFixed(1)}`);
+      }
+    }
+  }
+  assert.deepEqual(bad, []);
 });
 
 test('the taper is not paid for earlier: the climb stops at the target, it does not overshoot to arrive on it', () => {
