@@ -8,6 +8,8 @@ import { newPlan, loadPlan, applyDraft, refit, sessionsAt, weekCount, freshWeek 
 import { setActual, getActual } from '../assets/coach/actuals.js';
 import { dateOf } from '../assets/coach/calendar.js';
 import { durToMin } from '../assets/coach/duration.js';
+import { syncBasis } from '../assets/coach/startfit.js';
+import { loadThresholds } from '../assets/coach/load.js';
 
 // Week 0 runs Mon 2026-10-05 to Sun 2026-10-11.
 const START = '2026-10-05';
@@ -321,6 +323,25 @@ test('with no synced history to say where the athlete is, nothing is re-sized', 
 test('history that does not reach the end of the reviewed week is not read as where they are', () => {
   const p = targetWeekly(0, steadyHistory(30));                      // synced only to 1 Oct
   assert.equal(proposeNextWeek(p, { today: '2026-10-12' }).change, null);
+});
+
+test('the first review after the sync is long enough is the one that re-anchors; the start keeps saying estimate', () => {
+  // The sync's first day is a Monday, so the date-based rule the review uses and the whole-weeks rule the
+  // cards use agree on where "enough" begins: two weeks reach back too little, three are enough.
+  const from = (n) => {
+    const h = steadyHistory();
+    return targetWeekly(0, { activities: h.activities.filter((a) => a.date >= dayOf(n)), activitySync: { ...h.activitySync, from: dayOf(n) } });
+  };
+  const basisOf = (p) => syncBasis({ today: '2026-10-12', activities: p.activities, activitySync: p.activitySync, thresholds: loadThresholds({ loadRefs: p.loadRefs }) });
+  const short = from(27);                                            // Mon 28 Sep: two whole weeks by 12 Oct
+  const enough = from(20);                                           // Mon 21 Sep: three
+  assert.equal(basisOf(short).reason, 'too-short');
+  assert.equal(proposeNextWeek(short, { today: '2026-10-12' }).change, null, 'too little: nothing is re-sized');
+  assert.equal(basisOf(enough).enough, true);
+  const r = proposeNextWeek(enough, { today: '2026-10-12' });
+  assert.equal(r.change.code, 'reanchored');
+  assert.equal(r.draft.target.start.source, 'estimate', 'where the season started is a fact about the season, not about this review');
+  assert.equal(r.draft.target.start.ctl, enough.target.start.ctl);
 });
 
 test('a plan with no target is released as it always was, history or not', () => {

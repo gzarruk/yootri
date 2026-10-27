@@ -5,6 +5,8 @@ import { TOOL_DEFS, createSession, callTool, sessionDiff } from '../assets/coach
 import { loadPlan, newPlan, sessionsAt, weekCount } from '../assets/coach/plan.js';
 import { setActual } from '../assets/coach/actuals.js';
 import { durToMin } from '../assets/coach/duration.js';
+import { loadThresholds, trainingLoad } from '../assets/coach/load.js';
+import { PLAN_MODEL } from '../assets/coach/targets.js';
 
 const basePlan = () => loadPlan({
   id: 'p-1', name: 'T', start: '2026-01-05', weeks: {}, done: {}, view: { phase: 'Base', week: 0 },
@@ -19,6 +21,19 @@ test('every tool declares a name, a description and a schema', () => {
     assert.ok(t.description.length > 20, `${t.name} needs a real description`);
     assert.equal(t.input_schema.type, 'object');
   }
+});
+
+test('no tool lets the model set a fitness, an ATL or where a season starts: CTL and ATL are read, never given', () => {
+  const walk = (schema, path, hits) => {
+    for (const [k, v] of Object.entries(schema?.properties ?? {})) {
+      if (/^(ctl|atl|fitness|fatigue|start|startctl|startfitness|startsource)$/i.test(k)) hits.push(`${path}.${k}`);
+      walk(v, `${path}.${k}`, hits);
+      if (v?.items) walk(v.items, `${path}.${k}[]`, hits);
+    }
+  };
+  const hits = [];
+  for (const t of TOOL_DEFS) walk(t.input_schema, t.name, hits);
+  assert.deepEqual(hits, []);
 });
 
 test('tool names are unique', () => {
@@ -748,6 +763,18 @@ test('get_training_load reports the two averages and what the figures rest on', 
   assert.deepEqual(Object.keys(t.byMethod).sort(), ['pace', 'power']);
   assert.match(t.labels.chronic, /chronic training load/);
   assert.equal(s.draft, null);
+});
+
+test('get_training_load starts both averages from the level the window opened at, as the card and the planner do', () => {
+  // The window opens on the first week that has sessions in it, so the two starts differ.
+  const p = { ...loadPlanFixture(), activitySync: { source: 'garmin', from: '2026-08-31', through: '2026-09-27', at: 1 } };
+  const args = { today: '2026-09-28', weeks: 4, thresholds: loadThresholds({ benchmarks: p.benchmarks, loadRefs: p.loadRefs }), sync: p.activitySync };
+  const t = parse(call(createSession(p, { today: '2026-09-28' }), 'get_training_load', { weeks: 4 }));
+  const warm = trainingLoad(p.activities, { ...args, warmStartDays: PLAN_MODEL.garmin.warmStartDays });
+  const cold = trainingLoad(p.activities, args);
+  assert.notEqual(warm.chronic, cold.chronic, 'the fixture tells the two starts apart');
+  assert.equal(t.chronic, warm.chronic);
+  assert.equal(t.acute, warm.acute);
 });
 
 test('get_training_load says what would let more sessions be scored', () => {

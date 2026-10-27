@@ -15,6 +15,7 @@
 
 import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsDetail, raceClosure, leversFor } from './plan.js';
 import { startFitness, startNote } from './startfit.js';
+import { PLAN_MODEL } from './targets.js';
 import {
   normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES, MAX_SESSIONS_PER_DAY,
   weeklyAvailableMinutes,
@@ -854,7 +855,7 @@ const HANDLERS = {
     }
     const r = trainingLoad(p.activities, {
       today, weeks: Number(input.weeks) || 8, thresholds: thresholdsFor(s, p), hrById: s.device?.hrById ?? new Map(),
-      sync: p.activitySync,
+      sync: p.activitySync, warmStartDays: PLAN_MODEL.garmin.warmStartDays,
     });
     return ok({ ...r, howToScoreMore: Object.keys(r.missing).map((k) => SCORE_MORE[k]).filter(Boolean) });
   },

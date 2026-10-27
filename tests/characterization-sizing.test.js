@@ -33,7 +33,7 @@ function built(hours, raceType, { ambition, ...extra } = {}) {
   const plan = buildPlanFromAnswers(a, { today: TODAY, now: 1 });
   const planned = fitnessSeries(plan, { today: TODAY }).weeks.map((w) => w.planned);
   const n = planned.length;
-  return { plan, planned, raceDay: fitnessSeries(plan, { today: TODAY }).plannedRace.fit, peak: Math.max(...planned.slice(0, n - 3)) };
+  return { plan, planned, raceDay: fitnessSeries(plan, { today: TODAY }).plannedRace.fit, peak: Math.max(...planned.slice(0, n - 2)) };   // the two weeks of the taper are not part of the build
 }
 
 const near = (actual, expected, tol, msg) =>
@@ -45,10 +45,10 @@ test('the fitness a season peaks at is what the race and the ambition call for, 
   near(built(17, 'ironman', { ambition: 'competitive' }).peak, 115, 2, '17 h Ironman competitive');
   // (An athlete who trains 8 hours a week is already at about 63, above this peak, and is held there.)
   near(built(12, '70.3', { ambition: 'finish', recentWeeklyHours: 4 }).peak, 60, 2, '12 h 70.3 finish');
-  // The peak is the target and a ceiling, and race day is what the taper leaves of it.
+  // The peak is the target and a ceiling, and race day is what a two-week taper leaves of it: a little lower.
   const top = built(17, '70.3', { ambition: 'competitive' });
   assert.ok(top.peak <= 90 + 0.5, `a 70.3 built for 90 peaks at ${top.peak}`);
-  assert.ok(top.raceDay < top.peak - 8, `and arrives lower: ${top.raceDay}`);
+  assert.ok(top.raceDay < top.peak - 4 && top.raceDay > top.peak * 0.85, `and arrives a little lower, not a fifth: ${top.raceDay}`);
 });
 
 test('an Ironman and a 70.3 on the same hours are not the same season', () => {

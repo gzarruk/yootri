@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { startFitness } from '../assets/coach/startfit.js';
+import { startFitness, startLine, syncBasis } from '../assets/coach/startfit.js';
+import { loadThresholds } from '../assets/coach/load.js';
 import { PLAN_MODEL } from '../assets/coach/targets.js';
 import { HISTORY_THRESHOLDS } from '../assets/coach/history.js';
 
-/* Where the athlete's fitness stands today, as the chronic training load the
-   season is built up from. Three sources, tried in this order: the athlete's
-   own typed figure; their synced sessions, when there are enough of them and
-   enough can be scored; an estimate from their recent weekly hours.
+/* Where the athlete's fitness stands today, as the chronic training load (CTL)
+   the season is built up from. Two sources, tried in this order: their synced
+   sessions, when there are enough of them and enough can be scored; an estimate
+   from their recent weekly hours. Nobody types a figure in.
 
    Heart rate is never read here. The figure ends up on the plan, which syncs
    and exports, so it is worked out only from power, pace, swim pace and
@@ -124,18 +125,6 @@ test('the figure is as of today when the sync reaches today', () => {
   assert.equal(r.asOf, TODAY);
 });
 
-test('a figure the athlete typed wins, as long as it is a usable number', () => {
-  const r = startFitness({ ...base, entered: 72 });
-  assert.equal(r.source, 'entered');
-  assert.equal(r.ctl, 72);
-  assert.match(r.note, /entered/i);
-  assert.equal(startFitness({ ...base, entered: '65.25' }).ctl, 65.3);
-  assert.equal(startFitness({ ...base, entered: 0 }).source, 'entered', 'zero is an answer: starting from nothing');
-  for (const bad of [-1, 'lots', null, undefined, NaN, '', PLAN_MODEL.estimate.maxCtl + 1]) {
-    assert.notEqual(startFitness({ ...base, entered: bad }).source, 'entered', String(bad));
-  }
-});
-
 test('with no history, the estimate is hours × a nominal hour ÷ 7', () => {
   const none = { today: TODAY, athlete: { recentWeeklyHours: 8 } };
   const r = startFitness(none);
@@ -190,11 +179,11 @@ test('nothing handed in is changed, and the same inputs give the same answer', (
   assert.deepEqual(startFitness(base), a);
 });
 
-test('the answer is always one of the three sources, with the fields the plan stores', () => {
+test('the answer is always one of the two sources, with the fields the plan stores', () => {
   for (const input of [base, { today: TODAY, athlete: { recentWeeklyHours: 6 } }, { ...base, entered: 50 }, { today: TODAY }]) {
     const r = startFitness(input);
     assert.deepEqual(Object.keys(r).sort(), ['asOf', 'coveredWeeks', 'ctl', 'note', 'scoredShare', 'source']);
-    assert.ok(['garmin', 'estimate', 'entered'].includes(r.source));
+    assert.ok(['garmin', 'estimate'].includes(r.source));
   }
 });
 
@@ -248,7 +237,109 @@ test('heart rate is not read for a date in the past any more than for today', ()
 test('a stored start is described in words, from what is stored and nothing else', () => {
   assert.match(startNote({ source: 'garmin', coveredWeeks: 6 }), /6 weeks of your synced sessions/);
   assert.match(startNote({ source: 'estimate' }), /estimate/i);
-  assert.match(startNote({ source: 'entered' }), /entered/i);
+  assert.match(startNote({ source: 'entered' }), /entered/i, 'a stored start from before the field went away is still described');
   assert.equal(startNote({ source: 'heart-rate' }), '');
   assert.equal(startNote(null), '');
+});
+
+/* ---- the basis every CTL and ATL display shares with the planner ---- */
+
+const T = loadThresholds({ loadRefs: FTP });
+const basisOf = (over = {}) => syncBasis({
+  today: TODAY, activities: base.activities, activitySync: base.activitySync, thresholds: T, ...over,
+});
+
+test('with no sync there is no basis, and the record says what would be enough', () => {
+  assert.deepEqual(basisOf({ activitySync: null, activities: [] }), {
+    enough: false, reason: 'no-sync', coveredWeeks: 0,
+    neededWeeks: HISTORY_THRESHOLDS.minCovered, scoredShare: null, neededShare: PLAN_MODEL.garmin.scoredShare,
+  });
+});
+
+test('a sync that holds no recorded session in the last 42 days is read as no sync', () => {
+  const r = basisOf({ activities: [], activitySync: sync('2026-08-17', '2026-10-11') });
+  assert.equal(r.reason, 'no-sync');
+  assert.equal(r.scoredShare, null);
+  assert.ok(r.coveredWeeks >= HISTORY_THRESHOLDS.minCovered, 'the weeks were synced; there was nothing in them');
+});
+
+test('the basis is enough at exactly the minimum number of covered weeks, and short one week below it', () => {
+  const weeks = (from) => ({ activities: everyDay(from, '2026-10-11'), activitySync: sync(from, '2026-10-11') });
+  const two = basisOf(weeks('2026-09-28'));
+  assert.equal(two.coveredWeeks, HISTORY_THRESHOLDS.minCovered - 1);
+  assert.equal(two.enough, false);
+  assert.equal(two.reason, 'too-short');
+  const three = basisOf(weeks('2026-09-21'));
+  assert.equal(three.coveredWeeks, HISTORY_THRESHOLDS.minCovered);
+  assert.equal(three.enough, true);
+  assert.equal(three.reason, null);
+});
+
+test('enough weeks that mostly cannot be scored is its own reason, with the share it has and the share it needs', () => {
+  const r = basisOf({ activities: everyDay('2026-08-17', '2026-10-11', { normPowerW: undefined }) });
+  assert.equal(r.enough, false);
+  assert.equal(r.reason, 'unscorable');
+  assert.equal(r.scoredShare, 0);
+  assert.equal(r.neededShare, PLAN_MODEL.garmin.scoredShare);
+});
+
+test('the scored share is held to PLAN_MODEL.garmin.scoredShare, at the edge', () => {
+  const mix = (extraMinutesPerDay) => {
+    const acts = everyDay('2026-08-17', '2026-10-11');
+    return acts.concat(acts.map((a) => ({ ...a, id: `${a.id}-b`, normPowerW: undefined, durationS: extraMinutesPerDay * 60 })));
+  };
+  const share = PLAN_MODEL.garmin.scoredShare;
+  assert.equal(basisOf({ activities: mix(Math.floor(60 * (1 / share - 1)) - 1) }).enough, true);
+  assert.equal(basisOf({ activities: mix(Math.ceil(60 * (1 / share - 1)) + 1) }).reason, 'unscorable');
+});
+
+test('heart rate cannot make a session count toward the basis, even when its thresholds are known', () => {
+  const withHr = loadThresholds({ loadRefs: FTP, hrThresholds: { lthr: 170, max: 190, rest: 50, trimp: 'male' } });
+  const noPower = everyDay('2026-08-17', '2026-10-11', { normPowerW: undefined });
+  const r = basisOf({ activities: noPower, thresholds: withHr });
+  assert.equal(r.reason, 'unscorable');
+  assert.equal(r.scoredShare, 0);
+});
+
+test('the basis and startFitness hold the same bar: garmin exactly when the basis is enough', () => {
+  const cases = [
+    base,
+    { ...base, activities: everyDay('2026-09-28', '2026-10-11'), activitySync: sync('2026-09-28', '2026-10-11') },
+    { ...base, activities: everyDay('2026-09-21', '2026-10-11'), activitySync: sync('2026-09-21', '2026-10-11') },
+    { ...base, activities: everyDay('2026-08-17', '2026-10-11', { normPowerW: undefined }) },
+    { ...base, activitySync: null },
+    { ...base, activities: [] },
+    { ...base, today: '2026-10-25' },
+  ];
+  for (const c of cases) {
+    const b = syncBasis({ today: c.today, activities: c.activities, activitySync: c.activitySync, thresholds: loadThresholds({ loadRefs: c.loadRefs }) });
+    const r = startFitness(c);
+    assert.equal(r.source === 'garmin', b.enough, JSON.stringify({ ...b }));
+    assert.equal(r.coveredWeeks, b.coveredWeeks);
+    assert.equal(r.scoredShare, b.scoredShare);
+  }
+});
+
+test('a figure the athlete types is not a source: nothing in startFitness reads one', () => {
+  for (const entered of [72, '65', 0]) {
+    const r = startFitness({ ...base, entered });
+    assert.equal(r.source, 'garmin');
+    assert.equal(r.ctl, startFitness(base).ctl);
+  }
+  assert.equal(startFitness({ today: TODAY, athlete: { recentWeeklyHours: 8 }, entered: 72 }).source, 'estimate');
+});
+
+test('the line shown beside the plan says where today\'s fitness comes from, or that it is not available yet', () => {
+  const g = startFitness(base);
+  assert.equal(startLine(g), `Your fitness today: ${Math.round(g.ctl)} (CTL), from ${g.coveredWeeks} weeks of your synced sessions.`);
+  const est = startFitness({ today: TODAY, athlete: { recentWeeklyHours: 8 } });
+  assert.equal(startLine(est), 'Not available yet. We’ll size your season from your recent weekly hours and update it once your Garmin sessions give us enough data.');
+  const none = startFitness({ today: TODAY });
+  assert.match(startLine(none), /^Not available yet\./);
+  assert.match(startLine(none), /hours a week/);
+  assert.equal(startLine(null), startLine(none), 'nothing at all reads the same as nothing to go on');
+});
+
+test('a plan made before the field went away still says its start was typed', () => {
+  assert.equal(startNote({ source: 'entered' }), 'Entered by you earlier.');
 });

@@ -771,27 +771,29 @@ test('the races step has a start date, and only a date the athlete changed it to
   assert.match(HTML, /\['wz-racedate', 'wz-racetype', 'wz-startdate'\]/, 'the length is redrawn as the date is typed');
 });
 
-test('the review shows the target, where the athlete starts from, and a way to replace it', () => {
+test('the review shows the target and where the athlete starts from, and nobody types the figure in', () => {
   const review = fnBody('wizReviewHTML');
   assert.match(review, /targetFactsHTML\(built\.target/);
   assert.match(review, /targetBlockHTML\(built\.target/);
   assert.match(review, /targetSparkHTML\(built\.season, built\.target\)/, 'the planned line against the target');
-  assert.match(review, /startFitnessFor\(/, 'the sentence about where the start came from');
-  assert.match(review, /id="wz-startctl"/);
-  assert.match(review, /id="wz-startctl-set"/);
+  assert.match(review, /startFitnessFor\(/, 'where the start came from');
+  assert.match(review, /startLine\(start\)/, 'said as a read-only line');
+  assert.doesNotMatch(review, /id="wz-startctl/, 'the box and its buttons are gone');
   assert.match(review, /planReview\(built, \{ levers: true \}\)/, 'what would help, only when the target cannot be reached');
-  assert.match(HTML, /startCtlEntered = Number\(x\)/);
+  assert.doesNotMatch(HTML, /startCtlEntered/, 'and so is the answer');
 });
 
 test('Plan setup shows the target and builds an old season to one only when asked', () => {
   const setup = fnBody('setupTargetHTML');
   assert.match(setup, /id="f-ambition"/);
-  assert.match(setup, /id="f-startctl"/);
+  assert.doesNotMatch(setup, /f-startctl/, 'there is no box to type a fitness into');
+  assert.match(setup, /startLine\(/, 'where today\'s fitness comes from is said instead');
   assert.match(setup, /id="f-target-on"/, 'a plan sized the old way is offered a target, not given one');
   const preview = fnBody('previewRefit');
   assert.match(preview, /const upgrade = !plan\.target && !!\$\('f-target-on'\) && \$\('f-target-on'\)\.checked/);
   assert.match(preview, /upgrade: true/);
-  assert.match(preview, /source: 'entered'/, 'a typed number is the athlete\'s own');
+  assert.doesNotMatch(preview, /entered/, 'a typed number is not a source');
+  assert.match(preview, /target\.start\.source !== 'garmin'/, 'a start from before the sessions could say is replaced by the one they say');
 });
 
 test('the review of a change says what the season is now built to, and whether it can be reached', () => {
@@ -829,7 +831,7 @@ test('the race this season is for is shown above the week and the month, with it
 test('a target made to peak is shown as the peak before the taper, with race day beside it; an older one as it was', () => {
   const body = fnBody('targetFactsHTML');
   assert.match(body, /target\.at === 'peak'/);
-  assert.match(body, /Peak fitness, before the taper/);
+  assert.match(body, /Peak fitness \(CTL\), before the taper/);
   assert.match(body, /Target on race day/, 'a target made for race day is still labelled so');
   assert.match(body, /On race day/);
   assert.match(body, /feasibility|f\.raceCtl/);
@@ -863,6 +865,7 @@ test('the Fitness chart marks the plan target on the peak week, or on race day f
 test('where the athlete starts from is worked out with no heart-rate store', () => {
   const body = fnBody('startFor');
   assert.match(body, /startFitness\(/);
+  assert.doesNotMatch(body, /entered/);
   assert.doesNotMatch(body, /hrById|hrThresholds|readHrStore|HR_/);
 });
 
@@ -872,4 +875,78 @@ test('a change that moves only the target can still be applied', () => {
   assert.match(body, /\(!d\.weeks\.length && !targetMoves\) \? ' disabled'/, 'Apply is not disabled when only the target moves');
   assert.match(body, /d\.weeks\.length \|\| targetMoves/, 'and it is wired up');
   assert.match(body, /No week changes, but what the season is built to does/);
+});
+
+
+/* ---- CTL and ATL: one basis, one placeholder, two charts, and their names ---- */
+
+const fitnessSection = () => section('/* ---- Fitness, fatigue and form', '/* ---- Init ---- */');
+const APP_CSS = readFileSync(new URL('assets/app-shell.css', ROOT), 'utf8');
+
+test('CTL and ATL are drawn only from a basis; every surface otherwise shows the one placeholder', () => {
+  for (const fn of ['renderFitness', 'renderStatusPage']) {
+    assert.match(fnBody(fn), /basis\.enough/, `${fn} asks the shared basis`);
+    assert.match(fnBody(fn), /basisPlaceholderHTML\(/, `${fn} shows the placeholder`);
+    assert.doesNotMatch(fnBody(fn), /\.hasHistory/, `${fn} no longer uses the weaker gate`);
+    assert.doesNotMatch(fnBody(fn), /'—'/, `${fn} scatters no dashes`);
+  }
+  assert.doesNotMatch(HTML, /function ffmEmptyHTML/, 'the two empty cards are one placeholder now');
+  const body = fnBody('basisPlaceholderHTML');
+  assert.match(body, /CTL and ATL appear once your Garmin sessions are synced\./);
+  assert.match(body, /CTL and ATL appear once about /);
+  assert.match(body, /weeks of your Garmin sessions are in\./);
+  assert.match(body, /CTL and ATL appear once most of your synced sessions can be scored\./);
+  assert.match(body, /neededShare/, 'how much can be read, against how much is needed');
+  assert.doesNotMatch(body, /fetch\(|bridgeFetch|checkBridge/, 'an unpaired browser asks this computer for nothing');
+});
+
+test('the placeholder syncs a paired browser and sets up an unpaired one, and asks nothing of this computer itself', () => {
+  assert.match(fnBody('basisPlaceholderHTML'), /data-fit-garmin/);
+  assert.match(fnBody('basisPlaceholderHTML'), /garminConfig\(\) \? 'Sync from Garmin' : 'Set up Garmin sync'/);
+  assert.match(HTML, /closest\('\[data-fit-garmin\]'\)\) \(garminConfig\(\) \? syncFromGarmin\(\) : openGarminSetupPanel\(\)\)/);
+});
+
+test('the placeholder holds its place and has no motion of its own', () => {
+  const rules = APP_CSS.match(/\.fit-empty[^{]*\{[^}]*\}/g) || [];
+  assert.ok(rules.length >= 3, 'the placeholder has styles');
+  for (const r of rules) assert.doesNotMatch(r, /animation|transition/, r);
+  assert.match(APP_CSS, /\.fit-empty-chart[^{]*\{[^}]*min-height/);
+  assert.match(APP_CSS, /\.fit-empty-cards[^{]*\{[^}]*min-height/);
+});
+
+test('ATL is drawn in the same plot as CTL, on the same y axis, with lines of its own', () => {
+  const chart = fnBody('fitnessChart');
+  assert.match(chart, /--disc-bike/, 'the colour the Status page already gives it');
+  for (const k of ['plannedFat', 'actualFat', 'followedFat']) assert.match(chart, new RegExp(k), k);
+  assert.doesNotMatch(HTML, /function fatigueChart|fplot-atl/, 'there is one plot, not a second chart');
+  assert.match(fnBody('chartTop'), /plannedFat/, 'the shared top takes ATL into account');
+  assert.match(fnBody('chartTop'), /actualFat/);
+  const render = fnBody('renderFitness');
+  assert.match(render, /chartTop\(/);
+  assert.equal((render.match(/<div class="fplot">/g) || []).length, 1, 'one plot');
+  assert.match(HTML, /Predicted ATL is an estimate and is noisier than predicted CTL\./);
+  assert.match(HTML, /ATL is read at the end of each week; within a week it moves more than shown\./);
+});
+
+test('fitness and fatigue are named CTL and ATL wherever they are shown', () => {
+  for (const text of [
+    'Fitness (CTL)', 'Fatigue (ATL)', 'Form (CTL − ATL)',
+    'How fitness (CTL), fatigue (ATL) and form are worked out',
+    'aria-label="Fitness (CTL), fatigue (ATL) and form"',
+    'Season fitness (CTL), fatigue (ATL) and training load',
+    'Fitness (CTL) and fatigue (ATL) by week. Planned fitness (an estimate)',
+    'Planned fatigue (an estimate)',
+    'CTL actual, synced from Garmin', 'CTL planned, estimated', 'ATL actual, synced from Garmin', 'ATL planned, estimated',
+    'chronic training load', 'acute training load',
+  ]) assert.ok(HTML.includes(text), `"${text}" is on the page`);
+  const info = fnBody('openFitnessInfo');
+  assert.match(info, /<b>CTL<\/b> is chronic training load/);
+  assert.match(info, /<b>ATL<\/b> is acute training load/);
+  assert.match(info, /<b>Form<\/b> is CTL minus ATL/);
+});
+
+test('every training load the page asks for starts from the level the window opened at', () => {
+  const at = [...HTML.matchAll(/trainingLoad\(plan\.activities(?: \|\| \[\])?,/g)].map((m) => m.index);
+  assert.ok(at.length >= 2, 'the review and the Garmin panel both read it');
+  for (const i of at) assert.match(HTML.slice(i, i + 320), /warmStartDays: PLAN_MODEL\.garmin\.warmStartDays/);
 });

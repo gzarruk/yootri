@@ -1,17 +1,25 @@
-/* Where the athlete's fitness stands today: the chronic training load a season
-   is built up from.
+/* Where the athlete's fitness stands today: the chronic training load (CTL) a
+   season is built up from.
 
    Fitness here is load.js's — the 42-day average of training load, where an
-   hour at threshold is 100. Three sources, tried in this order:
+   hour at threshold is 100. Two sources, tried in this order:
 
-     entered   a figure the athlete typed. It is theirs and is not second-guessed.
      garmin    their own synced sessions, when the sync covers enough weeks
                (`HISTORY_THRESHOLDS.minCovered`) and enough of the recorded time
                could be scored.
      estimate  otherwise: recent weekly hours × a nominal load for an hour of
                training ÷ 7, nudged a few per cent by years in the sport and by
                the athlete's background in each sport. It is an estimate and
-               says so, and the athlete can replace it.
+               says so; it sizes a season and is never drawn as the athlete's CTL.
+
+   Nobody types a figure in. A plan made before that changed may still carry a
+   start whose source is `entered`: it is read and described (`startNote`), and
+   nothing here can produce one.
+
+   `syncBasis` is that same bar as a record, for everything that shows CTL or
+   ATL: the cards, the charts and the planner hold the synced history to one
+   standard, so nothing the page draws is a figure the planner would not size a
+   season from.
 
    **No heart rate, ever.** The figure is stored on the plan, and a plan syncs
    and exports; heart rate never goes on one (CLAUDE.md, and FINDINGS 28 Sep).
@@ -29,20 +37,12 @@
 
 import { PLAN_MODEL } from './targets.js';
 import { HISTORY_DISCIPLINES, HISTORY_THRESHOLDS, trainingHistory } from './history.js';
-import { LOAD, activityLoad, dailyLoads, ewma, loadThresholds } from './load.js';
+import { LOAD, activityLoad, dailyLoads, ewma, loadThresholds, warmStart } from './load.js';
 import { parseISO, toISO, addDays } from './dates.js';
 
 const round1 = (n) => Math.round(n * 10) / 10;
 const shift = (iso, days) => toISO(addDays(parseISO(iso), days));
 const secondsOf = (a) => Number(a?.movingS) || Number(a?.durationS) || 0;
-
-/* A figure the athlete typed, or null when it is not a usable one. */
-function enteredCtl(raw) {
-  if (raw === null || raw === undefined || raw === '' || typeof raw === 'boolean') return null;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n < 0 || n > PLAN_MODEL.estimate.maxCtl) return null;
-  return round1(n);
-}
 
 /* The estimate from recent hours, or null when there are none to go on. */
 function estimateCtl(athlete) {
@@ -82,11 +82,38 @@ function scoredShare(activities, thresholds, { from, asOf }) {
 function syncedCtl(activities, thresholds, { from, asOf }) {
   const inWindow = activities.filter((a) => a?.date >= from && a.date <= asOf);
   const { byDate } = dailyLoads(inWindow, thresholds, new Map());
-  const days = PLAN_MODEL.garmin.warmStartDays;
-  let seed = 0;
-  for (let i = 0; i < days; i++) seed += byDate[shift(from, i)] ?? 0;
-  const series = ewma(byDate, { from, to: asOf, days: LOAD.chronicDays, seed: seed / days });
+  const seed = warmStart(byDate, { from, to: asOf, days: PLAN_MODEL.garmin.warmStartDays });
+  const series = ewma(byDate, { from, to: asOf, days: LOAD.chronicDays, seed });
   return series.length ? series[series.length - 1].value : null;
+}
+
+/* Nothing after the last synced day is known, so it is not read as days off. */
+const syncedThrough = (sync, today) => (sync.through < today ? sync.through : today);
+
+/**
+ * Whether the synced history is enough to read CTL and ATL from, and if not,
+ * why: `{ enough, reason, coveredWeeks, neededWeeks, scoredShare, neededShare }`.
+ *
+ * `reason` is `null` when it is enough, otherwise `'no-sync'` (no sync window, or
+ * nothing recorded in the 42 days up to it), `'too-short'` (fewer than
+ * `HISTORY_THRESHOLDS.minCovered` weeks covered) or `'unscorable'` (under
+ * `PLAN_MODEL.garmin.scoredShare` of the recorded time can be scored). The
+ * bar is `startFitness`'s own, and it is the only one: nothing is read from
+ * heart rate here, because `activityLoad` is given none.
+ */
+export function syncBasis({ today, activities = [], activitySync = null, thresholds = {} } = {}) {
+  const acts = Array.isArray(activities) ? activities : [];
+  const sync = activitySync && activitySync.from && activitySync.through ? activitySync : null;
+  const { summary } = trainingHistory(acts, { today, weeks: HISTORY_THRESHOLDS.lookback + 2, sync });
+  const coveredWeeks = summary.coveredWeeks;
+  const share = sync ? scoredShare(acts, thresholds, { from: sync.from, asOf: syncedThrough(sync, today) }) : null;
+  const neededWeeks = HISTORY_THRESHOLDS.minCovered;
+  const neededShare = PLAN_MODEL.garmin.scoredShare;
+  let reason = null;
+  if (share === null) reason = 'no-sync';
+  else if (coveredWeeks < neededWeeks) reason = 'too-short';
+  else if (share < neededShare) reason = 'unscorable';
+  return { enough: reason === null, reason, coveredWeeks, neededWeeks, scoredShare: share, neededShare };
 }
 
 /**
@@ -120,10 +147,26 @@ export function startNote(start) {
     case 'estimate':
       return 'An estimate from your recent weekly hours.';
     case 'entered':
-      return 'Entered by you.';
+      // Only a plan made before the figure could no longer be typed carries this.
+      return 'Entered by you earlier.';
     default:
       return '';
   }
+}
+
+/**
+ * The sentence shown beside a plan's start: where the athlete's fitness stands
+ * today when their synced sessions say, and otherwise that it is not available
+ * yet and what the season is sized from meanwhile. Takes `startFitness`'s answer.
+ */
+export function startLine(r) {
+  if (r?.source === 'garmin' && Number.isFinite(r.ctl)) {
+    return `Your fitness today: ${Math.round(r.ctl)} (CTL), from ${r.coveredWeeks ?? 'several'} weeks of your synced sessions.`;
+  }
+  const meanwhile = r && Number.isFinite(r.ctl)
+    ? 'We’ll size your season from your recent weekly hours and update it'
+    : 'Give the hours a week you train now in About you and your season can be sized from them. It will update';
+  return `Not available yet. ${meanwhile} once your Garmin sessions give us enough data.`;
 }
 
 /**
@@ -137,34 +180,22 @@ export function startNote(start) {
  * @param {object[]} [opts.benchmarks]    `plan.benchmarks`, for the run threshold
  * @param {object} [opts.loadRefs]        `plan.loadRefs`: FTP and CSS
  * @param {object} [opts.athlete]         the About you record (recent hours, years, levels)
- * @param {number|string} [opts.entered]  a figure the athlete typed
  */
 export function startFitness({
-  today, activities = [], activitySync = null, benchmarks = [], loadRefs = null, athlete = null, entered,
+  today, activities = [], activitySync = null, benchmarks = [], loadRefs = null, athlete = null,
 } = {}) {
   const acts = Array.isArray(activities) ? activities : [];
   // Heart-rate thresholds are deliberately not passed: with none, that method cannot apply.
   const thresholds = loadThresholds({ benchmarks, loadRefs });
 
   const sync = activitySync && activitySync.from && activitySync.through ? activitySync : null;
-  const { summary } = trainingHistory(acts, {
-    today, weeks: HISTORY_THRESHOLDS.lookback + 2, sync,
-  });
-  const coveredWeeks = summary.coveredWeeks;
+  const basis = syncBasis({ today, activities: acts, activitySync: sync, thresholds });
+  const { coveredWeeks, scoredShare: share } = basis;
 
-  // Nothing after the last synced day is known, so it is not read as days off.
-  const asOf = sync ? (sync.through < today ? sync.through : today) : null;
-  const share = sync ? scoredShare(acts, thresholds, { from: sync.from, asOf }) : null;
+  const asOf = sync ? syncedThrough(sync, today) : null;
   const base = { coveredWeeks, scoredShare: share, asOf: asOf ?? today };
 
-  const typed = enteredCtl(entered);
-  if (typed !== null) {
-    return { ...base, ctl: typed, source: 'entered', note: 'Entered by you.' };
-  }
-
-  const enough = coveredWeeks >= HISTORY_THRESHOLDS.minCovered;
-  const scoreable = share !== null && share >= PLAN_MODEL.garmin.scoredShare;
-  if (sync && enough && scoreable) {
+  if (basis.enough) {
     const ctl = syncedCtl(acts, thresholds, { from: sync.from, asOf });
     if (ctl !== null) {
       return {
@@ -187,9 +218,9 @@ export function startFitness({
   }
 
   let why = 'An estimate from your recent weekly hours.';
-  if (sync && !enough) {
+  if (sync && coveredWeeks < basis.neededWeeks) {
     why = `Fewer than ${HISTORY_THRESHOLDS.minCovered} weeks of synced sessions so far, so this is an estimate from your recent weekly hours.`;
-  } else if (sync && enough && !scoreable) {
+  } else if (sync && coveredWeeks >= basis.neededWeeks && !(share !== null && share >= basis.neededShare)) {
     why = 'Most of your synced time could not be scored, so this is an estimate from your recent weekly hours. '
       + 'Add your FTP, swim CSS or a running result to use your sessions.';
   }

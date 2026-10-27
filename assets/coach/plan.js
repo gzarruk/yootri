@@ -84,6 +84,8 @@ export function loadPlan(raw) {
 
 const FEASIBILITY_STATUSES = ['build', 'hold'];
 const LIMITING_FACTORS = ['availability', 'runway', 'ramp'];
+// `entered` is legacy: a figure could once be typed in, and a plan made then still carries
+// it. It is read and kept, never written — nothing produces one now.
 const START_SOURCES = ['garmin', 'estimate', 'entered'];
 const inRange = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
 const tenth = (n) => Math.round(n * 10) / 10;

@@ -24,7 +24,7 @@
 
    The coefficients are the published ones and the 42/7-day windows are the
    conventional ones; none has been fitted to anybody (see
-   ../yootri-rnd/FINDINGS.md). */
+   docs/FINDINGS.md). */
 
 import { parseISO, toISO, addDays, mondayOf } from './dates.js';
 import { thresholdSpeedFrom } from './paces.js';
@@ -170,6 +170,29 @@ export function dailyLoads(activities, thresholds, hrById = new Map()) {
 }
 
 /**
+ * The mean daily load of the first `days` days of a window — what an average
+ * is started from when the window begins partway through someone's training,
+ * so a few weeks of history are not read as the level of someone who began
+ * from nothing. A window shorter than `days` is averaged over its own days.
+ * Zero when there is nothing to average.
+ *
+ * The one place a warm start is worked out: the planner's starting fitness,
+ * the cards and chart, and the coach's training load all seed from it, so they
+ * cannot disagree about the same sessions. `days` is the caller's to give
+ * (`PLAN_MODEL.garmin.warmStartDays`; this file cannot import it).
+ */
+export function warmStart(byDate, { from, to, days } = {}) {
+  const first = parseISO(from);
+  if (!first || !(days > 0)) return 0;
+  const last = parseISO(to);
+  const n = last ? Math.min(days, Math.round((last - first) / 86400000) + 1) : days;
+  if (!(n >= 1)) return 0;
+  let sum = 0;
+  for (let i = 0; i < n; i++) sum += byDate?.[toISO(addDays(first, i))] ?? 0;
+  return sum / n;
+}
+
+/**
  * An exponentially weighted average over every day from `from` to `to`, a day
  * with no activity counting as zero. `k = 1 − e^(−1/days)`.
  *
@@ -193,11 +216,17 @@ export function ewma(byDate, { from, to, days, seed = 0 }) {
  * What the coach and the page show: weekly load for the `weeks` full weeks
  * before today's, and the chronic and acute averages as of today.
  */
-export function trainingLoad(activities, { today, weeks = 12, thresholds = {}, hrById = new Map(), sync = null } = {}) {
+export function trainingLoad(activities, { today, weeks = 12, thresholds = {}, hrById = new Map(), sync = null, warmStartDays = 0 } = {}) {
   const d = dailyLoads(activities, thresholds, hrById);
   const dates = (Array.isArray(activities) ? activities : []).map((a) => a?.date).filter(Boolean).sort();
   const start = sync?.from ?? dates[0] ?? today;
   const last = (series) => (series.length ? round1(series[series.length - 1].value) : 0);
+  // Both averages begin at the mean daily load of the window's first days when the
+  // caller says how many (warmStart); with none they begin at zero, as they did.
+  const seed = warmStart(d.byDate, { from: start, to: today, days: warmStartDays });
+  // Nothing after the last synced day is read as days off: the averages stop there, as the
+  // chart's and the planner's do. With no sync record the window is whatever the activities say.
+  const readTo = parseISO(sync?.through) && sync.through < today ? sync.through : today;
 
   const thisMonday = mondayOf(today);
   const n = Math.max(1, Math.min(26, Math.floor(Number(weeks) || 1)));
@@ -214,11 +243,11 @@ export function trainingLoad(activities, { today, weeks = 12, thresholds = {}, h
 
   return {
     weeks: rows,
-    chronic: last(ewma(d.byDate, { from: start, to: today, days: LOAD.chronicDays })),
-    acute: last(ewma(d.byDate, { from: start, to: today, days: LOAD.acuteDays })),
+    chronic: last(ewma(d.byDate, { from: start, to: readTo, days: LOAD.chronicDays, seed })),
+    acute: last(ewma(d.byDate, { from: start, to: readTo, days: LOAD.acuteDays, seed })),
     byMethod: d.byMethod,
     missing: d.missing,
     historyDays: start && today ? Math.max(0, Math.round((parseISO(today) - parseISO(start)) / 86400000)) : 0,
-    labels: { chronic: `chronic training load (${LOAD.chronicDays}-day)`, acute: `acute training load (${LOAD.acuteDays}-day)` },
+    labels: { chronic: `chronic training load (CTL, ${LOAD.chronicDays}-day)`, acute: `acute training load (ATL, ${LOAD.acuteDays}-day)` },
   };
 }
