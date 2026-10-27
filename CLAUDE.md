@@ -14,6 +14,14 @@ the repo root by GitHub Pages — **anything committed here is public**.
 - `assets/privacy.js` — the privacy notice's text, version and its two deployment
   facts, drawn by the app's footer panel and by `privacy.html`, the same notice on
   a page of its own. Edit it here and nowhere else.
+- `manifest.webmanifest`, `sw.js`, `assets/icon-*.png` — what makes the app
+  installable on a phone and openable offline. `sw.js` precaches the shell
+  (`tests/pwa.test.js` fails if an engine module is missing from its list) and
+  answers this site's own static GETs, plus the Firebase SDK and Inter font, from
+  the cache while refreshing behind it. Every other request — Firestore, sign-in,
+  the coach's model calls, the Strava relay, the Garmin bridge — is never
+  intercepted. It is off on localhost (`localStorage.yootri_sw = '1'` turns it
+  on to test).
 - `assets/store/` — images for a third-party app listing (cover, screenshots).
   Public like everything else here; made from `assets/example-plan.json`, so no
   personal data.
