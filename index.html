@@ -11,6 +11,11 @@
 <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="assets/apple-touch-icon.png" />
 <meta name="theme-color" content="#161826" />
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
+<meta name="apple-mobile-web-app-title" content="yootri" />
 <script>
   /* Set the theme before first paint so a light-theme reader never sees a dark flash.
      The Dark/Light switch writes the same key; see setTheme in the page script. */
@@ -1073,17 +1078,14 @@
        grid ignores.) */
     .pnl-days { grid-template-columns: repeat(4, 1fr); }
     .pnl-act { flex-wrap: wrap; gap: .5rem; }
-    .pnl-act .btn { flex: 1 1 auto; min-height: 40px; }
+    .pnl-act .btn { flex: 1 1 auto; min-height: 44px; }
     .pnl-act .spacer { flex-basis: 100%; order: 10; }
 
     /* Chat needs the height back that the panel chrome took. */
     .chat-log { max-height: 52vh; }
     .chat-row { flex-wrap: wrap; }
-    .chat-row input { flex: 1 1 100%; min-height: 40px; }
-    .chat-row .btn { flex: 1 1 auto; min-height: 40px; }
-
-    /* Touch targets. 34px is fine with a mouse and mean with a thumb. */
-    .btn { min-height: 38px; }
+    .chat-row input { flex: 1 1 100%; min-height: 44px; }
+    .chat-row .btn { flex: 1 1 auto; min-height: 44px; }
 
     .im-foot { margin-top: 22px; }
   }
@@ -1099,6 +1101,19 @@
     .toolbar { gap: .4rem; }
     .orient { padding: 14px; }
     .orient-act .btn { flex: 1 1 auto; }
+  }
+
+  /* A thumb needs 44px and a phone browser zooms the page into any field set
+     below 16px, so on a phone every control meets both. Small marks that sit
+     inside a card (the icon buttons) keep their size and grow their hit area. */
+  @media (max-width: 760px) {
+    .btn, .input, .ov-start .input, .ov-phase, .add-btn, .m-plan, .plan-sw, .cal-rail:not(.empty),
+    .im-foot-link, .done-toggle, .ack-ok, .brand, .dchip { min-height: 44px; }
+    .phone-top .brand { padding: 0 8px; }
+    .im-foot-link, .done-toggle { display: inline-flex; align-items: center; }
+    input, select, textarea, .input { font-size: 16px; }
+    .icon-btn { position: relative; }
+    .icon-btn::after { content: ""; position: absolute; inset: -11px -7px; }
   }
 </style>
 </head>
@@ -2871,6 +2886,16 @@
     const text = input.value.trim();
     if (!text) return;
 
+    // The coach is a call to a model provider, so it needs a connection. Say so
+    // before sending anything, and keep what was typed.
+    if (!navigator.onLine) {
+      chatOf().push({ role: 'coach', content: 'The coach needs a connection, and this device is offline. Your plan and sessions still work — ask again when you are back online.', error: false });
+      renderCoach();
+      const box = $('c-input');
+      if (box) box.value = text;
+      return;
+    }
+
     const log = chatOf();
     log.push({ role: 'user', content: text });
     coach.busy = true;
@@ -4032,16 +4057,26 @@
 
   const cloudReady = () => !!(window.imCloud && window.imCloud.configured);
 
+  // Offline is a state, not a failure: the plan is on this device and the next
+  // sync picks up from there, so it is said calmly and not in the error colour.
+  const OFFLINE_NOTE = 'Offline — saved on this device, syncs when you are back';
+  function syncFailed() {
+    if (!navigator.onLine) setStatus(OFFLINE_NOTE);
+    else setStatus('Sync failed — saved locally', true);
+  }
+  window.addEventListener('offline', () => { if (authUser && cloudReady()) setStatus(OFFLINE_NOTE); });
+  window.addEventListener('online', () => { if (authUser && cloudReady()) schedulePush(); });
+
   function schedulePush() {
     if (!cloudReady() || !authUser || !hasSyncConsent()) return;
-    setStatus('Saving…');
+    setStatus(navigator.onLine ? 'Saving…' : OFFLINE_NOTE);
     clearTimeout(pushTimer);
     pushTimer = setTimeout(() => pushPlan(plan), 900);
   }
   async function pushPlan(p) {
     if (!cloudReady() || !authUser || !hasSyncConsent()) return;
     try { await window.imCloud.savePlan(p); setStatus('Synced ' + timeStr()); }
-    catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
+    catch (e) { console.error(e); syncFailed(); }
   }
   async function cloudDelete(id) {
     if (!cloudReady() || !authUser || !hasSyncConsent()) return;
@@ -4143,7 +4178,7 @@
       renderAccount();
       // An account that brought no season with it is somebody starting out.
       maybeStartWizard();
-    } catch (e) { console.error(e); setStatus('Sync failed — saved locally', true); }
+    } catch (e) { console.error(e); syncFailed(); }
   }
 
   async function onAuth(user) {
@@ -7631,6 +7666,15 @@
   // `?garmin=setup` pairs this browser with the bridge (see the Garmin section).
   maybeOpenGarminSetup();
   if (garminConfig()) checkBridge();
+
+  // The service worker keeps the app shell on the device so it opens offline
+  // (sw.js). Not on a local dev server, where it would show yesterday's files;
+  // `localStorage.yootri_sw = '1'` turns it on there to test it.
+  if ('serviceWorker' in navigator) {
+    let swOn = !/^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname);
+    try { if (localStorage.getItem('yootri_sw') === '1') swOn = true; } catch (e) {}
+    if (swOn) window.addEventListener('load', () => { navigator.serviceWorker.register('sw.js').catch((e) => console.error(e)); });
+  }
 
   // The Firebase module (below) is a deferred module, so it loads after this
   // classic script. Bind when it signals ready; if it never loads, stay local.
