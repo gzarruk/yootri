@@ -122,6 +122,32 @@ test('heart-rate thresholds are cleaned, and must hang together', () => {
   assert.equal(normalizeHrThresholds({ trimp: 'other' }), undefined);
 });
 
+/* A threshold heart rate is the divisor of every heart-rate load: an hour at it is 100.
+   One far below the maximum makes that hour's TRIMP tiny and every session's load several
+   times too large, which seeds CTL and ATL at a level no athlete trains at. A threshold of 80
+   is the lowest the settings boxes take, and it passed while only rest < threshold < max was checked. */
+test('a threshold heart rate far below the maximum is not kept; a plausible one is', () => {
+  const base = { max: 185, rest: 55, trimp: 'male' };
+  assert.equal(normalizeHrThresholds({ ...base, lthr: 80 }).lthr, undefined, '80 against a maximum of 185');
+  assert.deepEqual(normalizeHrThresholds({ ...base, lthr: 80 }), base, 'the rest of the record is kept');
+  const floor = Math.ceil(LOAD.lthrMinShareOfMax * 185);
+  assert.equal(normalizeHrThresholds({ ...base, lthr: floor - 1 }).lthr, undefined, 'just under the floor');
+  assert.equal(normalizeHrThresholds({ ...base, lthr: floor }).lthr, floor, 'the floor itself');
+  assert.equal(normalizeHrThresholds({ ...base, lthr: 165 }).lthr, 165);
+  assert.equal(normalizeHrThresholds({ lthr: 80, trimp: 'male' }).lthr, 80, 'with no maximum there is nothing to judge it against');
+});
+
+test('a mistyped threshold heart rate scores nothing, instead of inflating every session', () => {
+  const t = loadThresholds({ hrThresholds: { lthr: 80, max: 185, rest: 55, trimp: 'male' } });
+  const ride = a({ disc: 'Bike', durationS: 6150, movingS: 6150 });          // 1.71 h, no power: heart rate or nothing
+  const r = activityLoad(ride, t, { avg: 140 });
+  assert.equal(r.value, null);
+  assert.deepEqual(r.missing, ['power', 'hr-thresholds']);
+  // The same ride against a sensible threshold is an ordinary session.
+  const ok = activityLoad(ride, loadThresholds({ hrThresholds: { lthr: 165, max: 185, rest: 55, trimp: 'male' } }), { avg: 140 });
+  assert.ok(ok.value > 40 && ok.value < 180, `${ok.value}`);
+});
+
 /* ---- days and the two averages ---- */
 
 test('an exponential average: day one is the load times k', () => {

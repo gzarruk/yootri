@@ -5280,7 +5280,7 @@
       const msg = $('ab-msg');
       msg.innerHTML = '<b class="err">' + esc('Check the ' + refused.join(', ') + ' — ' +
         (refused.length === 1 ? 'that value is' : 'those values are') + ' outside what yootri can use. ' +
-        'A threshold heart rate has to sit between the resting and maximum ones.') + '</b>';
+        'A threshold heart rate has to sit between the resting and maximum ones, and be at least 70% of the maximum.') + '</b>';
       msg.classList.remove('hidden');
       msg.scrollIntoView({ block: 'nearest' });
       return;
