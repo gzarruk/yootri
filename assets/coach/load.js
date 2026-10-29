@@ -35,6 +35,10 @@ export const LOAD = Object.freeze({
   maxPlausible: 1000,
   thresholdRpe: 7,
   trimp: Object.freeze({ male: Object.freeze([0.64, 1.92]), female: Object.freeze([0.86, 1.67]) }),
+  // A threshold heart rate below this share of the maximum is a mistyped one, not a
+  // low one. It is the divisor of every heart-rate load, so one this far down scales
+  // each session several times over. A floor for catching typing, not a judgement.
+  lthrMinShareOfMax: 0.7,
 });
 
 const num = (v, lo, hi) => {
@@ -54,13 +58,18 @@ export function normalizeLoadRefs(raw) {
   return Object.keys(out).length ? out : undefined;
 }
 
-/** This browser's heart-rate thresholds. They must hang together: rest < LTHR < max. */
+/**
+ * This browser's heart-rate thresholds. They must hang together: rest < LTHR < max,
+ * and LTHR no lower than `LOAD.lthrMinShareOfMax` of the maximum. Every reader goes
+ * through here, so a value dropped here is dropped from the chart, the cards and the coach alike.
+ */
 export function normalizeHrThresholds(raw) {
   if (!raw || typeof raw !== 'object') return undefined;
   const max = num(raw.max, 100, 230);
   const rest = num(raw.rest, 25, 100);
   let lthr = num(raw.lthr, 80, 220);
-  if (lthr !== undefined && ((max !== undefined && lthr >= max) || (rest !== undefined && lthr <= rest))) lthr = undefined;
+  if (lthr !== undefined && ((max !== undefined && (lthr >= max || lthr < LOAD.lthrMinShareOfMax * max))
+    || (rest !== undefined && lthr <= rest))) lthr = undefined;
   const trimp = raw.trimp in LOAD.trimp ? raw.trimp : undefined;
   const out = compact({ lthr, max, rest, trimp });
   return Object.keys(out).length ? out : undefined;
