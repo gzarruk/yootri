@@ -26,6 +26,12 @@ the repo root by GitHub Pages — **anything committed here is public**.
   Public like everything else here; made from `assets/example-plan.json`, so no
   personal data.
 - `tests/` — `npm test` (plain `node --test`, no test framework).
+- `tools/claude-bridge/` — a dependency-free Node program that lets the coach use
+  the Claude Code signed in on the athlete's own machine instead of an API key.
+  It answers the page's existing "OpenAI-compatible" provider on 127.0.0.1
+  (`make claude-bridge`), so the page, the engine and `providers.js` are unchanged
+  and nothing public depends on it. `translate.mjs` is its pure half (tests in
+  `tests/claude-bridge.test.js`). See "The coach without an API key" below.
 - `tools/garmin-bridge/` — the one part that is not plain files: a small Python
   program (run with `uv`) that signs in to Garmin on the athlete's own machine
   and answers the page on 127.0.0.1. `make garmin-test` runs its tests; CI runs
@@ -43,9 +49,10 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | Module | Responsibility |
 | --- | --- |
 | `season.js` | The block model → weekly hours. Port of `../yootri-rnd/plan_model.py`; `fitToRace` lands it on a runway of N weeks, sized by `peakHours` — the athlete's own biggest week (`peakHoursFor` in `profile.js`, from their availability). The reference model's `annualHours` form survives only for the golden tests and the legacy migration. |
-| `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. |
-| `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. |
-| `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). |
+| `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. When the athlete has a weekly pattern and the block has counts, `patternWeek` builds the week from slots instead of the shape table (see below); `recovery` is read only there. |
+| `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. A third, `weekPattern` + `sessionCounts`, is the athlete's fixed week: which days each discipline takes, in priority order, and how many sessions it has in a block (`normalizeWeekPattern`, `normalizeSessionCounts`; absent stays absent, and counts go when their day list does). |
+| `pattern.js` | The weekly pattern's questions, and nothing about minutes: `resolveCounts` (exact block, then family, per discipline, as splits resolve), `patternSlots` (the first N listed days that can be used; a day that cannot is skipped and the next takes the slot), `unusableNeeded` (what the validator reads), and `nextDrop` / `DROP_ORDER` / `recoveryDropCount` (which session a small or recovery week gives up). Pure; takes the block's family as an argument so `generate.js` can import it. |
+| `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). `pattern-slot-unavailable` is said once for the season when a listed day a count needs has no time or is ruled out, like `long-day-unavailable`; it never fires without a pattern. |
 | `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. `carryOver`/`upcomingEvents` say what survives a start-over. |
 | `migrate.js` | Schema v2 → v3. `legacy-plan.js` is the frozen old template it needs. |
 | `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
@@ -68,7 +75,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `targets.js` | What a season is built to reach: the peak before the taper. `PLAN_MODEL` is the **one frozen table of unfitted coaching constants** for the target-driven planner (ramp, the acute-to-chronic ratio ceiling, tolerance, taper tiers, the start-fitness estimate); `targetCtl(raceType, ambition)` reads a target off `FITNESS_BANDS` (the table lives here, so `fitness.js` can read `PLAN_MODEL` without a module cycle, and is re-exported there); `taperDepth` gives the share of a week a tune-up's taper takes out. Kept out of `fitness.js` on purpose: the copy test holds that file to a stricter word list, and `competitive` is on it. |
 | `startfit.js` | `startFitness`: the athlete's chronic training load today, from their synced sessions (power, pace, swim pace and session effort only — never heart rate) or, failing that, an estimate from recent weekly hours, years in the sport and per-sport level. The estimate sizes a season and is never drawn as the athlete's CTL. **A figure can no longer be typed in**; a plan made before that may carry `target.start.source === 'entered'`, which is read and described (`startNote`) and never written. `syncBasis` is the bar for the synced source as a record `{ enough, reason, coveredWeeks, neededWeeks, scoredShare, neededShare }` (`reason`: `no-sync`, `too-short`, `unscorable`), shared with every display of CTL or ATL; `startLine` is the read-only sentence shown beside a plan's start. Body measurements play no part. |
 | `races.js` | Where a plan's races fall: `landingsOf`, `landingsDetail`, `raceDayFor`, `raceClosure`, and `plannedRaceLoads` (what each tune-up adds to its day). Split out of `plan.js`, which hands them back, so the planner can read them without importing the plan. |
-| `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness, **the peak before the taper** (race day settles lower, by a two-week taper that takes under a tenth off — `PLAN_MODEL.taperTail`, the model's own three-week tail being kept only for `targetAt: 'raceDay'` — and is read as the morning of it, the end of the day before, and reported as `raceCtl`, not aimed at): even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`, and two hard ceilings — fitness never above the target on any day, and acute load within `PLAN_MODEL.ramp.acuteRatioMax` times chronic load on every day (neither is shown on a screen). Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `targetAt: 'raceDay'` is the first version's solve, kept for plans whose target was made that way. `planLevers` works out, by rebuilding, what would make it reachable. Pure. `refit` and `newPlan` call it for a plan that has a `target` (see below). |
+| `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness, **the peak before the taper** (race day settles lower, by a two-week taper that takes under a tenth off — `PLAN_MODEL.taperTail`, the model's own three-week tail being kept only for `targetAt: 'raceDay'` — and is read as the morning of it, the end of the day before, and reported as `raceCtl`, not aimed at): even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`, and two hard ceilings — fitness never above the target on any day, and acute load within `PLAN_MODEL.ramp.acuteRatioMax` times chronic load on every day (neither is shown on a screen). Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `targetAt: 'raceDay'` is the first version's solve, kept for plans whose target was made that way. `planLevers` works out, by rebuilding, what would make it reachable. Pure. `refit` and `newPlan` call it for a plan that has a `target` (see below). The climb is laid once from where the season starts and **laid again from where fitness actually is** when a pinned week leaves it ahead of its own waypoint (`climbFrom`), so a run of pinned weeks never starves the weeks after it; an athlete past the level is held, not unwound. See `docs/FINDINGS.md` (30 Oct, second entry). |
 
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
@@ -219,6 +226,22 @@ remembers agreeing learns otherwise on its next pull instead of re-uploading.
 its only daily data are the overnight figures below, which never leave the
 browser.
 
+**The coach without an API key.** `tools/claude-bridge` runs `claude -p` once per
+model call and presents it as a Chat Completions endpoint, for personal use on
+the athlete's own machine (it is not a way to share a subscription, and there is
+no hosted version). The tool loop stays in `agent.js`: the coach's tools are written
+into the prompt, the CLI is held to a fixed JSON reply (`--json-schema`), and the
+reply is turned back into `tool_calls`. The CLI is started with its tools, MCP
+servers, settings, skills and session saving off, in an empty directory, and with
+`ANTHROPIC_API_KEY` removed from its environment (a key there would be billed in
+place of the subscription). The bridge listens on loopback, answers only a request
+carrying its token (the page's "API key" field) and shows the answer only to an
+allowed origin. Keep it that way: **do not add a path that gives the model a file,
+a shell or an MCP server**, and do not log prompts — they hold the plan. `sonnet` or
+`opus` is advised; `haiku` often declines to call the tools. Nothing in `index.html`
+mentions it, deliberately: it is a developer convenience, and the app's copy is held
+to a stricter standard.
+
 **Garmin.** Garmin's developer program only takes businesses, so the page asks
 `tools/garmin-bridge` — run by the athlete on their own machine, for their own
 account — on 127.0.0.1. It is off unless a browser has been paired
@@ -277,8 +300,9 @@ bridge deletes the store. Keep Garmin's vocabulary for these out of the copy
 (`tests/copy.test.js`). Every threshold in `OVERNIGHT` is unfitted.
 
 **A plan can be released one week at a time.** `release: { through }` is
-another field added without a schema bump: sessions are shown up to that week,
-later weeks as their block and planned hours. Absent means the whole season is
+another field added without a schema bump: every week's sessions are shown in the weekly
+and monthly views, and weeks after that week are labelled "not released" — they are
+already in the plan and can still change at the review. Absent means the whole season is
 shown, which is every plan made before it; the wizard turns it on, and the plan
 menu toggles it. The whole season stays materialized, so the validator, chart
 and adaptation rules read it as before. A release is a draft like any change,
@@ -330,6 +354,24 @@ it has to fit in and cannot flatten. `normalizeProfile` is an allowlist, so an o
 plan or file carrying `annualHours` loads cleanly and the stored `season` keeps
 its weeks until a refit re-sizes it. `volumeBeyondRace` is the one sanity check
 left: an empty diary against a short race. See `docs/FINDINGS.md` (18 Oct).
+
+**A week can be a pattern.** `profile.weekPattern` (`{ Run: ['Tue','Thu','Sat'], … }`, days in
+priority order) and `profile.sessionCounts` (`{ Base: { Run: 3 }, 'Base 3': { Swim: 2 } }`, by block or family,
+resolved exact-then-family per discipline) are two more optional fields added without a schema bump. Where a
+block resolves counts, `generateWeek` builds the week from slots: each discipline takes the first N days of its
+list; strength slots are a set length; the rest of the hours are split across swim, bike and run by the block's
+split without strength; the long ride and run stay anchored to race demand and to `longDays`; and each day's
+budget is what its slots add up to, with availability only the ceiling. `weekShape` is not consulted there, and
+the pattern overrides `maxSessionsPerDay` (the `too-many-sessions` warning is unchanged). The number of sessions
+is the athlete's, so a week that cannot hold them drops sessions in `DROP_ORDER` — extra strength, then extra
+swim, then easy rides and runs, never the long ride, the long run or a discipline's only session. **Prep and Race
+have no counts**: they size sessions as always and only prefer the pattern's days. A recovery week
+(`generateWeek({ recovery })`, passed by every caller from the season entry) gives up one session under eight
+slots and two from eight, and a strength session that stays reads Mobility; without a pattern `recovery` is
+ignored and the week is byte for byte what it was. The example week in `tests/week-pattern.test.js` is a
+fixture, not a default. The pattern is plan content (it travels with the plan, never the athlete record), the
+planner's week memo is keyed on it (`backplan.js`), and `adapt.js` judges split drift against the week that was
+built, with no `set_split` offered, where a pattern builds the block. See `docs/FINDINGS.md` (30 Oct).
 
 **The page shows one plan.** There is no plan list: the switcher button names the
 current plan and its menu starts a new season or imports one. Doing either

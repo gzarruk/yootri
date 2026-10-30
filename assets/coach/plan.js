@@ -290,6 +290,7 @@ export function freshWeek(plan, absWeek) {
     block: w.block,
     profile: plan.profile,
     idPrefix: weekKey(w.absWeek),
+    recovery: !!w.recovery,
     ...raceClosure(plan, w.absWeek),
   }).sessions;
 }
@@ -415,6 +416,7 @@ export function refit(plan, {
     block: w.block,
     profile: draft.profile,
     idPrefix: weekKey(w.absWeek),
+    recovery: !!w.recovery,
     ...raceClosure(draft, w.absWeek),
   }).sessions;
 
@@ -441,7 +443,8 @@ function followsGenerator(plan, absWeek) {
   if (!entry || !stored) return true;
   return sameJSON(stored, freshWeek(plan, absWeek));
 }
-const changed = (a, b) => !a || a.hours !== b.hours || a.block !== b.block;
+// A recovery flag counts: with a weekly pattern it changes the week that is built.
+const changed = (a, b) => !a || a.hours !== b.hours || a.block !== b.block || !!a.recovery !== !!b.recovery;
 
 const SESSION_FIELDS = ['day', 'disc', 'focus', 'dur', 'zone', 'paceZone'];
 const sameSession = (a, b) => SESSION_FIELDS.every((f) => a[f] === b[f]);
@@ -654,6 +657,7 @@ export function newPlan({
         block: w.block,
         profile: base,
         idPrefix: key,
+        recovery: !!w.recovery,
         ...raceClosure(dated, w.absWeek),
       }).sessions;
   }

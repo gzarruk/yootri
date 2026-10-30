@@ -53,6 +53,7 @@ const SHELL = [
   'assets/coach/onboarding.js',
   'assets/coach/overnight.js',
   'assets/coach/paces.js',
+  'assets/coach/pattern.js',
   'assets/coach/plan.js',
   'assets/coach/portable.js',
   'assets/coach/preparation.js',

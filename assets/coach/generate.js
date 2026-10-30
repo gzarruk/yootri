@@ -9,7 +9,8 @@
    athlete actually has, it fills the available time and reports the shortfall
    rather than quietly scheduling a week that cannot happen. */
 
-import { DAYS, allowedDays, maxPerWeek } from './profile.js';
+import { DAYS, DISCIPLINES, allowedDays, maxPerWeek } from './profile.js';
+import { resolveCounts, patternSlots, nextDrop, recoveryDropCount } from './pattern.js';
 import { minToDur, durToMin, REST_DUR } from './duration.js';
 import { dayBudgets } from './shape.js';
 import { ZONE_FOR_LABEL } from './paces.js';
@@ -239,10 +240,14 @@ function place(targets, profile, family, raceType, budgets) {
 
     for (const [rank, size] of sizes.entries()) {
       const open = (d) => remaining[d] >= Math.max(MIN_SESSION, DISC[disc].min) && onDay(d) < cap;
-      const pick = (pool) =>
-        pool
-          .filter(open)
-          .sort((a, b) => remaining[b] - remaining[a] || DAYS.indexOf(a) - DAYS.indexOf(b))[0];
+      const pick = (pool) => {
+        const ok = pool.filter(open);
+        // A weekly pattern lists the days the athlete wants this discipline on,
+        // in the order they want them; without one this is the roomiest day.
+        const listed = profile.weekPattern?.[disc]?.find((d) => ok.includes(d));
+        return listed
+          ?? ok.sort((a, b) => remaining[b] - remaining[a] || DAYS.indexOf(a) - DAYS.indexOf(b))[0];
+      };
 
       // A day another discipline named for its long session is kept for it
       // until that session is down, so a second ride cannot take the long run's
@@ -313,7 +318,7 @@ function fillGaps(placed, remaining, targets, profile, family, target) {
 
 /** Round to whole 5-minute blocks, then push the total back toward the budget
     using whatever day capacity is left. */
-function reconcile(placed, remaining, target) {
+function reconcile(placed, remaining, target, noGrow = []) {
   // Round to the nearest block where the day can pay for it, down otherwise —
   // and either way hand the difference back to the day. Rounding a session down
   // frees time that the growth pass below is entitled to spend somewhere else;
@@ -334,7 +339,8 @@ function reconcile(placed, remaining, target) {
   // Too little: grow the longest sessions that still have room on their day.
   // Grow the ordinary sessions before the race-anchored long one — the whole
   // point of anchoring it is that it stops growing once it meets race demand.
-  const canGrow = (x) => remaining[x.day] >= ROUND_TO && x.minutes + ROUND_TO <= DISC[x.disc].max;
+  const canGrow = (x) => remaining[x.day] >= ROUND_TO && x.minutes + ROUND_TO <= DISC[x.disc].max
+    && !noGrow.includes(x.disc);
   let guard = 0;
   while (target - total() >= ROUND_TO && guard++ < 200) {
     const s = byLongest.find((x) => !x.isLong && canGrow(x)) ?? byLongest.find(canGrow);
@@ -357,6 +363,156 @@ function reconcile(placed, remaining, target) {
   return placed;
 }
 
+/* ---- a weekly pattern ----------------------------------------------------
+
+   When a block has session counts (profile.sessionCounts) the week is built from
+   its slots rather than from the shape table: each discipline takes the first N
+   days of its list (pattern.js), and a day's budget is whatever its slots add up
+   to, with availability only the ceiling. The hour budget is still a given.
+
+   The same `reconcile` finishes the week, so rounding, growth and the race-
+   anchored long session behave as they always did. What differs is who decides
+   the number of sessions and the day each lands on — the athlete — and that a
+   strength session stays at its nominal length instead of absorbing the
+   remainder. */
+
+const LONG_DISCS = ['Bike', 'Run'];
+const floorOf = (disc) => Math.max(MIN_SESSION, DISC[disc].min);
+
+/** Last resort for a week the drop order cannot shrink: the least valuable
+    session that is not the only one left. Written down beside `nextDrop`. */
+function lastResort(slots, within) {
+  if (slots.length <= 1) return null;
+  const tier = (s) => ({ Strength: 0, Swim: 1 }[s.disc] ?? (s.isLong ? (s.disc === 'Run' ? 4 : 5) : (s.disc === 'Run' ? 2 : 3)));
+  return [...within].sort((a, b) => tier(a) - tier(b) || b.rank - a.rank)[0] ?? null;
+}
+
+function patternWeek({ block, family, profile, counts, target, avail, closedDays, recovery }) {
+  const usable = (disc, d) => allowedDays(profile, disc).includes(d) && avail[d] >= floorOf(disc);
+  const slots = [];
+
+  // The long ride and long run sit on the athlete's named day when it can hold
+  // them; otherwise on the slot with the most room. They are never dropped.
+  const markLong = (disc) => {
+    if (!LONG_DISCS.includes(disc)) return;
+    const mine = slots.filter((s) => s.disc === disc);
+    if (!mine.length) return;
+    const named = mine.find((s) => s.day === profile.longDays?.[disc]);
+    const roomiest = [...mine].sort((a, b) => avail[b.day] - avail[a.day] || a.rank - b.rank)[0];
+    (named ?? roomiest).isLong = true;
+  };
+
+  for (const disc of DISCIPLINES) {
+    if (counts[disc] === undefined) continue;
+    const want = Math.min(counts[disc], maxPerWeek(profile, disc));
+    let { days } = patternSlots(profile, disc, counts[disc], { closedDays, floor: floorOf(disc) });
+    // `longDays` says where the long session goes, so a count never loses it: if
+    // that day is not among the first slots it takes the last one.
+    const named = profile.longDays?.[disc];
+    if (want > 0 && LONG_DISCS.includes(disc) && named && !days.includes(named) && usable(disc, named) && !closedDays.includes(named)) {
+      days = days.length >= want ? [...days.slice(0, want - 1), named] : [...days, named];
+    }
+    days.forEach((day, rank) => slots.push({ disc, day, rank, isLong: false, minutes: 0 }));
+    markLong(disc);
+  }
+
+  // A discipline the block has no count for keeps its usual number of sessions
+  // and the pattern's days, in the pattern's order, then any other usable day.
+  const open = Object.fromEntries(DISCIPLINES.map((d) => [d, DAYS.filter((x) => usable(d, x))]));
+  const shares = discTargets(target, block, profile, { perDay: avail });
+  for (const disc of Object.keys(shares)) {
+    if (counts[disc] !== undefined) continue;
+    const sizes = sessionSizes(disc, shares[disc], profile, profile.raceType, { perDay: avail });
+    const listed = (profile.weekPattern?.[disc] ?? []).filter((d) => open[disc].includes(d));
+    const days = [...listed, ...open[disc].filter((d) => !listed.includes(d))
+      .sort((a, b) => avail[b] - avail[a] || DAYS.indexOf(a) - DAYS.indexOf(b))].slice(0, sizes.length);
+    days.forEach((day, rank) => slots.push({ disc, day, rank, isLong: false, minutes: sizes[rank], fixed: true }));
+    markLong(disc);
+  }
+
+  const size = () => {
+    const free = (disc) => slots.filter((s) => s.disc === disc && !s.fixed);
+    let used = slots.filter((s) => s.fixed).reduce((a, s) => a + s.minutes, 0);
+    for (const s of free('Strength')) {
+      s.minutes = Math.min(DISC.Strength.pref, DISC.Strength.max);
+      used += s.minutes;
+    }
+    const rest = Math.max(0, target - used);
+    const split = resolveSplit(block, profile);
+    const live = DISCIPLINES.filter((d) => d !== 'Strength' && free(d).length);
+    const weight = (d) => split[d] ?? 0;
+    const total = live.reduce((a, d) => a + weight(d), 0);
+    for (const disc of live) {
+      const share = total > 0 ? (rest * weight(disc)) / total : rest / live.length;
+      const mine = free(disc).sort((a, b) => Number(b.isLong) - Number(a.isLong) || a.rank - b.rank);
+      const n = mine.length;
+      const cap = DISC[disc].max;
+      if (n === 1) mine[0].minutes = Math.min(cap, share);
+      else if (LONG_DISCS.includes(disc)) {
+        const long = Math.min(demandFor(profile.raceType)[disc], share * MAX_LONG_SHARE, cap);
+        mine.forEach((s, i) => { s.minutes = i === 0 ? long : Math.min(cap, (share - long) / (n - 1)); });
+      } else mine.forEach((s) => { s.minutes = Math.min(cap, share / n); });
+    }
+    // Never a sliver: a session the split leaves under its floor is lifted to
+    // it. Only a week that cannot hold the floors drops sessions (below).
+    for (const s of slots) s.minutes = Math.min(DISC[s.disc].max, Math.max(floorOf(s.disc), s.minutes));
+  };
+
+  if (recovery && slots.length) {
+    size();
+    for (let k = recoveryDropCount(slots.length); k > 0; k--) {
+      const out = nextDrop(slots);
+      if (!out) break;
+      slots.splice(slots.indexOf(out), 1);
+    }
+  }
+
+  // A small week: drop in the documented order until the floors fit the budget
+  // and each day's floors fit that day.
+  for (let guard = 0; guard < 64 && slots.length; guard++) {
+    size();
+    const floors = (list) => list.reduce((a, s) => a + floorOf(s.disc), 0);
+    const crowded = DAYS.find((d) => floors(slots.filter((s) => s.day === d)) > avail[d]);
+    if (floors(slots) <= target && !crowded) break;
+    const within = crowded ? slots.filter((s) => s.day === crowded) : slots;
+    const out = nextDrop(slots, within) ?? lastResort(slots, within);
+    if (!out) break;
+    slots.splice(slots.indexOf(out), 1);
+  }
+
+  // A day holds what its slots add up to, never more than the athlete has: the
+  // day's ordinary sessions give way first, then strength, then the long one.
+  for (const day of DAYS) {
+    const here = slots.filter((s) => s.day === day);
+    let over = here.reduce((a, s) => a + s.minutes, 0) - avail[day];
+    for (const group of [
+      here.filter((s) => !s.isLong && s.disc !== 'Strength'),
+      here.filter((s) => s.disc === 'Strength'),
+      here.filter((s) => s.isLong),
+    ]) {
+      if (over <= 0) break;
+      const room = group.reduce((a, s) => a + s.minutes - floorOf(s.disc), 0);
+      if (room <= 0) continue;
+      const take = Math.min(over, room);
+      for (const s of group) s.minutes -= (take * (s.minutes - floorOf(s.disc))) / room;
+      over -= take;
+    }
+  }
+
+  const placed = slots.map((s) => ({
+    day: s.day,
+    disc: s.disc,
+    minutes: s.minutes,
+    family,
+    isLong: s.isLong,
+    // The Mobility focus the generator already writes for Race weeks: no new
+    // coaching content for a recovery week.
+    ...(recovery && s.disc === 'Strength' ? { focus: FOCUS.Strength.Race } : {}),
+  }));
+  const remaining = Object.fromEntries(DAYS.map((d) => [d, avail[d] - placed.filter((s) => s.day === d).reduce((a, s) => a + s.minutes, 0)]));
+  return { placed, remaining };
+}
+
 /**
  * Generate one week of sessions.
  *
@@ -371,9 +527,12 @@ function reconcile(placed, remaining, target) {
  * @param {boolean} [opts.raceOnly] the race is short enough to be a hard day in
  *                                 the build, not an event to arrive fresh for:
  *                                 only `raceDay` itself is cleared, not what follows
+ * @param {boolean} [opts.recovery] a recovery week. Only a week built from a
+ *                                 weekly pattern reads it (it gives up a session or
+ *                                 two); every other week is as it always was
  * @returns {{sessions: object[], budgetMinutes: number, plannedMinutes: number, shortfallMinutes: number}}
  */
-export function generateWeek({ hours, block, profile, idPrefix = 'w', raceDay = null, raceOnly = false }) {
+export function generateWeek({ hours, block, profile, idPrefix = 'w', raceDay = null, raceOnly = false, recovery = false }) {
   const family = blockFamily(block);
   const budgetMinutes = Math.max(0, Math.round((Number(hours) || 0) * 60));
 
@@ -393,13 +552,25 @@ export function generateWeek({ hours, block, profile, idPrefix = 'w', raceDay = 
   // The shape table decides how the week falls across its days; availability is
   // only the ceiling that shape is clipped to. `targetMinutes` is what the
   // athlete can actually absorb — where a budget bigger than the week gets cut.
-  const budgets = dayBudgets({ budgetMinutes, profile, closedDays });
-  const target = budgets.targetMinutes;
+  const counts = resolveCounts(block, family, profile);
+  let placed;
+  if (Object.keys(counts).length) {
+    // The athlete's weekly pattern decides the sessions and their days; the
+    // shape table is not consulted, and availability is only the ceiling.
+    const avail = Object.fromEntries(DAYS.map((d) => [d, closedDays.includes(d) ? 0 : profile.availability[d] || 0]));
+    const target = Math.min(budgetMinutes, DAYS.reduce((a, d) => a + avail[d], 0));
+    const built = patternWeek({ block, family, profile, counts, target, avail, closedDays, recovery });
+    placed = reconcile(built.placed, built.remaining, target, ['Strength']);
+  } else {
+    const budgets = dayBudgets({ budgetMinutes, profile, closedDays });
+    const target = budgets.targetMinutes;
 
-  const targets = discTargets(target, block, profile, budgets);
-  const { placed, remaining } = place(targets, profile, family, profile.raceType, budgets);
-  fillGaps(placed, remaining, targets, profile, family, target);
-  reconcile(placed, remaining, target);
+    const targets = discTargets(target, block, profile, budgets);
+    const placing = place(targets, profile, family, profile.raceType, budgets);
+    placed = placing.placed;
+    fillGaps(placed, placing.remaining, targets, profile, family, target);
+    reconcile(placed, placing.remaining, target);
+  }
 
   const work = placed
     .filter((s) => s.minutes > 0)
@@ -416,7 +587,7 @@ export function generateWeek({ hours, block, profile, idPrefix = 'w', raceDay = 
         id: '',
         day,
         disc: s.disc,
-        focus: FOCUS[s.disc][family],
+        focus: s.focus ?? FOCUS[s.disc][family],
         dur: minToDur(s.minutes),
         zone,
         // Absent rather than undefined on everything that is not a run, so a

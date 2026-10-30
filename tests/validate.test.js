@@ -412,6 +412,70 @@ test('a long day a constraint rules out is said too', () => {
   assert.ok(codes(validateSeason(weeks, { profile: p })).includes('long-day-unavailable'));
 });
 
+/* ---- the weekly pattern ---- */
+
+const patterned = (extra = {}) => normalizeProfile({
+  availability: { ...anyDay(120), Mon: 0 },
+  weekPattern: { Run: ['Tue', 'Thu', 'Sat'], Swim: ['Fri', 'Sat', 'Sun'] },
+  sessionCounts: { Base: { Run: 3, Swim: 2 }, Build: { Run: 3, Swim: 2 } },
+  ...extra,
+});
+const seasonBlocks = (blocks) => blocks.map((block, absWeek) => ({ absWeek, block, hours: 8, sessions: [] }));
+const slotHits = (weeks, p) => validateSeason(weeks, { profile: p }).filter((i) => i.code === 'pattern-slot-unavailable');
+
+test('a listed day with no time is said once for the season, not every week', () => {
+  const p = patterned({ availability: { ...anyDay(120), Mon: 0, Thu: 0 } });
+  const hits = slotHits(seasonBlocks(['Base 1', 'Base 2', 'Base 3', 'Build 1', 'Build 2']), p);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].level, 'warn');
+  assert.equal(hits[0].weekIndex, null);
+  assert.match(hits[0].message, /Thu/);
+});
+
+test('a listed day a constraint rules out is said too', () => {
+  const p = patterned({ constraints: [{ disc: 'Swim', rule: 'avoidDays', value: ['Fri'] }] });
+  const hits = slotHits(seasonBlocks(['Base 1']), p);
+  assert.equal(hits.length, 1);
+  assert.match(hits[0].message, /Fri/);
+  assert.match(hits[0].message, /swim/i);
+});
+
+test('a day past the count is not needed, so it is not said', () => {
+  // Swim wants two: Fri and Sat. Sun being unusable changes nothing.
+  const p = patterned({ availability: { ...anyDay(120), Mon: 0, Sun: 0 } });
+  assert.deepEqual(slotHits(seasonBlocks(['Base 1']), p), []);
+});
+
+test('only the blocks the season has are read', () => {
+  const p = patterned({
+    availability: { ...anyDay(120), Mon: 0, Thu: 0 },
+    sessionCounts: { Base: { Run: 2, Swim: 1 }, Build: { Run: 3, Swim: 1 } },
+  });
+  // Base asks for Tue and Thu only for two runs; a season with no Build never needs Sat.
+  assert.equal(slotHits(seasonBlocks(['Base 1']), p).length, 1);
+  const needsThird = patterned({
+    availability: { ...anyDay(120), Mon: 0, Sat: 0 },
+    sessionCounts: { Base: { Run: 2, Swim: 1 }, Build: { Run: 3, Swim: 1 } },
+  });
+  assert.deepEqual(slotHits(seasonBlocks(['Base 1']), needsThird), []);
+  assert.equal(slotHits(seasonBlocks(['Base 1', 'Build 1']), needsThird).length, 1);
+});
+
+test('more swims than the cap allows is capped silently, with no warning', () => {
+  const p = patterned({
+    availability: { ...anyDay(120), Mon: 0, Sun: 0 },
+    constraints: [{ disc: 'Swim', rule: 'maxPerWeek', value: 1 }],
+    sessionCounts: { Base: { Run: 3, Swim: 3 } },
+  });
+  assert.deepEqual(slotHits(seasonBlocks(['Base 1']), p), []);
+});
+
+test('it never fires on a profile without a pattern', () => {
+  const plain = normalizeProfile({ availability: { ...anyDay(120), Mon: 0, Thu: 0 } });
+  assert.deepEqual(slotHits(seasonBlocks(['Base 1', 'Build 1']), plain), []);
+  assert.deepEqual(slotHits(seasonBlocks(['Base 1']), patterned({ sessionCounts: undefined })), []);
+});
+
 /* The planner builds weeks against the ceilings the validator holds them to, so
    it reads them from here rather than keeping its own copy. */
 

@@ -115,7 +115,8 @@ const MODEL_LIMIT = 40000;
 function weekModel(profile) {
   const key = JSON.stringify([
     profile.availability, profile.constraints, profile.splits ?? null, profile.weekShape ?? null,
-    profile.longDays ?? null, profile.maxSessionsPerDay ?? null, profile.raceType,
+    profile.longDays ?? null, profile.maxSessionsPerDay ?? null, profile.weekPattern ?? null,
+    profile.sessionCounts ?? null, profile.raceType,
   ]);
   let memo = MODELS.get(key);
   if (!memo) {
@@ -127,11 +128,11 @@ function weekModel(profile) {
   for (const m of MODELS.values()) held += m.size;
   if (held > MODEL_LIMIT) for (const m of MODELS.values()) m.clear();
 
-  return function week(minutes, block, raceDay = null, raceOnly = false) {
-    const k = `${block}|${minutes}|${raceDay ?? ''}|${raceOnly ? 1 : 0}`;
+  return function week(minutes, block, raceDay = null, raceOnly = false, recovery = false) {
+    const k = `${block}|${minutes}|${raceDay ?? ''}|${raceOnly ? 1 : 0}|${recovery ? 1 : 0}`;
     let hit = memo.get(k);
     if (!hit) {
-      const { sessions, plannedMinutes } = generateWeek({ hours: minutes / 60, block, profile, raceDay, raceOnly });
+      const { sessions, plannedMinutes } = generateWeek({ hours: minutes / 60, block, profile, raceDay, raceOnly, recovery });
       const byDay = DAYS.map(() => 0);
       for (const s of sessions) {
         const i = DAYS.indexOf(s.day);
@@ -146,10 +147,10 @@ function weekModel(profile) {
 
 /* The fewest minutes (in whole blocks) whose week carries at least `load`; the
    most there is when none does. */
-function minutesForLoad(week, block, closure, load, maxMinutes) {
+function minutesForLoad(week, block, closure, load, maxMinutes, recovery = false) {
   const top = Math.max(0, Math.floor(maxMinutes / STEP));
   if (!(load > 0)) return 0;
-  const at = (i) => week(i * STEP, block, closure.raceDay, closure.raceOnly);
+  const at = (i) => week(i * STEP, block, closure.raceDay, closure.raceOnly, recovery);
   if (at(top).load < load) return top * STEP;
   let lo = 0;
   let hi = top;
@@ -208,6 +209,10 @@ function check(input) {
   return n;
 }
 
+/* How far ahead of its own climb fitness has to be before the climb is laid again. Float
+   noise and a week that comes in a few minutes over what was asked are not a reason. */
+const REBASE_TOLERANCE = 0.05;
+
 /* ---- one pass: build the season for a given level at the end of the build --- */
 
 function buildPass(ctx, preTail) {
@@ -244,7 +249,7 @@ function buildPass(ctx, preTail) {
     const f = frozen[i];
     entries.push(f);
     const minutes = Math.round(f.hours * 60);
-    const g = week(minutes, f.block, closureOf(i).raceDay, closureOf(i).raceOnly);
+    const g = week(minutes, f.block, closureOf(i).raceDay, closureOf(i).raceOnly, !!f.recovery);
     const loading = !f.recovery && !isTaperBlock(f.block);
     track(i, f.block, g.minutes, loading);
     prevGenerated = g.minutes;
@@ -258,17 +263,24 @@ function buildPass(ctx, preTail) {
   // week of a season aimed at the peak is not a rung of it, only asked to bring fitness back to
   // where the build left it (below), after the easy week that comes before it.
   for (let i = keep; i < Math.max(keep, modelTailStart); i++) if (!labels[i].base.recovery) loadingWeeks.push(i);
-  const K = loadingWeeks.length;
-  const gap = preTail - c0;
-  let climbing = K;
-  if (gap <= 0) climbing = 0;
-  else if (K > 0 && gap / K < PLAN_MODEL.ramp.floor) climbing = Math.max(1, Math.ceil(gap / PLAN_MODEL.ramp.floor));
   const waypoint = new Map();
-  loadingWeeks.forEach((w, k) => {
-    const done = k + 1 - (K - climbing);
-    waypoint.set(w, gap <= 0 || done <= 0 ? c0 : c0 + (gap * Math.min(done, climbing)) / climbing);
-  });
-  if (taperShare) for (let i = Math.max(keep, modelTailStart); i < tailStart; i++) if (!labels[i].base.recovery) waypoint.set(i, gap <= 0 ? c0 : preTail);
+  // The climb from `level`, laid over the loading weeks from `from` on. It is laid once, from
+  // where the season starts; and again (below) if a week the athlete has pinned leaves fitness
+  // ahead of it, from where fitness actually is.
+  const climbFrom = (from, level) => {
+    const weeks = loadingWeeks.filter((w) => w >= from);
+    const K = weeks.length;
+    const gap = preTail - level;
+    let climbing = K;
+    if (gap <= 0) climbing = 0;
+    else if (K > 0 && gap / K < PLAN_MODEL.ramp.floor) climbing = Math.max(1, Math.ceil(gap / PLAN_MODEL.ramp.floor));
+    weeks.forEach((w, k) => {
+      const done = k + 1 - (K - climbing);
+      waypoint.set(w, gap <= 0 || done <= 0 ? level : level + (gap * Math.min(done, climbing)) / climbing);
+    });
+    if (taperShare) for (let i = Math.max(from, modelTailStart); i < tailStart; i++) if (!labels[i].base.recovery) waypoint.set(i, gap <= 0 ? level : preTail);
+  };
+  climbFrom(keep, c0);
 
   // One week carried day by day from where the two averages stand: where they
   // end, the highest fitness any day reaches and the highest acute-to-chronic
@@ -302,6 +314,11 @@ function buildPass(ctx, preTail) {
     const inModelTail = i >= modelTailStart;
     const loadingKind = !tail && !L.recovery && (!isTaperBlock(L.block) || inModelTail);
     const special = !tail && !L.recovery && isTaperBlock(L.block) && !inModelTail;     // a tune-up's taper or race week
+    // Weeks the athlete pinned can leave fitness ahead of the climb. This week is not asked to
+    // bring it back down to a line it has already passed — that is how a plan with its first
+    // weeks pinned high used to starve everything after them. The rest of the climb is laid
+    // again from where fitness actually is, to the same level at the end of the build.
+    if (waypoint.has(i) && ideal > waypoint.get(i) + REBASE_TOLERANCE) climbFrom(i, ideal);
     let minutes;
     const pinned = pins[weekKey(i)];
     // Cut `minutes` back, a block at a time, until the week, carried day by day by
@@ -316,7 +333,7 @@ function buildPass(ctx, preTail) {
       const fitMax = Math.max(ceiling, ctl) + 1e-9;
       if (rampMax === Infinity && ratioMax === Infinity && fitMax === Infinity) return;
       while (minutes > 0) {
-        const c = advance(ctl, fat, i, week(minutes, L.block, closure.raceDay, closure.raceOnly).byDay);
+        const c = advance(ctl, fat, i, week(minutes, L.block, closure.raceDay, closure.raceOnly, !!L.recovery).byDay);
         if (c.fit <= rampMax && c.maxRatio <= ratioMax && c.maxFit <= fitMax) return;
         minutes -= STEP;
       }
@@ -340,17 +357,17 @@ function buildPass(ctx, preTail) {
       const ref = lastLoadMinutes ?? virtualBuildMinutes(ctx, ctl);
       const cap = Math.min(availability, prevGenerated === null ? availability : prevGenerated);
       minutes = Math.min(Math.round((ref * share) / STEP) * STEP, Math.floor(cap / STEP) * STEP);
-      while (minutes > 0 && week(minutes, L.block, closure.raceDay, closure.raceOnly).minutes > cap) minutes -= STEP;
+      while (minutes > 0 && week(minutes, L.block, closure.raceDay, closure.raceOnly, !!L.recovery).minutes > cap) minutes -= STEP;
     } else if (tail) {
       const ref = lastLoadMinutes ?? virtualBuildMinutes(ctx, ctl);
       const refMultiplier = lastLoadMultiplier ?? multiplier('Build 2', 2);
       minutes = Math.round(((ref * multiplier(L.block, L.week)) / refMultiplier) / STEP) * STEP;
       minutes = Math.min(minutes, Math.floor(availability / STEP) * STEP);
     } else if (L.recovery) {
-      minutes = minutesForLoad(week, L.block, closure, (lastLoad ?? weeklyLoadFor(ctl, ctl)) * DEFAULT_SEASON.recovery, availability);
+      minutes = minutesForLoad(week, L.block, closure, (lastLoad ?? weeklyLoadFor(ctl, ctl)) * DEFAULT_SEASON.recovery, availability, !!L.recovery);
     } else if (special) {
       const depth = depths.get(i) ?? PLAN_MODEL.taperUnknown;
-      minutes = minutesForLoad(week, L.block, closure, trajectoryLoad() * (1 - depth), availability);
+      minutes = minutesForLoad(week, L.block, closure, trajectoryLoad() * (1 - depth), availability, !!L.recovery);
     } else {
       // A loading week: as much as the waypoint asks, no more than the athlete's
       // week, and no more than the validator's volume step allows.
@@ -367,9 +384,9 @@ function buildPass(ctx, preTail) {
       if (lastLoadMinutes === null && i === keep) stepCap = Math.min(stepCap, Math.floor((ctx.baselineMinutes * MAX_RAMP) / STEP) * STEP);
       const cap = Math.min(availability, stepCap);
       const asked = trajectoryLoad();
-      minutes = minutesForLoad(week, L.block, closure, asked, cap);
+      minutes = minutesForLoad(week, L.block, closure, asked, cap, !!L.recovery);
       // The generated week can come in a few minutes over what was asked for.
-      while (minutes > 0 && week(minutes, L.block, closure.raceDay, closure.raceOnly).minutes > cap) minutes -= STEP;
+      while (minutes > 0 && week(minutes, L.block, closure.raceDay, closure.raceOnly, !!L.recovery).minutes > cap) minutes -= STEP;
       // And the average, carried day by day, can rise a little more than the
       // week's even-load figure says; the ramp is held to what it actually does,
       // and the two hard ceilings (acute load, fitness) with it.
@@ -377,7 +394,7 @@ function buildPass(ctx, preTail) {
       loadingWeek = true;
       // A week that carries what was asked of it puts the plan exactly on its
       // waypoint; one held back by a cap puts it where that load really takes it.
-      if (week(minutes, L.block, closure.raceDay, closure.raceOnly).load >= asked - 1e-6) idealNext = goalOf();
+      if (week(minutes, L.block, closure.raceDay, closure.raceOnly, !!L.recovery).load >= asked - 1e-6) idealNext = goalOf();
     }
 
     // The ceiling on fitness holds for every week the planner sizes, not only the
@@ -386,16 +403,18 @@ function buildPass(ctx, preTail) {
     // last week.
     if (!loadingWeek && !(Number.isFinite(pinned) && pinned >= 0)) cutBack({ ramp: false, ratio: false });
 
-    const g = week(minutes, L.block, closure.raceDay, closure.raceOnly);
-    ideal = idealNext ?? afterWeek(ideal, g.load);
-    const after = advance(ctl, fat, i, g.byDay);
-    const next = after.fit;
-    // A week the athlete pinned down to a recovery week's size or less is one:
-    // the weeks after it come back to where they were, not 10 % at a time from
-    // there, which is what the validator would otherwise ask of them.
+    // A week pinned down to a recovery week's size is one: the entry says so, so the week
+    // is read as one here too, or the plan's chart and the planner would price it differently.
     const light = Number.isFinite(pinned) && loadingKind && lastLoadMinutes !== null
       && minutes <= lastLoadMinutes * DEFAULT_SEASON.recovery + STEP;
     const easy = L.recovery || light;
+    const g = week(minutes, L.block, closure.raceDay, closure.raceOnly, !!easy);
+    ideal = idealNext ?? afterWeek(ideal, g.load);
+    const after = advance(ctl, fat, i, g.byDay);
+    const next = after.fit;
+    // (A week the athlete pinned down to a recovery week's size or less is one:
+    // the weeks after it come back to where they were, not 10 % at a time from
+    // there, which is what the validator would otherwise ask of them.)
     entries.push({
       block: L.block, week: L.week, recovery: easy, absWeek: i, load: 0,
       hours: round3(minutes / 60), ctl: round1(next),

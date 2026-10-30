@@ -855,6 +855,93 @@ test('set_session_preferences refuses what it cannot use, and leaves no draft', 
   }
 });
 
+/* ---- the weekly pattern ---- */
+
+const PATTERN_INPUT = {
+  pattern: { Run: ['Tue', 'Thu', 'Sat'], Swim: ['Fri', 'Sat', 'Sun'], Strength: ['Wed', 'Tue'] },
+  counts: { Base: { Run: 3, Swim: 1, Strength: 2 }, Build: { Run: 3, Swim: 2, Strength: 1 } },
+};
+const work = (wk) => wk.sessions.filter((x) => x.minutes > 0);
+
+test('the coach can read the weekly pattern, and an unset one is null', () => {
+  const prof = parse(call(createSession(basePlan()), 'get_profile'));
+  assert.equal(prof.weekPattern, null);
+  assert.equal(prof.sessionCounts, null);
+  const s = createSession(basePlan());
+  call(s, 'set_week_pattern', PATTERN_INPUT);
+  const after = parse(call(s, 'get_profile'));
+  assert.deepEqual(after.weekPattern, PATTERN_INPUT.pattern);
+  assert.deepEqual(after.sessionCounts, PATTERN_INPUT.counts);
+});
+
+test('set_week_pattern drafts a season that follows the pattern, and the diff shows it', () => {
+  const s = createSession(basePlan());
+  const r = call(s, 'set_week_pattern', PATTERN_INPUT);
+  assert.notEqual(r.isError, true);
+  assert.ok(s.draft, 'a draft, not a change to the plan');
+  const base = s.draft.season.findIndex((w) => w.block.startsWith('Base') && !w.recovery);
+  const wk = parse(call(s, 'get_week', { week: base + 1 }));
+  const days = (disc) => work(wk).filter((x) => x.disc === disc).map((x) => x.day).sort();
+  assert.deepEqual(days('Run'), ['Sat', 'Thu', 'Tue']);
+  assert.equal(days('Swim').length, 1);
+  assert.equal(days('Strength').length, 2);
+  assert.ok(sessionDiff(s).weeks.length > 0);
+});
+
+test('set_week_pattern changes only what it is given: a discipline, a block, a count', () => {
+  const s = createSession(basePlan());
+  call(s, 'set_week_pattern', PATTERN_INPUT);
+  call(s, 'set_week_pattern', { pattern: { Swim: ['Mon', 'Fri'] }, counts: { Base: { Swim: 2 } } });
+  const prof = parse(call(s, 'get_profile'));
+  assert.deepEqual(prof.weekPattern.Run, ['Tue', 'Thu', 'Sat']);
+  assert.deepEqual(prof.weekPattern.Swim, ['Mon', 'Fri']);
+  assert.deepEqual(prof.sessionCounts.Base, { Run: 3, Swim: 2, Strength: 2 });
+  assert.deepEqual(prof.sessionCounts.Build, { Run: 3, Swim: 2, Strength: 1 });
+});
+
+test('an empty list or a null count takes that entry away; clear takes the lot', () => {
+  const s = createSession(basePlan());
+  call(s, 'set_week_pattern', PATTERN_INPUT);
+  call(s, 'set_week_pattern', { pattern: { Strength: [] }, counts: { Build: { Swim: null } } });
+  const prof = parse(call(s, 'get_profile'));
+  assert.equal(prof.weekPattern.Strength, undefined);
+  assert.equal(prof.sessionCounts.Base.Strength, undefined, 'a count with no days to take goes with them');
+  assert.equal(prof.sessionCounts.Build.Swim, undefined);
+  call(s, 'set_week_pattern', { clear: true });
+  const gone = parse(call(s, 'get_profile'));
+  assert.equal(gone.weekPattern, null);
+  assert.equal(gone.sessionCounts, null);
+});
+
+test('set_week_pattern refuses what it cannot use, and leaves no draft', () => {
+  for (const bad of [
+    {},
+    { pattern: { Run: ['Funday'] } },
+    { pattern: { Rowing: ['Mon'] } },
+    { pattern: { Run: 'Mon' } },
+    { counts: { Base: { Run: 2 } } },                        // no days for the run to take
+    { pattern: { Run: ['Tue', 'Thu'] }, counts: { Base: { Run: 3 } } },   // more than the list
+    { pattern: { Run: ['Tue'] }, counts: { Base: { Run: 1.5 } } },
+    { pattern: { Run: ['Tue'] }, counts: { Prep: { Run: 1 } } },
+    { pattern: { Run: ['Tue'] }, counts: { Base: { Walking: 1 } } },
+  ]) {
+    const s = createSession(basePlan());
+    const r = call(s, 'set_week_pattern', bad);
+    assert.equal(r.isError, true, JSON.stringify(bad));
+    assert.equal(s.draft, null, JSON.stringify(bad));
+  }
+});
+
+test('the pattern tool is described as a standing rule, and keeps trained weeks', () => {
+  const def = TOOL_DEFS.find((t) => t.name === 'set_week_pattern');
+  assert.match(def.description, /standing/i);
+  const plan = basePlan();
+  const today = dateOf(plan.start, 3, 'Wed');
+  const s = createSession(plan, { today });
+  call(s, 'set_week_pattern', PATTERN_INPUT);
+  for (const w of [0, 1, 2]) assert.deepEqual(s.draft.weeks[`w${w}`], plan.weeks[`w${w}`], `week ${w + 1} untouched`);
+});
+
 /* ---- weeks already trained are kept ---- */
 
 test('a coach change reshapes the weeks to come, not the weeks already trained', () => {

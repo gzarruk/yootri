@@ -27,12 +27,13 @@
 
 import { weekCompliance, getActual, actualMinutes } from './actuals.js';
 import { durToMin } from './duration.js';
+import { resolveCounts } from './pattern.js';
 import { weekCount } from './plan.js';
 import { weeklyHistory, summarizeHistory, HISTORY_DISCIPLINES, HISTORY_THRESHOLDS } from './history.js';
 import { asRunEffort } from './synced.js';
 import { benchmarkCandidates, STANDARD_DISTANCES } from './activities.js';
 import { currentBenchmark, vdotFrom } from './paces.js';
-import { resolveSplit } from './generate.js';
+import { resolveSplit, blockFamily } from './generate.js';
 import { dateOf } from './calendar.js';
 import { parseISO, toISO, addDays, mondayOf } from './dates.js';
 
@@ -334,7 +335,15 @@ function historyRules(plan, here) {
 
   /* --- Where the time has actually gone, against the block's split ------ */
   const block = plan.season?.[here]?.block;
-  const planned = sharesOf(resolveSplit(block, plan.profile));
+  // A block the athlete's weekly pattern builds is not shaped by the split (strength is a
+  // set length, and a discipline may have fewer sessions than its share would give it), so
+  // it is read against the week that was actually built — and there is no split to propose.
+  const built = plan.weeks?.[weekKey(here)] ?? [];
+  const patterned = !!block && Object.keys(resolveCounts(block, blockFamily(block), plan.profile)).length > 0
+    && built.some((x) => x.disc !== 'Rest');
+  const planned = sharesOf(patterned
+    ? Object.fromEntries(HISTORY_DISCIPLINES.map((d) => [d, built.filter((x) => x.disc === d).reduce((a, x) => a + durToMin(x.dur), 0)]))
+    : resolveSplit(block, plan.profile));
   const recorded = summary.share;
   if (block && summary.totalMinutes / 60 >= H.splitMinHours) {
     const drifting = HISTORY_DISCIPLINES.filter((d) => Math.abs(recorded[d] - planned[d]) >= H.splitDrift);
@@ -343,7 +352,7 @@ function historyRules(plan, here) {
       // A proposal that sets a scheduled discipline to nothing because it was
       // not recorded would take it out of the block. That is a conversation,
       // not a button.
-      const proposable = scheduled.every((d) => recorded[d] > 0);
+      const proposable = !patterned && scheduled.every((d) => recorded[d] > 0);
       out.push({
         code: 'split-drift',
         severity: 'info',

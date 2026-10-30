@@ -420,3 +420,18 @@ table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transp
 #status-root { display: flex; flex-direction: column; gap: 14px; }
 .nav-sub { display: block; margin-top: 1px; font-size: 11px; line-height: 1.3; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
 .nav.on .nav-sub, .nav:hover .nav-sub { color: color-mix(in srgb, var(--color-text) 72%, transparent); }
+
+/* The weekly pattern editor (wizard "Your week" and Plan setup): a row of day chips
+   per sport, and a small phase-by-sport grid of session counts. */
+.pat-row { display: grid; grid-template-columns: 5.5rem 1fr; gap: .5rem; align-items: center; margin-bottom: .4rem; }
+.pat-name { font-size: .85rem; }
+.pat-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .3rem; }
+.pat-day { min-height: 44px; padding: 5px 0; }
+.pat-counts { display: grid; grid-template-columns: minmax(6.5rem, 9rem) repeat(4, minmax(0, 1fr)); gap: .35rem; align-items: center; }
+.pat-counts .input { width: 100%; text-align: center; padding: .35rem .2rem; }
+.pat-head { font-size: .72rem; text-align: center; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.pat-phase { font-size: .8rem; }
+@media (max-width: 560px) {
+  .pat-row { grid-template-columns: 1fr; gap: .25rem; }
+  .pat-counts { grid-template-columns: minmax(5rem, 7rem) repeat(4, minmax(0, 1fr)); }
+}

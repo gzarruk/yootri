@@ -91,6 +91,10 @@ export function prefill({ athlete, plan = null, today, carry = null } = {}) {
     if (prof.maxSessionsPerDay) out.maxSessionsPerDay = prof.maxSessionsPerDay;
     const swims = prof.constraints.find((c) => c.disc === 'Swim' && c.rule === 'maxPerWeek');
     if (swims) out.maxSwims = swims.value;
+    // The weekly pattern, if the athlete has one: copies, so editing the wizard's
+    // answers can never reach the plan they came from.
+    if (prof.weekPattern) out.weekPattern = structuredClone(prof.weekPattern);
+    if (prof.sessionCounts) out.sessionCounts = structuredClone(prof.sessionCounts);
 
     const refs = normalizeLoadRefs(plan.loadRefs);
     if (refs?.ftpW) out.ftpW = refs.ftpW;
@@ -337,6 +341,13 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
   const swimCap = nowhereToSwim ? 0 : (given(a.maxSwims) ? Number(a.maxSwims) : undefined);
   if (swimCap !== undefined) constraints.push({ disc: 'Swim', rule: 'maxPerWeek', value: swimCap });
 
+  // A pattern and its counts go together. The wizard's answers decide when they say
+  // anything about either (an emptied one is how the athlete removes it); a draft
+  // that never reached them keeps what the plan being left had, as splits do.
+  const said = a.weekPattern !== undefined || a.sessionCounts !== undefined;
+  const weekPattern = said ? a.weekPattern : baseProfile?.weekPattern;
+  const sessionCounts = said ? a.sessionCounts : baseProfile?.sessionCounts;
+
   const profile = {
     ...(baseProfile?.splits ? { splits: baseProfile.splits } : {}),
     ...(baseProfile?.weekShape ? { weekShape: baseProfile.weekShape } : {}),
@@ -344,6 +355,8 @@ export function buildPlanFromAnswers(a, { today, now = Date.now(), base = null, 
     constraints,
     longDays: { Bike: a.longRideDay, Run: a.longRunDay },
     maxSessionsPerDay: a.maxSessionsPerDay,
+    ...(weekPattern ? { weekPattern } : {}),
+    ...(sessionCounts ? { sessionCounts } : {}),
   };
 
   let benchmarks = normalizeBenchmarks(base?.benchmarks);

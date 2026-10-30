@@ -9,6 +9,8 @@
 #   make stop             free port 8000 (a server outlives a closed terminal)
 #   make check            everything CI runs: unit tests + repo hygiene
 #
+#   make claude-bridge    answer the coach with the Claude Code signed in here, not an API key
+#
 #   make garmin-login     sign in to Garmin once (personal use; see tools/garmin-bridge)
 #   make garmin           run the Garmin bridge while you sync from the page
 #   make garmin-pair      open the one-click link that pairs this browser with it
@@ -18,6 +20,7 @@
 PORT ?= 8000
 OPEN ?= 1
 GARMIN_PORT ?= 8765
+CLAUDE_PORT ?= 8766
 
 # The Garmin bridge is the one part of yootri that is not plain files: a small
 # Python program run with uv. Everything else works without either.
@@ -27,11 +30,16 @@ NEED_UV = command -v uv >/dev/null 2>&1 || { \
 	exit 1; }
 
 .DEFAULT_GOAL := dev
-.PHONY: dev stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test
+.PHONY: dev claude-bridge stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test
 
 ## dev: serve at http://localhost:8000/ (PORT=8001 to change)
 dev:
 	@PORT=$(PORT) OPEN=$(OPEN) node tools/dev-server.mjs
+
+## claude-bridge: let the coach use your signed-in Claude Code instead of an API key (tools/claude-bridge)
+claude-bridge:
+	@command -v claude >/dev/null 2>&1 || { echo "  Needs Claude Code, signed in: https://claude.com/claude-code"; exit 1; }
+	@node tools/claude-bridge/bridge.mjs --port $(CLAUDE_PORT) --allow-origin http://localhost:$(PORT)
 
 ## stop: stop whatever is serving on PORT (a dev server outlives a closed terminal)
 stop:

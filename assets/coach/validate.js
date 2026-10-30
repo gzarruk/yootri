@@ -12,7 +12,8 @@
    not to overrule the person doing the training. */
 
 import { DAYS, allowedDays, weeklyAvailableMinutes } from './profile.js';
-import { raceDemandMinutes } from './generate.js';
+import { raceDemandMinutes, blockFamily } from './generate.js';
+import { resolveCounts, unusableNeeded } from './pattern.js';
 import { raceTypeLabel } from './events.js';
 import { isTaperBlock } from './season.js';
 import { durToMin } from './duration.js';
@@ -186,6 +187,30 @@ export function validateSeason(weeks, { profile, refusedLandings } = {}) {
     if (why) {
       out.push(issue('warn', 'long-day-unavailable', null,
         `You asked for the ${what} on ${day}, but ${why}, so it goes on another day.`));
+    }
+  }
+
+  /* A listed day of the weekly pattern the athlete's week cannot use. Said once
+     for the season, like a long day: it is a fact about the profile, and the
+     generator has already let the next listed day take the slot in every week.
+     Only the days a count in a block the season has actually needs are read,
+     and a race closing a day in its own week is not a reason to say anything. */
+  if (profile?.weekPattern) {
+    const problems = new Map();
+    for (const block of new Set(weeks.map((w) => w.block))) {
+      for (const [disc, n] of Object.entries(resolveCounts(block, blockFamily(block), profile))) {
+        for (const { day, why } of unusableNeeded(profile, disc, n)) {
+          problems.set(`${disc}|${day}`, { disc, day, why });
+        }
+      }
+    }
+    if (problems.size) {
+      const said = [...problems.values()].map(({ disc, day, why }) => {
+        const what = disc.toLowerCase();
+        return `${day} for ${what === 'strength' ? 'strength' : `the ${what}`} (${why === 'no-time' ? 'that day has no time available' : `your constraints keep ${what} off it`})`;
+      });
+      out.push(issue('warn', 'pattern-slot-unavailable', null,
+        `Your weekly pattern lists ${said.join('; ')}, so a later day on the list takes the place of each where there is one.`));
     }
   }
 

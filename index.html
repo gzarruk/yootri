@@ -865,6 +865,8 @@
   .unreleased { grid-column: 1 / -1; padding: 1.4rem 1.2rem; border: 1px dashed var(--color-divider);
     border-radius: var(--radius-lg, 12px); display: flex; flex-direction: column; gap: .5rem; align-items: flex-start; }
   .unreleased-lead { margin: 0; font-size: .95rem; }
+  /* A week past the release horizon: shown, but visibly still a plan. */
+  .cal-day.unrel .cal-chip { opacity: .72; border-style: dashed; }
   .unreleased-sub { margin: 0; font-size: .82rem; color: color-mix(in srgb, var(--color-text) 62%, transparent); }
   .rv-done { color: var(--color-accent-300); }
   .rv-partial { color: var(--color-accent-100); }
@@ -1850,16 +1852,6 @@
 
     const icon = (name) => '<i class="ic ' + DISC[name].icon + '" style="color: ' + DISC[name].color + ';"></i>' + name;
 
-    // A week not released yet has no sessions to count: show only the hours
-    // it is planned to hold, as the board does.
-    if (!isReleased(plan, state.week)) {
-      els.summary.innerHTML =
-        cell('Planned volume', 'about ' + esc(String(weekInfo(state.week).hours)) + ' h', { accent: true }) +
-        cell('Sessions', '—') + cell(icon('Swim'), '—') + cell(icon('Bike'), '—') + cell(icon('Run'), '—') +
-        cell('Completed', '—', { wide: true });
-      return;
-    }
-
     const comp = weekCompliance(plan, state.week);
     const volSub = comp.logged
       ? ' <span class="sub act">did ' + (fmtTotal(comp.actualMinutes) || '0m') +
@@ -1976,26 +1968,24 @@
   function renderBoard() {
     const todayISO = toISO(new Date());
 
-    // A plan released one week at a time shows a week after the horizon as what
-    // it will be, not what is in it: the sessions are decided at the review.
+    // A plan released one week at a time still holds every week's sessions, so every week is
+    // shown. One after the release horizon is labelled: it is a plan, and the review of the
+    // week before it may still change it.
+    let unreleasedNote = '';
     if (!isReleased(plan, state.week)) {
-      $('dstrip').innerHTML = '';
-      const info = weekInfo(state.week);
       const rel = releaseState(plan, { today: todayISO });
-      els.board.innerHTML =
+      unreleasedNote =
         '<div class="unreleased">' +
-          '<p class="unreleased-lead">Week ' + (state.week + 1) + ' · ' + esc(info.block) + (info.recovery ? ' · easy week' : '') +
-            ' · about ' + esc(String(info.hours)) + ' h planned</p>' +
-          '<p class="unreleased-sub">Sessions for this week are set when it is released, after the review of week ' +
-            (plan.release.through + 1) + ' — so they reflect how that week actually went.</p>' +
+          '<p class="unreleased-lead">Not released yet — week ' + (state.week + 1) + ' is what the plan has for it today.</p>' +
+          '<p class="unreleased-sub">It is set when it is released, after the review of week ' +
+            (plan.release.through + 1) + ', so it can change to reflect how that week went.</p>' +
           (rel.due
             ? '<button type="button" class="btn btn-primary" data-act="review-week">Review week ' + (rel.reviewWeek + 1) + '</button>'
             : '') +
         '</div>';
-      return;
     }
 
-    els.board.innerHTML = DAYS.map((day) => {
+    els.board.innerHTML = unreleasedNote + DAYS.map((day) => {
       // Same mapping the month grid uses, so the two cannot disagree about
       // which date a session sits on.
       const iso = dateOf(state.start, state.week, day);
@@ -2098,9 +2088,8 @@
       '<button type="button" class="cal-rail" data-act="week" data-week="' + absWeek + '">' +
         '<span class="cal-rail-wk">Week ' + (absWeek + 1) + '</span>' +
         '<span class="cal-rail-block">' + esc(info.block) + (info.recovery ? ' · easy' : '') + '</span>' +
-        '<span class="cal-rail-vol">' + (isReleased(plan, absWeek)
-          ? (fmtTotal(c.plannedMinutes) || 'Rest')
-          : 'about ' + esc(String(info.hours)) + ' h · not released') + '</span>' +
+        '<span class="cal-rail-vol">' + (fmtTotal(c.plannedMinutes) || 'Rest') +
+          (isReleased(plan, absWeek) ? '' : ' · not released') + '</span>' +
         '<span class="cal-rail-bar"><i style="width: ' + pct + '%"></i></span>' +
       '</button>'
     );
@@ -2116,7 +2105,6 @@
     // looking into the same handful of weeks.
     const byDay = {};
     for (const w of plan.season) {
-      if (!isReleased(plan, w.absWeek)) continue;
       for (const s of plan.weeks['w' + w.absWeek] || []) {
         if (durToMin(s.dur) <= 0) continue;
         const iso = dateOf(state.start, w.absWeek, s.day);
@@ -2135,6 +2123,7 @@
         const sessions = byDay[d.iso] || [];
         const mins = sessions.reduce((a, x) => a + durToMin(x.dur), 0);
         const cls = 'cal-day' + (d.inMonth ? '' : ' out-month') + (d.inPlan ? '' : ' out') +
+          (d.inPlan && !isReleased(plan, d.absWeek) ? ' unrel' : '') +
           (d.iso === todayISO ? ' today' : '');
         return (
           '<div class="' + cls + '" data-date="' + d.iso + '"' +
@@ -2964,6 +2953,83 @@
   const field = (label, control) =>
     '<label class="pnl-f"><span>' + label + '</span>' + control + '</label>';
 
+  /* ---- the weekly pattern, shared by the wizard's "Your week" and Plan setup ----
+     Which days each sport takes, in the order the athlete would use them, and how
+     many sessions each has in a phase. The click order is the priority. Anything
+     left empty is "let yootri choose" and stores nothing (normalizeProfile drops
+     it). The long ride and long run keep their own days. */
+  const PATTERN_DISCS = ['Run', 'Bike', 'Swim', 'Strength'];
+  const PATTERN_PHASES = [['Base', 'Base'], ['Base 3', 'Base 3 (overrides Base)'], ['Build', 'Build'], ['Peak', 'Peak and taper']];
+
+  function patternEditorHTML(pattern, counts) {
+    const rows = PATTERN_DISCS.map((disc) => {
+      const picked = pattern?.[disc] ?? [];
+      return '<div class="pat-row" data-pat-disc="' + disc + '"><span class="pat-name">' + disc + '</span><div class="pat-days">' +
+        DAYS.map((d) => {
+          const i = picked.indexOf(d);
+          return '<button type="button" class="dchip pat-day' + (i >= 0 ? ' on' : '') + '" data-pat-day="' + d +
+            '" data-order="' + (i >= 0 ? i + 1 : '') + '" aria-pressed="' + (i >= 0) + '" aria-label="' + disc + ' on ' + d + '">' +
+            '<span>' + d + '</span><b>' + (i >= 0 ? i + 1 : '') + '</b></button>';
+        }).join('') + '</div></div>';
+    }).join('');
+    const head = '<span></span>' + PATTERN_DISCS.map((d) => '<span class="pat-head">' + d + '</span>').join('');
+    const grid = PATTERN_PHASES.map(([key, label]) => '<span class="pat-phase">' + esc(label) + '</span>' +
+      PATTERN_DISCS.map((disc) => '<input type="number" class="input" min="0" max="' + (pattern?.[disc]?.length ?? 0) +
+        '" step="1" placeholder="auto" aria-label="' + esc(label) + ' ' + disc + ' sessions" data-pat-count="' + key + '|' + disc + '" value="' +
+        esc(counts?.[key]?.[disc] ?? '') + '" />').join('')).join('');
+    return '<div class="pnl-sec pat-ed">' +
+      '<span class="pnl-sub" style="display:block">Your usual week (optional)</span>' +
+      '<p class="pnl-hint">If your week is fixed, click the days each sport takes, in the order you would use them. ' +
+        'When a phase asks for 3 sessions, the first 3 days are used; a day with no time is skipped. ' +
+        'Leave a sport empty and yootri chooses its days. The long ride and long run keep the days above.</p>' +
+      rows +
+      '<span class="pnl-sub" style="display:block;margin-top:.9rem">Sessions in each phase</span>' +
+      '<div class="pat-counts">' + head + grid + '</div>' +
+      '<p class="pnl-hint">An empty box lets yootri choose. A count can’t be more than the days you picked for that sport.</p>' +
+      '</div>';
+  }
+
+  /* Wire the day chips: a click adds a day to the end of the order, or takes it out and
+     closes the gap. The count boxes can never ask for more sessions than there are days. */
+  function bindPatternEditor(root) {
+    root.querySelectorAll('.pat-row').forEach((row) => {
+      const chips = [...row.querySelectorAll('.pat-day')];
+      const renumber = () => {
+        const on = chips.filter((c) => c.classList.contains('on')).sort((a, b) => Number(a.dataset.order) - Number(b.dataset.order));
+        chips.forEach((c) => { c.querySelector('b').textContent = ''; });
+        on.forEach((c, i) => { c.dataset.order = String(i + 1); c.querySelector('b').textContent = String(i + 1); });
+        root.querySelectorAll('[data-pat-count$="|' + row.dataset.patDisc + '"]').forEach((box) => {
+          box.max = String(on.length);
+          if (box.value !== '' && Number(box.value) > on.length) box.value = on.length ? String(on.length) : '';
+        });
+      };
+      chips.forEach((c) => c.addEventListener('click', () => {
+        const turningOn = !c.classList.contains('on');
+        c.classList.toggle('on', turningOn);
+        c.setAttribute('aria-pressed', String(turningOn));
+        c.dataset.order = turningOn ? '999' : '';
+        renumber();
+      }));
+    });
+  }
+
+  /** What the editor currently says, as profile fields (empty objects when it says nothing). */
+  function readPatternEditor(root) {
+    const weekPattern = {};
+    root.querySelectorAll('.pat-row').forEach((row) => {
+      const on = [...row.querySelectorAll('.pat-day.on')]
+        .sort((a, b) => Number(a.dataset.order) - Number(b.dataset.order)).map((c) => c.dataset.patDay);
+      if (on.length) weekPattern[row.dataset.patDisc] = on;
+    });
+    const sessionCounts = {};
+    root.querySelectorAll('[data-pat-count]').forEach((box) => {
+      if (box.value === '') return;
+      const [phase, disc] = box.dataset.patCount.split('|');
+      (sessionCounts[phase] ??= {})[disc] = Number(box.value);
+    });
+    return { weekPattern, sessionCounts };
+  }
+
   /* The race-distance picker. RACE_TYPES is what a race may be given now; the
      short distances were retired when the app settled on long-course racing.
 
@@ -3706,6 +3772,7 @@
         '<p class="pnl-hint">The long ride and long run go on these days whenever the day has room for them, ' +
           'and the day is given the week’s biggest share to make that room. If it has no time at all they go ' +
           'on the best other day, and the review says so. One session a day means no two-a-days.</p>' +
+        patternEditorHTML(p.weekPattern, p.sessionCounts) +
       '</div>' +
       '<div class="pnl-act">' +
         '<button type="button" class="btn btn-ghost" id="f-cancel">Cancel</button>' +
@@ -3714,6 +3781,7 @@
     );
     $('f-cancel').addEventListener('click', closePanel);
     $('f-preview').addEventListener('click', previewRefit);
+    bindPatternEditor(els.panelRoot);
 
     // Say it while the number is being typed, not after a preview. The season
     // keeps its current length here (previewRefit does not pass `weeks`), so
@@ -3749,6 +3817,8 @@
       // An empty choice clears the setting: normalizeProfile drops it.
       longDays: { Bike: $('f-long-ride').value, Run: $('f-long-run').value },
       maxSessionsPerDay: $('f-per-day').value,
+      // Empty objects clear them: normalizeProfile drops what says nothing.
+      ...readPatternEditor(els.panelRoot),
     });
   }
 
@@ -4843,7 +4913,8 @@
           field('Indoor trainer', wsel('wz-trainer', a.indoorTrainer === undefined ? '' : String(a.indoorTrainer), yesNoOpts)) +
           field('Power meter', wsel('wz-pm', a.powerMeter === undefined ? '' : String(a.powerMeter), yesNoOpts)) +
         '</div>' +
-        '<p class="pnl-hint">With no pool and no open water the season has no swims, and that time goes to the other sports.</p>';
+        '<p class="pnl-hint">With no pool and no open water the season has no swims, and that time goes to the other sports.</p>' +
+        patternEditorHTML(a.weekPattern, a.sessionCounts);
     },
 
     races() {
@@ -4914,6 +4985,7 @@
   };
 
   const WIZ_STEP_BIND = {
+    week() { bindPatternEditor(els.panelRoot); },
     races() {
       $('wz-addtune').addEventListener('click', () => {
         readWizardStep();
@@ -4972,6 +5044,8 @@
           maxSessionsPerDay: num('wz-perday'), maxSwims: num('wz-swims'),
           pool: bool('wz-pool'), openWater: bool('wz-ow'), indoorTrainer: bool('wz-trainer'), powerMeter: bool('wz-pm'),
         });
+        // Said even when empty, so taking the pattern out is an answer and not a gap.
+        Object.assign(a, readPatternEditor(els.panelRoot));
         break;
       case 'races':
         a.race = { name: v('wz-rname') || '', date: v('wz-racedate') || '', raceType: v('wz-racetype') };

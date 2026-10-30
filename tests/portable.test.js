@@ -92,6 +92,32 @@ test('the profile survives the round trip', () => {
   assert.equal(back.profile.raceDate, '2026-07-05');
 });
 
+test('a weekly pattern and its counts survive the round trip and a reload', () => {
+  const p = newPlan({
+    name: 'Patterned', startISO: '2026-01-05', raceDate: '2026-07-05', raceType: '70.3', now: 1737000000000,
+    profile: {
+      availability: { Mon: 0, Tue: 90, Wed: 90, Thu: 120, Fri: 75, Sat: 240, Sun: 240 },
+      weekPattern: { Run: ['Tue', 'Thu', 'Sat'], Swim: ['Fri', 'Sat'] },
+      sessionCounts: { Base: { Run: 3, Swim: 1 }, 'Base 3': { Swim: 2 } },
+    },
+  });
+  assert.ok(p.profile.weekPattern && p.profile.sessionCounts, 'fixture: the plan has both');
+  const back = readPlanFile(wrote(p)).plan;
+  assert.deepEqual(back.profile.weekPattern, p.profile.weekPattern);
+  assert.deepEqual(back.profile.sessionCounts, p.profile.sessionCounts);
+  // The stored week is the same one: the pattern is data on the plan, not a regeneration.
+  assert.deepEqual(back.weeks, p.weeks);
+  // And what a cloud copy goes through on the way in: the same plan back, untouched.
+  const { chat, ...shareable } = p;
+  assert.deepEqual(loadPlan(JSON.parse(JSON.stringify(shareable))).profile, p.profile);
+});
+
+test('a plan with no pattern writes none: the file is what it was', () => {
+  const text = wrote(fullPlan());
+  assert.equal(text.includes('weekPattern'), false);
+  assert.equal(text.includes('sessionCounts'), false);
+});
+
 test('the season survives the round trip, so the chart targets the right curve', () => {
   const p = fullPlan();
   const back = readPlanFile(wrote(p)).plan;
