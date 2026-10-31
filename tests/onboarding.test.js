@@ -190,6 +190,75 @@ test('the week, the long days and the cap reach the profile', () => {
   assert.deepEqual(p.profile.availability, emptyAnswers().availability);
 });
 
+/* ---- the weekly pattern carries into a new season ---- */
+
+const PATTERN = { Run: ['Tue', 'Thu', 'Sat'], Swim: ['Fri', 'Sat'] };
+const COUNTS = { Base: { Run: 3, Swim: 1 }, Build: { Run: 3, Swim: 2 } };
+const withPattern = () => newPlan({
+  name: 'Old', startISO: '2026-01-05',
+  profile: { weekPattern: PATTERN, sessionCounts: COUNTS, availability: { Mon: 0, Tue: 90, Wed: 90, Thu: 120, Fri: 75, Sat: 240, Sun: 240 } },
+});
+
+test('a returning athlete sees their pattern and counts in the wizard', () => {
+  const a = prefill({ plan: withPattern(), today: TODAY });
+  assert.deepEqual(a.weekPattern, PATTERN);
+  assert.deepEqual(a.sessionCounts, COUNTS);
+  // Copies, so editing the answers cannot reach the plan they came from.
+  a.weekPattern.Run.push('Sun');
+  assert.deepEqual(withPattern().profile.weekPattern, PATTERN);
+});
+
+test('a first-time athlete is asked for neither', () => {
+  const a = prefill({ today: TODAY });
+  assert.equal('weekPattern' in a, false);
+  assert.equal('sessionCounts' in a, false);
+  const plain = prefill({ plan: newPlan({ name: 'Plain', startISO: '2026-01-05' }), today: TODAY });
+  assert.equal('weekPattern' in plain, false);
+});
+
+test('answers become the profile, and the weeks follow the pattern', () => {
+  const p = buildPlanFromAnswers(filled({
+    availability: { Mon: 0, Tue: 90, Wed: 90, Thu: 120, Fri: 75, Sat: 240, Sun: 240 },
+    longRideDay: 'Sun', longRunDay: 'Sat',
+    weekPattern: PATTERN, sessionCounts: COUNTS,
+  }), { today: TODAY, now: 1 });
+  assert.deepEqual(p.profile.weekPattern, PATTERN);
+  assert.deepEqual(p.profile.sessionCounts, COUNTS);
+  const base = p.season.findIndex((w) => w.block.startsWith('Base'));
+  const runs = p.weeks[`w${base}`].filter((s) => s.disc === 'Run').map((s) => s.day);
+  assert.deepEqual(runs.sort(), ['Sat', 'Thu', 'Tue']);
+});
+
+test('starting over keeps the pattern through prefill and build, as it keeps splits', () => {
+  const base = withPattern();
+  const a = { ...filled({ availability: prefill({ plan: base, today: TODAY }).availability }), ...prefill({ plan: base, today: TODAY }) };
+  const p = buildPlanFromAnswers({ ...filled(), weekPattern: a.weekPattern, sessionCounts: a.sessionCounts, availability: a.availability }, { today: TODAY, now: 1, base });
+  assert.deepEqual(p.profile.weekPattern, PATTERN);
+  assert.deepEqual(p.profile.sessionCounts, COUNTS);
+});
+
+test('a draft saved before the pattern existed still carries the old plan\'s pattern', () => {
+  const base = withPattern();
+  const p = buildPlanFromAnswers(filled(), { today: TODAY, now: 1, base });   // no weekPattern in the answers
+  assert.deepEqual(p.profile.weekPattern, PATTERN);
+  assert.deepEqual(p.profile.sessionCounts, COUNTS);
+});
+
+test('an edit in the wizard wins over the old plan, and clearing it removes it', () => {
+  const base = withPattern();
+  const edited = buildPlanFromAnswers(filled({ weekPattern: { Run: ['Wed', 'Sat'] }, sessionCounts: { Base: { Run: 2 } } }), { today: TODAY, now: 1, base });
+  assert.deepEqual(edited.profile.weekPattern, { Run: ['Wed', 'Sat'] });
+  assert.deepEqual(edited.profile.sessionCounts, { Base: { Run: 2 } });
+  const cleared = buildPlanFromAnswers(filled({ weekPattern: {}, sessionCounts: {} }), { today: TODAY, now: 1, base });
+  assert.equal('weekPattern' in cleared.profile, false);
+  assert.equal('sessionCounts' in cleared.profile, false);
+});
+
+test('counts without a pattern to take days from leave nothing behind', () => {
+  const p = buildPlanFromAnswers(filled({ sessionCounts: COUNTS }), { today: TODAY, now: 1 });
+  assert.equal('sessionCounts' in p.profile, false);
+});
+
 test('nowhere to swim means no swims; a pool or open water means swims as usual', () => {
   const dry = buildPlanFromAnswers(filled({ pool: false, openWater: false }), { today: TODAY, now: 1 });
   assert.ok(dry.profile.constraints.some((c) => c.disc === 'Swim' && c.rule === 'maxPerWeek' && c.value === 0));

@@ -17,7 +17,7 @@ import { loadPlan, blockAt, weekCount, sessionsAt, refit, diffPlans, landingsDet
 import { startFitness, startNote } from './startfit.js';
 import { PLAN_MODEL } from './targets.js';
 import {
-  normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES, MAX_SESSIONS_PER_DAY,
+  normalizeProfile, resolveWeekShape, SPREAD_MODES, DAYS, DISCIPLINES, MAX_SESSIONS_PER_DAY, COUNT_KEY,
   weeklyAvailableMinutes,
 } from './profile.js';
 import { generateWeek } from './generate.js';
@@ -159,6 +159,7 @@ function rebuild(draft, from, to) {
       block: w.block,
       profile: draft.profile,
       idPrefix: weekKey(w.absWeek),
+      recovery: !!w.recovery,
       // Or regenerating a range would schedule training on a race day.
       ...raceClosure(draft, w.absWeek),
     }).sessions;
@@ -493,6 +494,23 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'clear_week_budget',
+    description:
+      'Take a pin off one week (or every pinned week) so the season sizes it again. Use it when a week was pinned that should not have been, or the athlete says a week is back to normal. It rebuilds from that week on and leaves weeks already trained as they are.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        week: { type: 'integer', description: 'Which week of the season, counting from 1, to un-pin.' },
+        all: { type: 'boolean', description: 'True to take every pin off instead of one week.' },
+      },
+    },
+  },
+  {
+    name: 'get_week_budgets',
+    description: 'List the weeks pinned to a fixed number of hours, with the hours. A pinned week is held by every later re-size.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'set_constraint',
     description:
       'Add a STANDING rule about when a discipline can happen: restrict it to certain days, keep it off certain days, or cap sessions per week. This applies to the whole season, every week, and refits all of them — use it only for something ongoing ("the pool is shut on Mondays", "never more than three swims a week"). For a one-off week, do NOT use this: use set_week_budget, and say in your reply that a single-week discipline change is not something you can make yet.',
@@ -560,6 +578,25 @@ export const TOOL_DEFS = [
           type: 'integer',
           description: `1 to ${MAX_SESSIONS_PER_DAY}, or 0 for as many as fit.`,
         },
+      },
+    },
+  },
+  {
+    name: 'set_week_pattern',
+    description:
+      'Set the weekly pattern the season is built from: which days each discipline\'s sessions take, in priority order, and how many sessions each has in a block. A discipline with 3 sessions in a block takes the first 3 days of its list; a day with no time or ruled out by a constraint is skipped and the next listed day takes its place. The long ride and long run stay with set_session_preferences. A STANDING rule: it reshapes every week of the blocks it names. Give only what changes: an empty list removes a discipline\'s days, a null count removes that count, and clear removes the whole pattern. Counts are for Base, Build, Peak or Taper, or one block such as "Base 3", which wins over its family.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        pattern: {
+          type: 'object',
+          description: `Days per discipline, in priority order, e.g. {"Run": ["Tue", "Thu", "Sat"]}. Disciplines: ${DISCIPLINES.join(', ')}. Days: ${DAYS.join(', ')}. An empty list removes that discipline's days.`,
+        },
+        counts: {
+          type: 'object',
+          description: 'Sessions per discipline for a block or block family, e.g. {"Base": {"Run": 3, "Swim": 1}, "Base 3": {"Swim": 2}}. Each count is a whole number up to the length of that discipline\'s day list; null removes it.',
+        },
+        clear: { type: 'boolean', description: 'true removes the weekly pattern and every count.' },
       },
     },
   },
@@ -737,6 +774,8 @@ const HANDLERS = {
       // unset — the same reason weekShape is resolved rather than omitted.
       longDays: { Bike: p.profile.longDays?.Bike ?? null, Run: p.profile.longDays?.Run ?? null },
       maxSessionsPerDay: p.profile.maxSessionsPerDay ?? null,
+      weekPattern: p.profile.weekPattern ?? null,
+      sessionCounts: p.profile.sessionCounts ?? null,
     });
   },
 
@@ -941,6 +980,9 @@ const HANDLERS = {
     const week = toIndex(base, input.week);
     const hours = Number(input.hours);
     if (!Number.isFinite(hours) || hours < 0) return fail('hours must be zero or more.');
+    if (week < trainedWeeks(s, base)) {
+      return fail(`Week ${weekLabel(week)} is already trained, so it is a record and cannot be pinned. Pin this week or one still to come.`);
+    }
 
     // Pin it on the plan, not just on the resolved season, so a later refit in
     // the same turn does not quietly undo it.
@@ -963,6 +1005,38 @@ const HANDLERS = {
     rebuild(draft, week, week);
     s.draft = draft;
     return ok(`Week ${weekLabel(week)} pinned to ${hours} hours and rebuilt. It will keep that budget through later changes.`);
+  },
+
+  clear_week_budget(s, input) {
+    const base = draftOf(s);
+    const pins = base.weekBudgets ?? {};
+    const keys = Object.keys(pins);
+    if (input.all === true) {
+      if (!keys.length) return fail('No week is pinned, so there is nothing to clear.');
+      const first = Math.min(...keys.map((k) => Number(k.slice(1))));
+      const trained = trainedWeeks(s, base);
+      // Weeks already trained keep what was planned for them, pin or no pin.
+      s.draft = refit({ ...clone(base), weekBudgets: {} }, { from: Math.max(first, trained), to: weekCount(base) - 1, keepBefore: trained });
+      return ok([`${keys.length} pinned ${keys.length === 1 ? 'week' : 'weeks'} cleared and the season sized again.`, targetNote(s.draft)].filter(Boolean).join(' '));
+    }
+    if (!Number.isInteger(Number(input.week))) return fail('Say which week to un-pin, or pass all: true.');
+    const week = toIndex(base, input.week);
+    const key = weekKey(week);
+    if (!(key in pins)) return fail(`Week ${weekLabel(week)} is not pinned, so there is no pin to clear.`);
+    if (week < trainedWeeks(s, base)) {
+      return fail(`Week ${weekLabel(week)} is already trained and stays as it was; its pin no longer changes anything.`);
+    }
+    const { [key]: _gone, ...rest } = pins;
+    s.draft = refit({ ...clone(base), weekBudgets: rest }, { from: week, to: week, keepBefore: Math.min(trainedWeeks(s, base), week) });
+    return ok([`The pin on week ${weekLabel(week)} is off and the season sized again.`, targetNote(s.draft)].filter(Boolean).join(' '));
+  },
+
+  get_week_budgets(s) {
+    const plan = draftOf(s);
+    const pinned = Object.entries(plan.weekBudgets ?? {})
+      .map(([k, hours]) => ({ week: Number(k.slice(1)) + 1, hours }))
+      .sort((a, b) => a.week - b.week);
+    return ok(JSON.stringify({ pinned }));
   },
 
   set_constraint(s, input) {
@@ -1079,6 +1153,67 @@ const HANDLERS = {
       cap !== undefined ? (profile.maxSessionsPerDay ? `at most ${profile.maxSessionsPerDay} a day` : 'no cap on sessions a day') : null,
     ].filter(Boolean);
     return ok(`Session preferences set (${said.join('; ')}) and the season refitted.`);
+  },
+
+  set_week_pattern(s, input) {
+    const base = draftOf(s);
+    const given = [input.pattern, input.counts, input.clear].filter((v) => v !== undefined && v !== null);
+    if (!given.length) return fail('Say what to set: pattern (days per discipline), counts (sessions per block), or clear.');
+
+    if (input.clear === true) {
+      const { weekPattern: _p, sessionCounts: _c, ...rest } = base.profile;
+      s.draft = refit(base, { profile: normalizeProfile(rest), keepBefore: trainedWeeks(s, base) });
+      return ok('Weekly pattern removed and the season refitted.');
+    }
+
+    const isObject = (v) => v && typeof v === 'object' && !Array.isArray(v);
+    const weekPattern = { ...(base.profile.weekPattern ?? {}) };
+    if (input.pattern !== undefined) {
+      if (!isObject(input.pattern)) return fail('pattern is an object of day lists, e.g. {"Run": ["Tue", "Thu", "Sat"]}.');
+      for (const [disc, days] of Object.entries(input.pattern)) {
+        if (!DISCIPLINES.includes(disc)) return fail(`"${disc}" is not a discipline. Use one of: ${DISCIPLINES.join(', ')}.`);
+        if (!Array.isArray(days)) return fail(`${disc} needs a list of days, in priority order, or an empty list to remove them.`);
+        const bad = days.find((d) => !DAYS.includes(d));
+        if (bad !== undefined) return fail(`"${bad}" is not a weekday. Use ${DAYS.join(', ')}.`);
+        if (new Set(days).size !== days.length) return fail(`${disc} lists a day twice.`);
+        if (days.length) weekPattern[disc] = days; else delete weekPattern[disc];
+      }
+    }
+
+    // Counts are a number of the days on a list, so a discipline with no list has none.
+    const sessionCounts = Object.fromEntries(Object.entries(base.profile.sessionCounts ?? {})
+      .map(([k, v]) => [k, Object.fromEntries(Object.entries(v).filter(([disc]) => weekPattern[disc]?.length))]));
+    if (input.counts !== undefined) {
+      if (!isObject(input.counts)) return fail('counts is an object of block counts, e.g. {"Base": {"Run": 3}}.');
+      for (const [block, row] of Object.entries(input.counts)) {
+        if (!COUNT_KEY.test(block)) {
+          return fail(`"${block}" has no counts. Use Base, Build, Peak or Taper, or one block such as "Base 3". Prep and Race take their sessions as the plan sizes them.`);
+        }
+        if (!isObject(row)) return fail(`${block} needs counts per discipline, e.g. {"Run": 3}.`);
+        for (const [disc, n] of Object.entries(row)) {
+          if (!DISCIPLINES.includes(disc)) return fail(`"${disc}" is not a discipline. Use one of: ${DISCIPLINES.join(', ')}.`);
+          if (n === null) { if (sessionCounts[block]) delete sessionCounts[block][disc]; continue; }
+          if (!Number.isInteger(n) || n < 0) return fail(`${block} ${disc}: a count is a whole number, 0 or more.`);
+          sessionCounts[block] = { ...(sessionCounts[block] ?? {}), [disc]: n };
+        }
+      }
+    }
+    // A count is a number of the days on a list, so it cannot outrun the list.
+    for (const [block, row] of Object.entries(sessionCounts)) {
+      for (const [disc, n] of Object.entries(row)) {
+        const listed = weekPattern[disc]?.length ?? 0;
+        if (n > listed) {
+          return fail(listed
+            ? `${block} asks for ${n} ${disc.toLowerCase()} sessions but ${disc} lists ${listed} day${listed === 1 ? '' : 's'}. List more days, or ask for fewer.`
+            : `${block} asks for ${n} ${disc.toLowerCase()} sessions but ${disc} has no days listed. Give its days in pattern first.`);
+        }
+      }
+    }
+
+    const profile = normalizeProfile({ ...base.profile, weekPattern, sessionCounts });
+    s.draft = refit(base, { profile, keepBefore: trainedWeeks(s, base) });
+    const days = Object.entries(profile.weekPattern ?? {}).map(([d, l]) => `${d.toLowerCase()} ${l.join('/')}`).join('; ') || 'no days listed';
+    return ok(`Weekly pattern set (${days}) and the season refitted.`);
   },
 
   move_session(s, input) {

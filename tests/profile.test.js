@@ -148,3 +148,76 @@ test('with no time at all a season is still sized, by the default week', () => {
   assert.equal(peakHoursFor(none), peakHoursFor(normalizeProfile({})));
   assert.ok(peakHoursFor(none) > 0);
 });
+
+/* ---- weekly pattern and session counts ---- */
+
+test('a week pattern keeps days in the order given, unique, for real disciplines only', () => {
+  const p = normalizeProfile({
+    weekPattern: {
+      Run: ['Tue', 'Thu', 'Sat', 'Tue'],
+      Bike: ['Sun', 'Funday', 'Wed'],
+      Strength: [],
+      Rowing: ['Mon'],
+      Swim: 'Fri',
+    },
+  });
+  assert.deepEqual(p.weekPattern, { Run: ['Tue', 'Thu', 'Sat'], Bike: ['Sun', 'Wed'] });
+});
+
+test('a profile that names no pattern or counts stays silent about them', () => {
+  for (const raw of [{}, { weekPattern: {} }, { weekPattern: null }, { weekPattern: 'Mon' }, { sessionCounts: {} }]) {
+    const p = normalizeProfile(raw);
+    assert.equal('weekPattern' in p, false);
+    assert.equal('sessionCounts' in p, false);
+  }
+});
+
+test('session counts are whole numbers up to the length of that discipline\'s list', () => {
+  const p = normalizeProfile({
+    weekPattern: { Run: ['Tue', 'Thu', 'Sat'], Swim: ['Fri', 'Sat'], Bike: ['Wed'] },
+    sessionCounts: {
+      Base: { Run: 3, Swim: '1', Bike: 5, Strength: 2 },
+      'Base 3': { Swim: 2, Run: 1.5 },
+      Build: { Run: -1, Swim: null, Bike: true },
+      Race: { Run: 1 },
+      Nonsense: { Run: 1 },
+    },
+  });
+  // Bike is clamped to its list, Strength has no list to take days from, and
+  // junk, fractions and blocks that have no counts are dropped.
+  assert.deepEqual(p.sessionCounts, {
+    Base: { Run: 3, Swim: 1, Bike: 1 },
+    'Base 3': { Swim: 2 },
+  });
+});
+
+test('a count of zero is kept: it says a discipline sits a block out', () => {
+  const p = normalizeProfile({ weekPattern: { Swim: ['Fri', 'Sat'] }, sessionCounts: { Base: { Swim: 0 } } });
+  assert.deepEqual(p.sessionCounts, { Base: { Swim: 0 } });
+});
+
+test('counts need a list to take their days from, so they go when the list does', () => {
+  assert.equal('sessionCounts' in normalizeProfile({ sessionCounts: { Base: { Run: 3 } } }), false);
+});
+
+test('taper and peak can each carry counts, as a block and as a family', () => {
+  const p = normalizeProfile({
+    weekPattern: { Swim: ['Fri', 'Sat'] },
+    sessionCounts: { Peak: { Swim: 2 }, Taper: { Swim: 1 } },
+  });
+  assert.deepEqual(p.sessionCounts, { Peak: { Swim: 2 }, Taper: { Swim: 1 } });
+});
+
+test('the pattern and counts survive normalizing twice, and sit after the other optional fields', () => {
+  const once = normalizeProfile({
+    longDays: { Bike: 'Sun', Run: 'Sat' },
+    maxSessionsPerDay: 2,
+    weekPattern: { Run: ['Tue', 'Thu', 'Sat'], Swim: ['Fri', 'Sat', 'Sun'] },
+    sessionCounts: { Base: { Run: 3, Swim: 1 }, Build: { Run: 3, Swim: 2 } },
+  });
+  assert.deepEqual(normalizeProfile(once), once);
+  assert.equal(JSON.stringify(normalizeProfile(once)), JSON.stringify(once));
+  const keys = Object.keys(once);
+  assert.ok(keys.indexOf('weekPattern') > keys.indexOf('maxSessionsPerDay'));
+  assert.ok(keys.indexOf('sessionCounts') > keys.indexOf('weekPattern'));
+});

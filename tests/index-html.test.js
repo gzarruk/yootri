@@ -501,6 +501,26 @@ test('Plan setup reads the long days and the sessions-a-day cap', () => {
   for (const id of ['f-long-ride', 'f-long-run', 'f-per-day']) assert.match(panel, new RegExp(`id="${id}"`));
 });
 
+/* ---- the weekly pattern ---- */
+
+test('Plan setup and the wizard both draw and read the weekly pattern', () => {
+  // One editor, one reader: a field the form shows but setupProfile forgets would be
+  // dropped on Preview, and a wizard that does not read it would lose it on a restart.
+  assert.match(fnBody('setupProfile'), /readPatternEditor\(els\.panelRoot\)/);
+  assert.match(fnBody('openSetupPanel'), /patternEditorHTML\(p\.weekPattern,\s*p\.sessionCounts\)/);
+  assert.match(fnBody('openSetupPanel'), /bindPatternEditor\(els\.panelRoot\)/);
+  assert.match(HTML, /week\(\)\s*\{\s*bindPatternEditor\(els\.panelRoot\);\s*\}/);
+  assert.match(HTML, /patternEditorHTML\(a\.weekPattern,\s*a\.sessionCounts\)/);
+  assert.match(fnBody('readWizardStep'), /readPatternEditor\(els\.panelRoot\)/);
+});
+
+test('the weekly pattern is plan content: never the athlete record, never a coach session argument', () => {
+  const editor = fnBody('patternEditorHTML') + fnBody('readPatternEditor') + fnBody('bindPatternEditor');
+  assert.doesNotMatch(editor, /athlete|saveAthlete|localStorage|createSession/);
+  // It reaches the plan through the profile, beside availability and the long days.
+  assert.match(fnBody('setupProfile'), /\.\.\.plan\.profile/);
+});
+
 /* ---- the onboarding wizard ---- */
 
 test('the wizard saves through the same doors as everything else', () => {
@@ -532,9 +552,17 @@ test('every step the engine names has a body in the page', () => {
 
 /* ---- weekly release ---- */
 
-test('a week after the release horizon shows no sessions, on the board or in the month', () => {
-  assert.match(fnBody('renderBoard'), /if \(!isReleased\(plan, state\.week\)\)/);
-  assert.match(fnBody('renderCalendar'), /if \(!isReleased\(plan, w\.absWeek\)\) continue;/);
+test('a week after the release horizon is shown, labelled as not released, on the board and in the month', () => {
+  // The sessions are already in the plan, so the athlete can see the whole of it. A week past the
+  // horizon says it may still change; it is never replaced by a placeholder.
+  const board = fnBody('renderBoard');
+  assert.match(board, /if \(!isReleased\(plan, state\.week\)\)/);
+  assert.match(board, /els\.board\.innerHTML = unreleasedNote \+ DAYS\.map/);
+  const month = fnBody('renderCalendar');
+  assert.doesNotMatch(month, /if \(!isReleased\(plan, w\.absWeek\)\) continue;/);
+  assert.match(month, /!isReleased\(plan, d\.absWeek\) \? ' unrel'/);
+  assert.match(fnBody('calRailHTML'), /' · not released'/);
+  assert.doesNotMatch(fnBody('renderSummary'), /isReleased/);
 });
 
 test('a release goes through applyDraft, with an undo, and nothing else writes it but the toggle in the plan’s … menu', () => {
@@ -949,4 +977,10 @@ test('every training load the page asks for starts from the level the window ope
   const at = [...HTML.matchAll(/trainingLoad\(plan\.activities(?: \|\| \[\])?,/g)].map((m) => m.index);
   assert.ok(at.length >= 2, 'the review and the Garmin panel both read it');
   for (const i of at) assert.match(HTML.slice(i, i + 320), /warmStartDays: PLAN_MODEL\.garmin\.warmStartDays/);
+});
+
+test('Plan setup lists pinned weeks and takes a pin off through the coach tool, not a direct write', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /function pinnedWeeksHTML/);
+  assert.match(html, /callTool\(session, 'clear_week_budget'/);
 });

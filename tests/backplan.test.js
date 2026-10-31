@@ -49,7 +49,8 @@ function assemble(inp, result) {
   const weeks = {};
   for (const w of result.season) {
     weeks[`w${w.absWeek}`] = generateWeek({
-      hours: w.hours, block: w.block, profile: inp.profile, idPrefix: `w${w.absWeek}`, ...raceClosure(shell, w.absWeek),
+      hours: w.hours, block: w.block, profile: inp.profile, idPrefix: `w${w.absWeek}`, recovery: !!w.recovery,
+      ...raceClosure(shell, w.absWeek),
     }).sessions;
   }
   return {

@@ -218,3 +218,52 @@ test('reading history mutates nothing', () => {
   suggest(p, { week: 0 });
   assert.deepEqual(p, snapshot);
 });
+
+/* ---- discipline split, when a weekly pattern builds the block ---- */
+
+const PATTERNED = {
+  availability: { Mon: 0, Tue: 90, Wed: 90, Thu: 120, Fri: 75, Sat: 240, Sun: 240 },
+  weekPattern: { Run: ['Tue', 'Thu', 'Sat'], Bike: ['Wed', 'Thu', 'Sun'], Strength: ['Wed', 'Tue', 'Fri'], Swim: ['Fri', 'Sat', 'Sun'] },
+  sessionCounts: { Base: { Run: 3, Bike: 3, Strength: 3, Swim: 1 } },
+};
+// A 22-week runway opens in Base 1, a counted block (a longer one opens in Prep, which has none).
+const patternPlan = (over = {}) => ({
+  ...newPlan({ name: 'P', startISO: START, raceDate: '2027-02-27', raceType: '70.3', now: 1, profile: PATTERNED }),
+  activitySync: SYNC,
+  ...over,
+});
+const minutesShare = (sessions) => {
+  const by = {};
+  for (const s of sessions) if (s.disc !== 'Rest') by[s.disc] = (by[s.disc] ?? 0) + durToMin(s.dur);
+  const total = Object.values(by).reduce((a, b) => a + b, 0);
+  return Object.fromEntries(Object.entries(by).map(([d, m]) => [d, m / total]));
+};
+
+test('a block built from a pattern is judged against the week it builds, not the nominal split', () => {
+  const p = patternPlan({ activities: synced({ Swim: 30, Bike: 240, Run: 60, Strength: 30 }) });
+  const block = p.season[0].block;
+  assert.match(block, /^Base/, 'fixture: week one is a counted block');
+  const built = minutesShare(sessionsAt(p, 0));
+  const s = byCode(suggest(p, { week: 0 }), 'split-drift');
+  assert.ok(s, 'bike-heavy training still drifts from a swim-and-strength week');
+  for (const d of DISCIPLINES) {
+    assert.ok(Math.abs(s.evidence.planned[d] - (built[d] ?? 0)) < 0.002, `${d}: ${s.evidence.planned[d]} vs ${built[d]}`);
+  }
+  // The nominal split is not what was built, so the nominal split is not reported.
+  assert.notDeepEqual(s.evidence.planned, Object.fromEntries(DISCIPLINES.map((d) => [d, resolveSplit(block, p.profile)[d] ?? 0])));
+});
+
+test('a pattern block is described, never proposed as a split: the split is not what shapes it', () => {
+  const p = patternPlan({ activities: synced({ Swim: 30, Bike: 240, Run: 60, Strength: 30 }) });
+  const s = byCode(suggest(p, { week: 0 }), 'split-drift');
+  assert.ok(s);
+  assert.equal(s.action, null);
+  assert.doesNotMatch(s.message, /Matching the block/);
+});
+
+test('without a pattern the split rule reads as it always did', () => {
+  const p = plan({ activities: synced({ Swim: 30, Bike: 240, Run: 60, Strength: 30 }) });
+  const s = byCode(suggest(p, { week: 0 }), 'split-drift');
+  assert.equal(s.action.tool, 'set_split');
+  assert.match(s.message, /Matching the block/);
+});

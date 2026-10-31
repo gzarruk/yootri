@@ -138,6 +138,50 @@ export const resolveWeekShape = (profile) => ({
 
 /** Fill defaults, clamp nonsense, drop constraints we don't understand.
     Pure and idempotent: normalize(normalize(x)) deep-equals normalize(x). */
+/* Optional: the days each discipline's sessions take, in priority order — the
+   first N are used when a block asks for N sessions (see pattern.js). Order is
+   the data, so it is kept as given; only duplicates and anything that is not a
+   day are removed. The long sessions stay in `longDays`, not here. */
+function normalizeWeekPattern(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out = {};
+  for (const disc of DISCIPLINES) {
+    if (!Array.isArray(raw[disc])) continue;
+    const days = [...new Set(raw[disc].filter((d) => DAYS.includes(d)))];
+    if (days.length) out[disc] = days;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/* The blocks a count may be given for: the phases that are built from a count
+   of sessions. Prep and Race take their number from the session sizes, so they
+   have none. A key is a block ("Base 3", "Taper") or its family ("Base"),
+   resolved like splits. */
+export const COUNT_KEY = /^(Base|Build|Peak|Taper)( [1-9]\d?)?$/;
+
+/* Optional: how many sessions each discipline has in a block. A count is a whole
+   number from 0 to the length of that discipline's day list — the days are where
+   the sessions go, so with no list there is nothing to count. Zero is kept: it
+   says the discipline sits that block out. */
+function normalizeSessionCounts(raw, weekPattern) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !weekPattern) return undefined;
+  const out = {};
+  for (const [key, counts] of Object.entries(raw)) {
+    if (!COUNT_KEY.test(key) || !counts || typeof counts !== 'object') continue;
+    const row = {};
+    for (const disc of DISCIPLINES) {
+      const list = weekPattern[disc];
+      const v = counts[disc];
+      if (!list || v === null || v === undefined || v === '' || typeof v === 'boolean') continue;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n < 0) continue;
+      row[disc] = Math.min(n, list.length);
+    }
+    if (Object.keys(row).length) out[key] = row;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 export function normalizeProfile(raw = {}) {
   const availability = {};
   for (const d of DAYS) {
@@ -150,6 +194,8 @@ export function normalizeProfile(raw = {}) {
   const weekShape = normalizeWeekShape(raw.weekShape);
   const longDays = normalizeLongDays(raw.longDays);
   const maxSessionsPerDay = normalizeSessionsPerDay(raw.maxSessionsPerDay);
+  const weekPattern = normalizeWeekPattern(raw.weekPattern);
+  const sessionCounts = normalizeSessionCounts(raw.sessionCounts, weekPattern);
 
   return {
     raceDate: raw.raceDate ?? DEFAULT_PROFILE.raceDate,
@@ -160,6 +206,8 @@ export function normalizeProfile(raw = {}) {
     ...(weekShape ? { weekShape } : {}),
     ...(longDays ? { longDays } : {}),
     ...(maxSessionsPerDay ? { maxSessionsPerDay } : {}),
+    ...(weekPattern ? { weekPattern } : {}),
+    ...(sessionCounts ? { sessionCounts } : {}),
     experience: raw.experience ?? DEFAULT_PROFILE.experience,
     notes: raw.notes ?? DEFAULT_PROFILE.notes,
   };
