@@ -3700,6 +3700,40 @@
     even: 'Spread evenly across the week',
   };
 
+  /* Weeks pinned to a fixed number of hours: shown here so one that should not
+     be there can come off. Removing goes through the same tool, preview and
+     apply as everything else; nothing is written until Apply. */
+  function pinnedWeeksHTML() {
+    const pins = Object.entries(plan.weekBudgets || {})
+      .map(([k, h]) => ({ week: Number(k.slice(1)), hours: Number(h) }))
+      .filter((x) => Number.isInteger(x.week) && Number.isFinite(x.hours))
+      .sort((a, b) => a.week - b.week);
+    if (!pins.length) return '';
+    return '<div class="pnl-sec" id="f-pins">' +
+      '<span class="pnl-sub" style="display:block">Pinned weeks</span>' +
+      '<p class="pnl-hint">A pinned week keeps its hours through every later change, and the weeks after it are sized around it. ' +
+        'Remove a pin to let the season size that week again.</p>' +
+      '<ul class="pin-list">' + pins.map((x) =>
+        '<li><span>Week ' + (x.week + 1) + ' · ' + esc(String(Math.round(x.hours * 10) / 10)) + ' h</span>' +
+        '<button type="button" class="btn btn-ghost" data-unpin="' + (x.week + 1) + '">Remove</button></li>').join('') + '</ul>' +
+      (pins.length > 1 ? '<button type="button" class="btn btn-secondary" id="f-unpin-all">Remove all ' + pins.length + ' pins</button>' : '') +
+      '</div>';
+  }
+
+  function bindPinnedWeeks() {
+    const run = (input) => {
+      const session = createSession(plan, coachContext());
+      const r = callTool(session, 'clear_week_budget', input);
+      if (r.isError) { setStatus(r.content, true); return; }
+      draft = session.draft;
+      renderDiff(sessionDiff(session));
+    };
+    els.panelRoot.querySelectorAll('[data-unpin]').forEach((b) =>
+      b.addEventListener('click', () => run({ week: Number(b.dataset.unpin) })));
+    const all = $('f-unpin-all');
+    if (all) all.addEventListener('click', () => run({ all: true }));
+  }
+
   function openSetupPanel() {
     const p = plan.profile;
     const shape = resolveWeekShape(p);
@@ -3741,6 +3775,7 @@
         'It prescribes <b>' + (fmtTotal(planned) || '0m') + '</b> across its ' + totalWeeks() + ' weeks.</p>' +
       '<p class="pnl-hint fit-warn" id="f-fit"></p>' +
       setupTargetHTML() +
+      pinnedWeeksHTML() +
       '<div class="pnl-sec">' +
         '<span class="pnl-sub" style="display:block">Time available each day (minutes)</span>' +
         '<div class="pnl-days">' +
@@ -3782,6 +3817,7 @@
     $('f-cancel').addEventListener('click', closePanel);
     $('f-preview').addEventListener('click', previewRefit);
     bindPatternEditor(els.panelRoot);
+    bindPinnedWeeks();
 
     // Say it while the number is being typed, not after a preview. The season
     // keeps its current length here (previewRefit does not pass `weeks`), so

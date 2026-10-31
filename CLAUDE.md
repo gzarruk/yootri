@@ -318,6 +318,12 @@ weeks before it keep their sessions *and* their planned hours. Plan setup, race
 changes and every coach tool pass the week today falls in; with no date (a coach
 session without `today`) the whole season refits as before.
 
+**A pin can be taken off.** `weekBudgets` holds the weeks pinned to fixed hours, and a pin is
+held by every later re-size. `clear_week_budget` (one week, or `all`) removes pins through the
+usual draft → diff → apply, and Plan setup lists them with a Remove button that calls it.
+`set_week_budget` refuses a week already trained and `clear_week_budget` leaves trained weeks
+as they were, so neither rewrites a record.
+
 **A plan can be built to a target.** `plan.target = { ctl, at, start, feasibility }` —
 another field added without a schema bump — records the chronic training load the
 season was built to peak at, before the taper (read off `FITNESS_BANDS` through the

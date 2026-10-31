@@ -978,3 +978,9 @@ test('every training load the page asks for starts from the level the window ope
   assert.ok(at.length >= 2, 'the review and the Garmin panel both read it');
   for (const i of at) assert.match(HTML.slice(i, i + 320), /warmStartDays: PLAN_MODEL\.garmin\.warmStartDays/);
 });
+
+test('Plan setup lists pinned weeks and takes a pin off through the coach tool, not a direct write', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /function pinnedWeeksHTML/);
+  assert.match(html, /callTool\(session, 'clear_week_budget'/);
+});

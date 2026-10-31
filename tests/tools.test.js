@@ -1315,3 +1315,86 @@ test('no tool puts anything derived from heart rate on a plan with a target', ()
   const text = JSON.stringify(s.draft);
   for (const re of [/avgHr/i, /maxHr/i, /heart/i, /hrById/i, /trimp/i]) assert.doesNotMatch(text, re);
 });
+
+/* Pins can be taken off, and are not put on weeks already trained */
+
+test('clear_week_budget takes a pin off and the week goes back to what the season asks for', () => {
+  const s = createSession(targetSeason());
+  const before = s.plan.season[8].hours;
+  call(s, 'set_week_budget', { week: 9, hours: 4 });
+  s.plan = s.draft; s.draft = null;
+  assert.equal(s.plan.weekBudgets.w8, 4);
+  const r = call(s, 'clear_week_budget', { week: 9 });
+  assert.equal(r.isError, false);
+  assert.equal('w8' in (s.draft.weekBudgets ?? {}), false);
+  assert.notEqual(s.draft.season[8].hours, 4);
+  assert.ok(Math.abs(s.draft.season[8].hours - before) < 1.5, 'back near where it started');
+});
+
+test('clear_week_budget with all removes every pin', () => {
+  const s = createSession(targetSeason());
+  for (const w of [5, 6, 7]) { call(s, 'set_week_budget', { week: w, hours: 3 }); s.plan = s.draft; s.draft = null; }
+  assert.equal(Object.keys(s.plan.weekBudgets).length, 3);
+  const r = call(s, 'clear_week_budget', { all: true });
+  assert.equal(r.isError, false);
+  assert.deepEqual(s.draft.weekBudgets ?? {}, {});
+  assert.match(r.content, /3 /);
+});
+
+test('clear_week_budget on a plan with no target un-pins and rebuilds the week', () => {
+  const s = createSession(racePlan());
+  const before = s.plan.season[8].hours;
+  call(s, 'set_week_budget', { week: 9, hours: 4 });
+  s.plan = s.draft; s.draft = null;
+  call(s, 'clear_week_budget', { week: 9 });
+  assert.equal(s.draft.season[8].hours, before);
+  assert.deepEqual(s.draft.weekBudgets ?? {}, {});
+});
+
+test('clear_week_budget says so when there is nothing to clear, and leaves no draft', () => {
+  const s = createSession(targetSeason());
+  const r = call(s, 'clear_week_budget', { week: 9 });
+  assert.equal(r.isError, true);
+  assert.match(r.content, /not pinned|no pin/i);
+  assert.equal(s.draft, null);
+  const all = call(s, 'clear_week_budget', { all: true });
+  assert.equal(all.isError, true);
+  assert.equal(s.draft, null);
+});
+
+test('clear_week_budget needs a week or all', () => {
+  const s = createSession(targetSeason());
+  assert.equal(call(s, 'clear_week_budget', {}).isError, true);
+});
+
+test('a week already trained cannot be pinned: it is a record, not a plan', () => {
+  const s = createSession(targetSeason(), { today: '2026-01-05' });
+  s.today = s.plan.start;                         // week 1
+  const later = new Date(s.plan.start + 'T00:00:00Z'); later.setUTCDate(later.getUTCDate() + 7 * 6 + 2);
+  s.today = later.toISOString().slice(0, 10);     // inside week 7
+  const r = call(s, 'set_week_budget', { week: 3, hours: 4 });
+  assert.equal(r.isError, true);
+  assert.match(r.content, /already|trained|past/i);
+  assert.equal(s.draft, null);
+  assert.equal(call(s, 'set_week_budget', { week: 7, hours: 4 }).isError, false, 'this week can still be pinned');
+});
+
+test('get_profile-adjacent: get_week_budgets lists the pins', () => {
+  const s = createSession(targetSeason());
+  call(s, 'set_week_budget', { week: 9, hours: 4 });
+  s.plan = s.draft; s.draft = null;
+  assert.deepEqual(parse(call(s, 'get_week_budgets')), { pinned: [{ week: 9, hours: 4 }] });
+});
+
+test('clear_week_budget with all leaves the weeks already trained exactly as they were', () => {
+  const s = createSession(targetSeason());
+  for (const w of [2, 3, 9]) { call(s, 'set_week_budget', { week: w, hours: 3 }); s.plan = s.draft; s.draft = null; }
+  const d = new Date(s.plan.start + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 7 * 5 + 1);
+  s.today = d.toISOString().slice(0, 10);          // inside week 6
+  call(s, 'clear_week_budget', { all: true });
+  for (let i = 0; i < 5; i++) {
+    assert.deepEqual(s.draft.season[i], s.plan.season[i]);
+    assert.deepEqual(s.draft.weeks[`w${i}`], s.plan.weeks[`w${i}`]);
+  }
+  assert.deepEqual(s.draft.weekBudgets ?? {}, {});
+});

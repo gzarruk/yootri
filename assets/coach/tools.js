@@ -494,6 +494,23 @@ export const TOOL_DEFS = [
     },
   },
   {
+    name: 'clear_week_budget',
+    description:
+      'Take a pin off one week (or every pinned week) so the season sizes it again. Use it when a week was pinned that should not have been, or the athlete says a week is back to normal. It rebuilds from that week on and leaves weeks already trained as they are.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        week: { type: 'integer', description: 'Which week of the season, counting from 1, to un-pin.' },
+        all: { type: 'boolean', description: 'True to take every pin off instead of one week.' },
+      },
+    },
+  },
+  {
+    name: 'get_week_budgets',
+    description: 'List the weeks pinned to a fixed number of hours, with the hours. A pinned week is held by every later re-size.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
     name: 'set_constraint',
     description:
       'Add a STANDING rule about when a discipline can happen: restrict it to certain days, keep it off certain days, or cap sessions per week. This applies to the whole season, every week, and refits all of them — use it only for something ongoing ("the pool is shut on Mondays", "never more than three swims a week"). For a one-off week, do NOT use this: use set_week_budget, and say in your reply that a single-week discipline change is not something you can make yet.',
@@ -963,6 +980,9 @@ const HANDLERS = {
     const week = toIndex(base, input.week);
     const hours = Number(input.hours);
     if (!Number.isFinite(hours) || hours < 0) return fail('hours must be zero or more.');
+    if (week < trainedWeeks(s, base)) {
+      return fail(`Week ${weekLabel(week)} is already trained, so it is a record and cannot be pinned. Pin this week or one still to come.`);
+    }
 
     // Pin it on the plan, not just on the resolved season, so a later refit in
     // the same turn does not quietly undo it.
@@ -985,6 +1005,38 @@ const HANDLERS = {
     rebuild(draft, week, week);
     s.draft = draft;
     return ok(`Week ${weekLabel(week)} pinned to ${hours} hours and rebuilt. It will keep that budget through later changes.`);
+  },
+
+  clear_week_budget(s, input) {
+    const base = draftOf(s);
+    const pins = base.weekBudgets ?? {};
+    const keys = Object.keys(pins);
+    if (input.all === true) {
+      if (!keys.length) return fail('No week is pinned, so there is nothing to clear.');
+      const first = Math.min(...keys.map((k) => Number(k.slice(1))));
+      const trained = trainedWeeks(s, base);
+      // Weeks already trained keep what was planned for them, pin or no pin.
+      s.draft = refit({ ...clone(base), weekBudgets: {} }, { from: Math.max(first, trained), to: weekCount(base) - 1, keepBefore: trained });
+      return ok([`${keys.length} pinned ${keys.length === 1 ? 'week' : 'weeks'} cleared and the season sized again.`, targetNote(s.draft)].filter(Boolean).join(' '));
+    }
+    if (!Number.isInteger(Number(input.week))) return fail('Say which week to un-pin, or pass all: true.');
+    const week = toIndex(base, input.week);
+    const key = weekKey(week);
+    if (!(key in pins)) return fail(`Week ${weekLabel(week)} is not pinned, so there is no pin to clear.`);
+    if (week < trainedWeeks(s, base)) {
+      return fail(`Week ${weekLabel(week)} is already trained and stays as it was; its pin no longer changes anything.`);
+    }
+    const { [key]: _gone, ...rest } = pins;
+    s.draft = refit({ ...clone(base), weekBudgets: rest }, { from: week, to: week, keepBefore: Math.min(trainedWeeks(s, base), week) });
+    return ok([`The pin on week ${weekLabel(week)} is off and the season sized again.`, targetNote(s.draft)].filter(Boolean).join(' '));
+  },
+
+  get_week_budgets(s) {
+    const plan = draftOf(s);
+    const pinned = Object.entries(plan.weekBudgets ?? {})
+      .map(([k, hours]) => ({ week: Number(k.slice(1)) + 1, hours }))
+      .sort((a, b) => a.week - b.week);
+    return ok(JSON.stringify({ pinned }));
   },
 
   set_constraint(s, input) {
