@@ -84,7 +84,8 @@ export function plannedLoad(session) {
     let total = 0;
     for (const st of session.steps) {
       const IF = st.kind === 'walk' && !st.zone ? PLANNED.zoneIF[1] : zoneIntensity(st.zone ?? session.zone);
-      if (IF === null || !(st.sec > 0)) return null;
+      if (!(st.sec > 0)) continue; // an open (lap-button) step has no length to score
+      if (IF === null) return null;
       total += (st.sec / 3600) * IF ** 2 * 100;
     }
     return round1(total);
