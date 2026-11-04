@@ -31,6 +31,15 @@ function targetSection() {
   return html.slice(from, to);
 }
 
+/* The opt-in Local setup page: from its own markup to the Status page's. */
+function localSetupPage() {
+  const html = read('../index.html');
+  const from = html.indexOf('<div class="page hidden" data-page="local"');
+  const to = html.indexOf('<div class="page hidden" data-page="status"');
+  assert.ok(from > 0 && to > from, 'the Local setup page is still where this test looks');
+  return html.slice(from, to);
+}
+
 function surfaces() {
   const html = read('../index.html');
   const notice = read('../assets/privacy.js');   // the notice's text, shared by the app and privacy.html
@@ -72,6 +81,7 @@ function surfaces() {
     'backplan.js': read('../assets/coach/backplan.js'),
     'index.html target section': targetSection(),
     'bridge overnight.py': read('../tools/garmin-bridge/garmin_bridge/overnight.py'),
+    'index.html local setup page': localSetupPage(),
     'bridge messages': BRIDGE_ERROR_CODES.map((c) => bridgeErrorMessage(c)).join('\n'),
   };
 }
@@ -217,4 +227,12 @@ test('what the placeholder says is plain: it names what is missing and makes no 
     assert.equal(hit, null, `the placeholder says "${hit && hit[0]}"`);
   }
   assert.match(body, /CTL and ATL appear once/);
+});
+
+test('the Local setup page is plain enough for the stricter list too', () => {
+  const page = localSetupPage();
+  for (const re of STRICTER) {
+    const hit = page.match(re);
+    assert.equal(hit, null, `the Local setup page says "${hit && hit[0]}"`);
+  }
 });

@@ -984,3 +984,54 @@ test('Plan setup lists pinned weeks and takes a pin off through the coach tool, 
   assert.match(html, /function pinnedWeeksHTML/);
   assert.match(html, /callTool\(session, 'clear_week_budget'/);
 });
+
+/* ---- the Local setup page ---- */
+
+const localPage = () => HTML.slice(HTML.indexOf('<div class="page hidden" data-page="local"'), HTML.indexOf('<div class="page hidden" data-page="status"'));
+const MAKEFILE = readFileSync(new URL('Makefile', ROOT), 'utf8');
+
+test('Local setup is a hidden sidebar link in Tools, ahead of the Status page', () => {
+  const nav = HTML.match(/<a\b[^>]*\bid="local-nav"[^>]*>/);
+  assert.ok(nav, 'the Local setup nav item is gone');
+  assert.match(nav[0], /class="nav hidden"/, 'the item is visible before anything opts in');
+  assert.match(nav[0], /data-route="local"/);
+  assert.ok(HTML.indexOf('id="garmin-btn"') < HTML.indexOf('id="local-nav"'), 'it sits after Garmin in Tools');
+  assert.ok(HTML.indexOf('id="local-nav"') < HTML.indexOf('<div class="side-foot">'), 'it is inside the sidebar groups');
+  const page = HTML.match(/<div class="page hidden" data-page="local"/);
+  assert.ok(page, 'the page starts hidden');
+  assert.ok(HTML.indexOf('data-page="local"') < HTML.indexOf('data-page="status"'), 'it sits outside the Status slice the stricter copy test reads');
+  assert.match(HTML, /const ROUTES = \[[^\]]*'local'/);
+});
+
+test('Local setup is opt-in, desktop-only, and asks nothing of this computer', () => {
+  assert.match(HTML, /localStorage\.getItem\(LOCAL_DOCS_KEY\) === '1'/);
+  assert.match(HTML, /matchMedia\('\(min-width: 761px\)'\)/);
+  assert.match(HTML, /m\[1\] === 'local' && !localAllowed\(\) \? 'week'/, 'a direct #/local falls back to week');
+  assert.match(HTML, /if \(r === 'local' && !localAllowed\(\)\)/, 'applyRoute refuses it too');
+  assert.match(readFileSync(new URL('assets/app-shell.css', ROOT), 'utf8'), /@media \(max-width: 760px\) \{\s*#local-nav \{ display: none !important; \}/);
+  const from = HTML.indexOf('const LOCAL_DOCS_KEY');
+  const handler = HTML.slice(HTML.indexOf("document.querySelector('[data-page=\"local\"]').addEventListener"), HTML.indexOf('/* On a phone the sidebar is a sheet'));
+  const code = HTML.slice(from, HTML.indexOf('const routeFromHash')) + handler + localPage();
+  assert.doesNotMatch(code, /fetch\(|bridgeFetch|checkBridge|XMLHttpRequest|sendBeacon/);
+});
+
+test('Local setup shows no secret and only commands the Makefile has', () => {
+  const page = localPage();
+  assert.doesNotMatch(page, /#garmin=|garmin=setup|token=|Bearer|[A-Za-z0-9_-]{32,}/);
+  const targets = new Set([...MAKEFILE.matchAll(/^([a-z][a-z-]*):/gm)].map((m) => m[1]));
+  const shown = [...page.matchAll(/\bmake ([a-z][a-z-]*)/g)].map((m) => m[1]);
+  assert.ok(shown.length > 5);
+  for (const t of shown) assert.ok(targets.has(t), `the page shows "make ${t}" but the Makefile has no such target`);
+  assert.match(MAKEFILE, /^GARMIN_PORT \?= 8765/m);
+  assert.match(MAKEFILE, /^CLAUDE_PORT \?= 8766/m);
+  assert.match(MAKEFILE, /^PORT \?= 8000/m);
+  assert.match(page, /127\.0\.0\.1:8766\/v1/);
+});
+
+test('the Coach settings checkbox is the visible way into Local setup', () => {
+  const form = HTML.slice(HTML.indexOf('function renderKeyForm'), HTML.indexOf("const redraw = () =>", HTML.indexOf('function renderKeyForm')));
+  assert.match(form, /provider\.id === 'openai-compatible'[\s\S]*id="k-localdocs"/, 'the checkbox sits behind the provider it is about');
+  assert.match(form, /localDocsOn\(\) \? ' checked'/, 'it shows the current state');
+  assert.match(HTML, /\$\('k-localdocs'\)\?\.addEventListener\('change', \(e\) => setLocalDocs\(e\.target\.checked\)\)/);
+  assert.match(HTML, /function setLocalDocs\(on\)[\s\S]*?syncLocalNav\(\);[\s\S]*?navigate\('week'\)/, 'turning it off while on the page leaves it');
+});
