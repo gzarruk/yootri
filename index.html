@@ -1164,6 +1164,10 @@
                this one talks only to 127.0.0.1. Hidden until this browser is
                paired, so the published page offers nothing a visitor cannot use. -->
           <button type="button" class="nav hidden" id="garmin-btn"><i class="ic i-watch" aria-hidden="true"></i><span class="nav-txt">Garmin<small class="nav-sub" id="garmin-state" role="status">Not checked yet</small></span><span class="dot off" id="garmin-dot" aria-hidden="true"></span></button>
+          <!-- Docs for the two helper programs, nothing more: it makes no request.
+               Hidden unless this browser opted in (Coach settings, or ?localdocs=1) and the window
+               is wider than a phone (see "Local setup" in the script). -->
+          <a class="nav hidden" id="local-nav" data-route="local" href="#/local"><i class="ic i-terminal" aria-hidden="true"></i><span class="nav-txt">Local setup</span></a>
         </div>
 
         <div class="side-foot">
@@ -1323,6 +1327,80 @@
         </div>
       </div>
     </section>
+  </div>
+
+  <div class="page hidden" data-page="local" tabindex="-1">
+    <header>
+      <div class="hdr-top">
+        <span class="kicker">Tools</span>
+      </div>
+      <h1 class="im-h1">Local setup</h1>
+      <p class="im-sub">Two optional helper programs that run on your own computer. Both listen on 127.0.0.1 only, and yootri works without either of them.</p>
+    </header>
+
+    <section class="panel" aria-label="What this is">
+      <div class="panel-h"><span class="card-kicker">What this is</span></div>
+      <p class="note">You start each helper in a terminal, from the yootri folder. This page only lists the commands: it runs nothing and makes no request to your computer. It is shown on a computer and hidden on a phone.</p>
+    </section>
+
+    <section class="panel" aria-label="Claude bridge">
+      <div class="panel-h"><span class="card-kicker">Claude bridge · the coach without an API key</span></div>
+      <ol class="steps">
+        <li>Install Claude Code and run <code>claude</code> once to sign in.</li>
+        <li>Start yootri in one terminal.
+          <div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: make dev"><code>make dev</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: make dev"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div>
+        </li>
+        <li>Start the bridge in a second terminal. It prints a token.
+          <div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: make claude-bridge"><code>make claude-bridge</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: make claude-bridge"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div>
+        </li>
+        <li>In Coach, open the settings and choose the OpenAI-compatible provider, then fill in:
+          <div class="rows">
+            <div class="row"><span>Base URL</span><div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Base URL"><code>http://127.0.0.1:8766/v1</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy the base URL"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div></div>
+            <div class="row"><span>Model</span><div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Model"><code>sonnet</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy the model name"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div></div>
+            <div class="row"><span>API key</span><b>The token the bridge printed. It is also kept in ~/.config/yootri-claude-bridge/token</b></div>
+          </div>
+        </li>
+      </ol>
+      <p class="note"><code>opus</code> works too. <code>haiku</code> often declines to call the coach’s tools. To use other ports, add them to the command:</p>
+      <div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: make claude-bridge with other ports"><code>make claude-bridge CLAUDE_PORT=8767 PORT=8001</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: make claude-bridge with other ports"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div>
+      <p class="note">The bridge answers only a request that carries its token, gives the model no files, no shell and no other tools, and does not log what you send it.</p>
+    </section>
+
+    <section class="panel" aria-label="Garmin bridge">
+      <div class="panel-h"><span class="card-kicker">Garmin bridge · activities from your own Garmin account</span></div>
+      <ol class="steps">
+        <li>Install <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a>, which runs the bridge.</li>
+        <li>Sign in to Garmin once. Only the session is saved.
+          <div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: make garmin-login"><code>make garmin-login</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: make garmin-login"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div>
+        </li>
+        <li>Start the bridge. It keeps running until you press Ctrl-C.
+          <div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: make garmin"><code>make garmin</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: make garmin"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div>
+        </li>
+        <li>Pair this browser with a one-click link. A Garmin item then appears in the sidebar.
+          <div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: make garmin-pair"><code>make garmin-pair</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: make garmin-pair"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div>
+        </li>
+      </ol>
+      <p class="note">The pairing link holds a secret, so keep it to yourself. Optional extras, each added when you start the bridge:</p>
+      <div class="rows">
+        <div class="row"><span>Send bike sessions to Garmin</span><div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: workouts"><code>YOOTRI_GARMIN_WORKOUTS=1 make garmin</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: workouts"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div></div>
+        <div class="row"><span>Also read sleep and overnight heart rate (then tick the box in the Garmin panel)</span><div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: overnight"><code>YOOTRI_GARMIN_OVERNIGHT=1 make garmin</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: overnight"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div></div>
+        <div class="row"><span>Keep it running at login (macOS)</span><div class="cmd"><pre class="cmd-code" tabindex="0" aria-label="Command: make garmin-install"><code>make garmin-install</code></pre><button type="button" class="btn btn-ghost cmd-copy" data-copy aria-label="Copy command: make garmin-install"><i class="ic i-copy" aria-hidden="true"></i><span>Copy</span></button></div></div>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Ports and commands">
+      <div class="panel-h"><span class="card-kicker">Ports and commands</span></div>
+      <table class="cmd-table">
+        <thead><tr><th scope="col">What</th><th scope="col">Default port</th><th scope="col">Change with</th><th scope="col">Start</th></tr></thead>
+        <tbody>
+          <tr><td>yootri</td><td>8000</td><td><code>PORT=</code></td><td><code>make dev</code></td></tr>
+          <tr><td>Claude bridge</td><td>8766</td><td><code>CLAUDE_PORT=</code></td><td><code>make claude-bridge</code></td></tr>
+          <tr><td>Garmin bridge</td><td>8765</td><td><code>GARMIN_PORT=</code></td><td><code>make garmin</code></td></tr>
+        </tbody>
+      </table>
+      <p class="note">Also useful: <code>make garmin-link</code> prints the pairing links, <code>make garmin-status</code> checks the saved Garmin session, <code>make garmin-agent-status</code> and <code>make garmin-uninstall</code> look after the login item, and <code>make stop</code> frees the yootri port.</p>
+    </section>
+    <span class="sr-only" id="local-live" role="status" aria-live="polite"></span>
   </div>
 
   <div class="page hidden" data-page="status" tabindex="-1">
@@ -2756,6 +2834,13 @@
         '<input type="password" class="input" id="k-key" placeholder="' + esc(provider.keyPlaceholder) + '" ' +
         'value="' + esc(key) + '" autocomplete="off" /></div>' +
       (provider.keyHint ? '<p class="pnl-hint">' + esc(provider.keyHint) + '</p>' : '') +
+      // The one visible way into the opt-in Local setup page (see "Local setup"
+      // in the routes), shown beside the provider it is about. It acts at once,
+      // independent of Save, so redrawing the form never loses it.
+      (provider.id === 'openai-compatible'
+        ? '<label class="np-check"><input type="checkbox" id="k-localdocs"' + (localDocsOn() ? ' checked' : '') + ' />' +
+          '<span>Show “Local setup” in the sidebar: the terminal commands for the helper programs that run on this computer. Computers only, not phones.</span></label>'
+        : '') +
       '<p class="key-warn">The key is stored in this browser only. It is never written into a plan, never exported, and never synced — but anything that can run script on this page could read it. Use a key you are willing to rotate, and remove it below when you are done.</p>' +
       '<p class="key-warn">Coach conversations use your own API credits. What a turn costs depends on the model you pick — the list is ordered cheapest first.</p>' +
       '<div class="pnl-act">' +
@@ -2785,6 +2870,7 @@
     $('k-prov').addEventListener('change', redraw);
     $('k-model').addEventListener('change', redraw);
     $('k-cancel').addEventListener('click', closePanel);
+    $('k-localdocs')?.addEventListener('change', (e) => setLocalDocs(e.target.checked));
     $('k-save').addEventListener('click', () => {
       const picked = $('k-model').value;
       const model = picked === '__custom' ? readCustomModel() : picked;
@@ -6992,10 +7078,42 @@
      back, forward and a reload land where the athlete was. Calendar is the week
      page in its Month view; This week is that page on the week today falls in. */
 
-  const ROUTES = ['week', 'calendar', 'status', 'biometrics', 'health'];
+  const ROUTES = ['week', 'calendar', 'status', 'biometrics', 'health', 'local'];
+
+  /* Local setup — the commands for the two helper programs, as a page. Off
+     unless this browser opted in, with the checkbox in Coach settings (OpenAI-compatible provider) or `?localdocs=1` (`?localdocs=0` turns it
+     off), and only on a computer: at phone width the item and the route are both
+     gone. It reads one flag and makes no request. */
+  const LOCAL_DOCS_KEY = 'yootri_localdocs';
+  const desktop = matchMedia('(min-width: 761px)');
+  function localDocsOn() {
+    try { return localStorage.getItem(LOCAL_DOCS_KEY) === '1'; } catch (e) { return false; }
+  }
+  const localAllowed = () => localDocsOn() && desktop.matches;
+  function syncLocalNav() { $('local-nav').classList.toggle('hidden', !localAllowed()); }
+  function setLocalDocs(on) {
+    try {
+      if (on) localStorage.setItem(LOCAL_DOCS_KEY, '1'); else localStorage.removeItem(LOCAL_DOCS_KEY);
+    } catch (e) {}
+    syncLocalNav();
+    if (!localAllowed() && state.page === 'local') navigate('week');
+  }
+  function applyLocalDocsParam() {
+    const params = new URLSearchParams(location.search);
+    const v = params.get('localdocs');
+    if (v !== '0' && v !== '1') return;
+    try {
+      if (v === '1') localStorage.setItem(LOCAL_DOCS_KEY, '1'); else localStorage.removeItem(LOCAL_DOCS_KEY);
+    } catch (e) {}
+    params.delete('localdocs');
+    const rest = params.toString();
+    try { history.replaceState(null, '', location.pathname + (rest ? '?' + rest : '') + location.hash); } catch (e) {}
+  }
+
   const routeFromHash = () => {
     const m = /^#\/([a-z]+)/.exec(location.hash);
-    return m && ROUTES.includes(m[1]) ? m[1] : 'week';
+    if (!m || !ROUTES.includes(m[1])) return 'week';
+    return m[1] === 'local' && !localAllowed() ? 'week' : m[1];
   };
 
   function activeRoute() {
@@ -7023,6 +7141,10 @@
   }
 
   function applyRoute(r, boot) {
+    if (r === 'local' && !localAllowed()) {
+      r = 'week';
+      try { history.replaceState(null, '', '#/week'); } catch (e) {}
+    }
     state.page = r === 'calendar' ? 'week' : r;
     let changed = false;
     if (state.page === 'week') {
@@ -7084,6 +7206,49 @@
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !popOpen) closeMore(true); });
   phone.addEventListener('change', () => closeMore(false));
+  desktop.addEventListener('change', () => {
+    syncLocalNav();
+    if (state.page === 'local' && !localAllowed()) navigate('week');
+  });
+
+  /* Copy buttons on the Local setup page. The text is whatever the block shows,
+     so what lands on the clipboard is exactly one runnable line. */
+  document.querySelector('[data-page="local"]').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-copy]');
+    if (!btn) return;
+    const code = btn.closest('.cmd').querySelector('code');
+    const text = code.textContent.trim();
+    const label = btn.querySelector('span');
+    const say = (msg) => { $('local-live').textContent = msg; };
+    let ok = false;
+    try {
+      if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; }
+    } catch (err) {}
+    if (!ok) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:-100px;opacity:0';
+      document.body.appendChild(ta);
+      ta.select();
+      try { ok = document.execCommand('copy'); } catch (err) {}
+      ta.remove();
+      btn.focus({ preventScroll: true });
+    }
+    if (!ok) {
+      const range = document.createRange();
+      range.selectNodeContents(code);
+      const sel = getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+      say('Press Cmd+C or Ctrl+C to copy');
+      return;
+    }
+    say('Copied');
+    label.textContent = 'Copied';
+    btn.classList.add('done');
+    setTimeout(() => { label.textContent = 'Copy'; btn.classList.remove('done'); }, 1500);
+  });
   $('m-plan').addEventListener('click', () => { openMore(); openPop('plan-pop'); });
   $('m-sync').addEventListener('click', () => els.syncBtn.click());
   window.addEventListener('hashchange', () => applyRoute(routeFromHash()));
@@ -7763,6 +7928,8 @@
 
   /* ---- Init ---- */
 
+  applyLocalDocsParam();
+  syncLocalNav();
   applyRoute(routeFromHash(), true);
   renderAll();
   renderAccount();

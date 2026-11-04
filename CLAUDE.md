@@ -238,9 +238,13 @@ place of the subscription). The bridge listens on loopback, answers only a reque
 carrying its token (the page's "API key" field) and shows the answer only to an
 allowed origin. Keep it that way: **do not add a path that gives the model a file,
 a shell or an MCP server**, and do not log prompts — they hold the plan. `sonnet` or
-`opus` is advised; `haiku` often declines to call the tools. Nothing in `index.html`
-mentions it, deliberately: it is a developer convenience, and the app's copy is held
-to a stricter standard.
+`opus` is advised; `haiku` often declines to call the tools. The page documents it only on an opt-in **Local setup** page (`#/local`, with the Garmin
+bridge's commands beside it): off unless the browser opted in, by the checkbox in Coach settings (shown for the
+OpenAI-compatible provider) or by opening it once with `?localdocs=1`
+(`yootri_localdocs`; `?localdocs=0` turns it off), and gone at phone width, item and route
+both. It makes no request, shows no token and never renders a pairing link, so a visitor
+who did not opt in sees nothing. It is held to the same copy tests as the rest, and
+`tests/index-html.test.js` pins the gate and that every `make` target it shows exists.
 
 **Garmin.** Garmin's developer program only takes businesses, so the page asks
 `tools/garmin-bridge` — run by the athlete on their own machine, for their own
