@@ -49,6 +49,7 @@ const SHELL = [
   'assets/coach/legacy-plan.js',
   'assets/coach/load.js',
   'assets/coach/match.js',
+  'assets/coach/confirm.js',
   'assets/coach/migrate.js',
   'assets/coach/onboarding.js',
   'assets/coach/overnight.js',

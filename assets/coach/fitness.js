@@ -79,6 +79,16 @@ export function zoneIntensity(zone) {
  * but has nothing to be scored by.
  */
 export function plannedLoad(session) {
+  // A confirmed run carries its own steps: score each by its zone (a walk is easy).
+  if (Array.isArray(session?.steps) && session.steps.length && session.disc === 'Run') {
+    let total = 0;
+    for (const st of session.steps) {
+      const IF = st.kind === 'walk' && !st.zone ? PLANNED.zoneIF[1] : zoneIntensity(st.zone ?? session.zone);
+      if (IF === null || !(st.sec > 0)) return null;
+      total += (st.sec / 3600) * IF ** 2 * 100;
+    }
+    return round1(total);
+  }
   const mins = durToMin(session?.dur);
   if (!(mins > 0)) return 0;
   const hours = mins / 60;
