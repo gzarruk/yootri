@@ -1013,6 +1013,12 @@
     background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
   .advice-card .grow { flex: 1; }
   .advice-card .btn { flex: none; }
+  .gw-list { list-style: none; margin: .4rem 0 .8rem; padding: 0; display: flex; flex-direction: column; gap: .4rem; }
+  .gw-list li { font-size: .84rem; line-height: 1.45; }
+  .gw-list label { display: flex; gap: .55rem; align-items: flex-start; cursor: pointer; }
+  .gw-list input { margin-top: .2rem; }
+  .gw-run { display: flex; justify-content: space-between; gap: .8rem; font-size: .84rem; }
+  .gw-note { font-size: .78rem; color: color-mix(in srgb, var(--color-text) 60%, transparent); }
   .chat-busy { font-size: .8rem; font-style: italic;
     color: color-mix(in srgb, var(--color-text) 55%, transparent); }
   /* ---- Responsive ---- */
@@ -1564,6 +1570,7 @@
   } from './assets/coach/synced.js';
   import { PRIVACY_VERSION, PRIVACY_REGION, privacySectionsHtml, privacyRightsHtml } from './assets/privacy.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
+  import { pendingWeeks, weekSuggestions, draftForWeek } from './assets/coach/syncweek.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
   import { bikeWorkout, workoutHash, planSyncSet } from './assets/coach/workout.js';
 
@@ -2022,6 +2029,7 @@
         '<div class="card-meta">' +
           '<span><i class="ic i-clock"></i>' + esc(s.dur) + '</span>' +
           (zone ? '<span><i class="ic i-gauge"></i>' + esc(zone) + '</span>' : '') +
+          (s.status === 'confirmed' ? '<span title="Read from Garmin Coach"><i class="ic i-check-circle"></i>Garmin</span>' : '') +
           sessionPaceHTML(s) +
         '</div>' +
         actualLineHTML(s) +
@@ -2531,8 +2539,73 @@
   /* What the logged weeks suggest about the week being looked at. These come
      from tested rules in adapt.js, not from the coach's judgement — the numbers
      behind every one of them are shown, and nothing applies itself. */
+  const GARMIN_FEED_KEY = 'yootri_garmin_feed_v1';
+  // The Coach runs Garmin has published, as the scheduled job wrote them to the
+  // account (users/{uid}/garmin/feed). The cache lets the card show offline.
+  let garminFeed = (() => {
+    try { return JSON.parse(localStorage.getItem(GARMIN_FEED_KEY)) || null; } catch (e) { return null; }
+  })();
+
+  async function pullGarminFeed() {
+    if (!window.imCloud || !window.imCloud.loadGarminFeed || !hasSyncConsent()) return;
+    const got = await window.imCloud.loadGarminFeed();
+    if (!got) return;
+    garminFeed = got;
+    try { localStorage.setItem(GARMIN_FEED_KEY, JSON.stringify(got)); } catch (e) {}
+  }
+
+  function garminWeeks() {
+    if (!garminFeed || !garminFeed.feed) return [];
+    try { return pendingWeeks(plan, garminFeed.feed, { today: toISO(new Date()) }); } catch (e) { return []; }
+  }
+
+  /* One week of Garmin Coach runs against the plan: the runs themselves, then each
+     rebalancing proposal on its own tick. Nothing is applied here; Apply builds a
+     draft from what is ticked and hands it to the same review as any change. */
+  function openGarminWeek(week) {
+    const today = toISO(new Date());
+    const feed = garminFeed && garminFeed.feed;
+    const r = feed ? weekSuggestions(plan, feed, week, { today }) : null;
+    if (!r || !r.published) { closePanel(); return; }
+    const runs = (r.plan.weeks['w' + week] || []).filter((s) => s.status === 'confirmed' && s.source === 'garmin');
+    const runRows = runs.map((s) => '<li class="gw-run"><span>' + esc(s.day) + ' · ' + esc(s.focus) +
+      '</span><span>' + esc(s.dur) + ' · ' + esc(s.zone) + '</span></li>').join('');
+    const props = r.proposals.map((p, i) => '<li><label><input type="checkbox" data-prop="' + i + '"><span>' +
+      esc(p.reason) + '</span></label></li>').join('');
+    panelShell(
+      '<h2>Garmin Coach, week ' + (week + 1) + '</h2>' +
+      '<p class="pnl-sub">Garmin has published these runs. Use them in place of the planned runs, then choose any changes to the rest of the week.</p>' +
+      '<ul class="gw-list">' + runRows + '</ul>' +
+      '<label class="gw-run"><span><input type="checkbox" id="gw-use" checked> Use these runs</span></label>' +
+      (props
+        ? '<h3 class="gw-note">Suggested changes to the rest of the week</h3><ul class="gw-list" id="gw-props">' + props + '</ul>'
+        : '<p class="gw-note">The rest of the week still fits, so nothing else is suggested.</p>') +
+      '<div class="pnl-act"><button type="button" class="btn btn-ghost spacer" id="gw-cancel">Cancel</button>' +
+      '<button type="button" class="btn btn-primary" id="gw-review">Review changes</button></div>',
+      'Garmin Coach week');
+    const use = $('gw-use');
+    use.addEventListener('change', () => {
+      els.panelRoot.querySelectorAll('[data-prop]').forEach((c) => { c.disabled = !use.checked; if (!use.checked) c.checked = false; });
+    });
+    $('gw-cancel').addEventListener('click', closePanel);
+    $('gw-review').addEventListener('click', () => {
+      const accepted = [...els.panelRoot.querySelectorAll('[data-prop]')]
+        .filter((c) => c.checked).map((c) => r.proposals[Number(c.dataset.prop)].id);
+      const next = draftForWeek(plan, feed, week, { confirm: use.checked, accepted, today });
+      if (next === plan) { closePanel(); return; }
+      const d = diffPlans(plan, next);
+      draft = next;
+      renderDiff(d, () => openGarminWeek(week));
+    });
+  }
+
   function renderAdvice() {
     const list = suggest(plan, { week: state.week });
+    const garminCards = garminWeeks().map((w) =>
+      '<div class="advice-card info">' +
+        '<span class="grow"><b>Garmin has published your Coach runs for week ' + (w + 1) + '.</b> Compare them with the plan.</span>' +
+        '<button type="button" class="btn btn-primary" data-act="garmin-week" data-week="' + w + '">Review week ' + (w + 1) + '</button>' +
+      '</div>').join('');
     const rel = releaseState(plan, { today: toISO(new Date()) });
     const releaseCard = rel.due
       ? '<div class="advice-card info release-card">' +
@@ -2541,9 +2614,9 @@
           '<button type="button" class="btn btn-primary" data-act="review-week">Review week ' + (rel.reviewWeek + 1) + '</button>' +
         '</div>'
       : '';
-    if (!list.length && !releaseCard) { els.adviceRoot.innerHTML = ''; return; }
+    if (!list.length && !releaseCard && !garminCards) { els.adviceRoot.innerHTML = ''; return; }
 
-    els.adviceRoot.innerHTML = '<div class="advice">' + releaseCard + list.map((x, i) =>
+    els.adviceRoot.innerHTML = '<div class="advice">' + garminCards + releaseCard + list.map((x, i) =>
       '<div class="advice-card ' + esc(x.severity) + '">' +
         '<span class="grow">' + esc(x.message) + '</span>' +
         (x.action
@@ -2555,6 +2628,8 @@
       '</div>').join('') + '</div>';
 
     els.adviceRoot.querySelectorAll('[data-act="review-week"]').forEach((b) => b.addEventListener('click', () => openWeekReview()));
+    els.adviceRoot.querySelectorAll('[data-act="garmin-week"]').forEach((b) =>
+      b.addEventListener('click', () => openGarminWeek(Number(b.dataset.week))));
     els.adviceRoot.querySelectorAll('[data-advice]').forEach((btn) => {
       btn.addEventListener('click', () => {
         // Route it through the same tools → draft → diff → apply path the coach
@@ -4365,6 +4440,8 @@
       // Separate from the plans, so a project whose rules predate About you
       // (FIREBASE_SETUP.md, step 5) still syncs plans while it refuses this.
       try { await pullAthlete(); } catch (e) { console.error(e); }
+      // The Coach runs the scheduled job found; refused or absent is not a failed sync.
+      try { await pullGarminFeed(); } catch (e) { console.error(e); }
       setStatus('Synced ' + timeStr());
       renderAll();
       renderAccount();
@@ -8040,6 +8117,17 @@
           try { athlete = JSON.parse(d.data); } catch (e) {}
           return { athlete, consent: d.consent || null };
         },
+        // The Garmin Coach runs the scheduled job wrote for this account. The page
+        // only reads it (and removes it on erasure); the job writes with admin access.
+        async loadGarminFeed() {
+          if (!uid) throw new Error('Not signed in');
+          const snap = await getDoc(doc(db, 'users', uid, 'garmin', 'feed'));
+          if (!snap.exists()) return null;
+          const d = snap.data();
+          let feed = null;
+          try { feed = JSON.parse(d.data); } catch (e) {}
+          return feed ? { updatedAt: d.updatedAt || null, feed } : null;
+        },
         async saveAthlete(athlete, consent) {
           if (!uid) throw new Error('Not signed in');
           await setDoc(doc(db, 'users', uid, 'athlete', 'profile'), {
@@ -8065,6 +8153,8 @@
           // under those rules the document can never have been written. Erasure
           // must not stop there and leave the account behind.
           try { await deleteDoc(doc(db, 'users', uid, 'athlete', 'profile')); }
+          catch (e) { if (!e || e.code !== 'permission-denied') throw e; }
+          try { await deleteDoc(doc(db, 'users', uid, 'garmin', 'feed')); }
           catch (e) { if (!e || e.code !== 'permission-denied') throw e; }
           const user = auth.currentUser;
           try {

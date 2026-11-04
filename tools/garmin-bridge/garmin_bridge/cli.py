@@ -82,6 +82,9 @@ def _parser() -> argparse.ArgumentParser:
     sub.add_parser("login", help="sign in to Garmin and save the session")
     sub.add_parser("logout", help="forget the saved Garmin session")
     sub.add_parser("status", help="say whether a Garmin session is saved")
+    sched = sub.add_parser("scheduled", help="print Garmin Coach runs scheduled in a date range, as JSON")
+    sched.add_argument("--from", dest="from_date", required=True, metavar="YYYY-MM-DD")
+    sched.add_argument("--to", dest="to_date", required=True, metavar="YYYY-MM-DD")
     serve = sub.add_parser("serve", help="run the bridge")
     serve.add_argument("--port", type=int, default=DEFAULT_PORT)
     serve.add_argument("--allow-origin", action="append", default=[], metavar="URL",
@@ -139,6 +142,24 @@ def main(
         who = f" as {name}" if name else ""
         say(f"Signed in to Garmin{who}. Session saved in {store.dir} (readable only by you).")
         say("Your password was not saved.")
+        return 0
+
+    if args.command == "scheduled":
+        import datetime as dt
+        import json
+        try:
+            start, end = dt.date.fromisoformat(args.from_date), dt.date.fromisoformat(args.to_date)
+        except ValueError:
+            say("Dates must be YYYY-MM-DD.")
+            return 2
+        from garmin_bridge.scheduled import fetch_scheduled_runs
+        try:
+            api = open_api(store, api_factory=api_factory)
+            runs = fetch_scheduled_runs(api, start, end)
+        except BridgeError as error:
+            say(f"Could not read the Garmin calendar: {error.message}")
+            return 1
+        say(json.dumps({"from": start.isoformat(), "to": end.isoformat(), "runs": runs}, indent=1))
         return 0
 
     if args.command == "logout":
