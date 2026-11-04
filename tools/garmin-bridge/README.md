@@ -83,6 +83,12 @@ data, no files, no profile — and a test asserts exactly which library calls it
 makes. Overnight figures and sending workouts (below) are separate, opt-in paths
 with calls of their own.
 
+One command reads more, by hand and not over HTTP: `python -m garmin_bridge
+scheduled --from YYYY-MM-DD --to YYYY-MM-DD` prints the Garmin Coach runs
+scheduled in that range (calendar entries, then each run's steps) as JSON, for a
+job on your own machine. It reads only running workouts, is not a route of the
+page-facing server, and an empty list means Garmin has not published the week.
+
 ## Sleep and overnight heart rate
 
 Off unless you start the bridge with `YOOTRI_GARMIN_OVERNIGHT=1` **and** tick
