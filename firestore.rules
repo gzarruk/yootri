@@ -3,6 +3,7 @@ rules_version = '2';
 // Security rules for yootri, the Ironman 70.3 training planner (index.html).
 // Each signed-in user can read and write ONLY their own documents: their plans
 // at users/{uid}/plans/{planId}, and About you at users/{uid}/athlete/profile.
+// The Garmin feed at users/{uid}/garmin/feed is read-only to the page.
 // Everything else is denied by default.
 //
 // Deploy from the Firebase console (Firestore Database → Rules → paste → Publish)
@@ -21,6 +22,14 @@ service cloud.firestore {
     match /users/{userId}/athlete/{docId} {
       allow read, write: if request.auth != null
                          && request.auth.uid == userId;
+    }
+
+    // The Garmin Coach runs a scheduled job found for this account. The job
+    // writes with admin access, which these rules do not govern; the page can
+    // read the feed and remove it when the account is erased, never write it.
+    match /users/{userId}/garmin/{docId} {
+      allow read, delete: if request.auth != null
+                          && request.auth.uid == userId;
     }
 
     // Default deny for any other path (including the old `trainingPlan`

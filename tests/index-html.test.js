@@ -472,7 +472,7 @@ test('the privacy notice describes About you and its separate consent', () => {
 test('the Firestore rules let each user reach only their own documents', () => {
   const rules = readFileSync(new URL('firestore.rules', ROOT), 'utf8');
   const blocks = [...rules.matchAll(/match \/users\/\{userId\}\/(\w+)\/\{\w+\}\s*\{([^}]*)\}/g)];
-  assert.deepEqual(blocks.map((b) => b[1]).sort(), ['athlete', 'plans']);
+  assert.deepEqual(blocks.map((b) => b[1]).sort(), ['athlete', 'garmin', 'plans']);
   for (const [, path, body] of blocks) {
     assert.match(body, /request\.auth != null\s*&& request\.auth\.uid == userId/, `${path} is not owner-only`);
   }

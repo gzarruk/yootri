@@ -10,29 +10,17 @@
    proposals — nothing here applies them. Reads two files, writes nothing. */
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
-import { loadPlan, setSessionsAt, sessionsAt } from '../../assets/coach/plan.js';
-import { weekIndexOf } from '../../assets/coach/calendar.js';
-import { runFromGarmin } from '../../assets/coach/garminrun.js';
-import { confirmWeek } from '../../assets/coach/confirm.js';
-import { proposeRebalance } from '../../assets/coach/rebalance.js';
+import { loadPlan } from '../../assets/coach/plan.js';
+import { runsByWeek, weekSuggestions } from '../../assets/coach/syncweek.js';
 
 export function confirmFromScheduled(plan, scheduled, { today } = {}) {
-  const byWeek = new Map();
-  const unreadable = [];
-  for (const r of scheduled?.runs ?? []) {
-    const run = runFromGarmin(r.workout, { date: r.date, scheduleId: r.scheduleId });
-    const week = weekIndexOf(plan.start, r.date);
-    if (!run) { unreadable.push({ date: r.date, title: r.title }); continue; }
-    if (week === null || week < 0 || !plan.weeks?.[`w${week}`]) continue;
-    byWeek.set(week, [...(byWeek.get(week) ?? []), run]);
-  }
+  const { byWeek, unreadable } = runsByWeek(plan, scheduled);
   let draft = plan;
   const weeks = [];
   for (const week of [...byWeek.keys()].sort((a, b) => a - b)) {
-    const result = confirmWeek(draft, week, byWeek.get(week));
-    if (result.published) draft = setSessionsAt(draft, week, result.sessions);
-    const { proposals, skipped } = result.published ? proposeRebalance(draft, week, { today }) : { proposals: [], skipped: [] };
-    weeks.push({ week, published: result.published, changes: result.changes, unmatched: result.unmatched, proposals, skipped });
+    const r = weekSuggestions(draft, scheduled, week, { today });
+    draft = r.plan;
+    weeks.push({ week, published: r.published, changes: r.changes, unmatched: r.unmatched, proposals: r.proposals, skipped: r.skipped });
   }
   return { weeks, unreadable, plan: draft };
 }

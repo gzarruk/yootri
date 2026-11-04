@@ -52,6 +52,7 @@ const SHELL = [
   'assets/coach/confirm.js',
   'assets/coach/rebalance.js',
   'assets/coach/garminrun.js',
+  'assets/coach/syncweek.js',
   'assets/coach/migrate.js',
   'assets/coach/onboarding.js',
   'assets/coach/overnight.js',
