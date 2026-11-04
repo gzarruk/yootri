@@ -2554,6 +2554,17 @@
     try { localStorage.setItem(GARMIN_FEED_KEY, JSON.stringify(got)); } catch (e) {}
   }
 
+  const GARMIN_STALE_MS = 36 * 3600 * 1000;
+  // A job that has stopped is told apart from a week that simply has not changed
+  // by when it last checked, not by when the runs last moved.
+  function garminStaleLine() {
+    const at = garminFeed && Number(garminFeed.checkedAt);
+    if (!at || Date.now() - at < GARMIN_STALE_MS) return '';
+    return '<div class="advice-card"><span class="grow">Garmin Coach runs were last checked ' +
+      esc(new Date(at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })) +
+      '. The sync may have stopped, so newer runs may not be shown.</span></div>';
+  }
+
   function garminWeeks() {
     if (!garminFeed || !garminFeed.feed) return [];
     try { return pendingWeeks(plan, garminFeed.feed, { today: toISO(new Date()) }); } catch (e) { return []; }
@@ -2606,6 +2617,7 @@
         '<span class="grow"><b>Garmin has published your Coach runs for week ' + (w + 1) + '.</b> Compare them with the plan.</span>' +
         '<button type="button" class="btn btn-primary" data-act="garmin-week" data-week="' + w + '">Review week ' + (w + 1) + '</button>' +
       '</div>').join('');
+    const staleCard = garminStaleLine();
     const rel = releaseState(plan, { today: toISO(new Date()) });
     const releaseCard = rel.due
       ? '<div class="advice-card info release-card">' +
@@ -2614,9 +2626,9 @@
           '<button type="button" class="btn btn-primary" data-act="review-week">Review week ' + (rel.reviewWeek + 1) + '</button>' +
         '</div>'
       : '';
-    if (!list.length && !releaseCard && !garminCards) { els.adviceRoot.innerHTML = ''; return; }
+    if (!list.length && !releaseCard && !garminCards && !staleCard) { els.adviceRoot.innerHTML = ''; return; }
 
-    els.adviceRoot.innerHTML = '<div class="advice">' + garminCards + releaseCard + list.map((x, i) =>
+    els.adviceRoot.innerHTML = '<div class="advice">' + staleCard + garminCards + releaseCard + list.map((x, i) =>
       '<div class="advice-card ' + esc(x.severity) + '">' +
         '<span class="grow">' + esc(x.message) + '</span>' +
         (x.action
@@ -8126,7 +8138,7 @@
           const d = snap.data();
           let feed = null;
           try { feed = JSON.parse(d.data); } catch (e) {}
-          return feed ? { updatedAt: d.updatedAt || null, feed } : null;
+          return feed ? { updatedAt: d.updatedAt || null, checkedAt: d.checkedAt || d.updatedAt || null, feed } : null;
         },
         async saveAthlete(athlete, consent) {
           if (!uid) throw new Error('Not signed in');

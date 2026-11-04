@@ -32,6 +32,14 @@ the repo root by GitHub Pages — **anything committed here is public**.
   (`make claude-bridge`), so the page, the engine and `providers.js` are unchanged
   and nothing public depends on it. `translate.mjs` is its pure half (tests in
   `tests/claude-bridge.test.js`). See "The coach without an API key" below.
+- `tools/sync/` — a dependency-free Node job, run on the athlete's own machine,
+  that fetches the Garmin Coach runs (`garmin_bridge scheduled`) and writes them to
+  the athlete's own Firestore (`users/{uid}/garmin/feed`, read-only to the page by
+  the rules) for the page to list. The service account key stays outside the repo
+  and the hygiene check blocks it. `assets/coach/garminrun.js`, `confirm.js`,
+  `rebalance.js` and `syncweek.js` turn the feed into confirmed runs and
+  rebalancing proposals, applied only through draft → diff → apply. See
+  `tools/sync/README.md`.
 - `tools/garmin-bridge/` — the one part that is not plain files: a small Python
   program (run with `uv`) that signs in to Garmin on the athlete's own machine
   and answers the page on 127.0.0.1. `make garmin-test` runs its tests; CI runs

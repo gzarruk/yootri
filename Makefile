@@ -30,7 +30,7 @@ NEED_UV = command -v uv >/dev/null 2>&1 || { \
 	exit 1; }
 
 .DEFAULT_GOAL := dev
-.PHONY: dev claude-bridge stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test
+.PHONY: dev claude-bridge stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test sync sync-dry sync-install sync-uninstall
 
 ## dev: serve at http://localhost:8000/ (PORT=8001 to change)
 dev:
@@ -65,6 +65,22 @@ hygiene:
 check: test hygiene
 	@if command -v uv >/dev/null 2>&1; then $(BRIDGE) pytest -q; \
 	else echo "  Garmin bridge tests skipped: uv is not installed."; fi
+
+## sync-dry: fetch the Garmin Coach runs and print what would be written (writes nothing)
+sync-dry:
+	@node tools/sync/run.mjs --dry-run
+
+## sync: fetch the Garmin Coach runs and write them to your account now
+sync:
+	@node tools/sync/run.mjs
+
+## sync-install: keep that running on a schedule (macOS LaunchAgent, local time)
+sync-install:
+	@node tools/sync/install.mjs install
+
+## sync-uninstall: stop the scheduled sync
+sync-uninstall:
+	@node tools/sync/install.mjs uninstall
 
 ## garmin-login: sign in to Garmin once — only the session is saved, never the password
 garmin-login:
