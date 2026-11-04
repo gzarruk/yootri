@@ -446,8 +446,9 @@ function followsGenerator(plan, absWeek) {
 // A recovery flag counts: with a weekly pattern it changes the week that is built.
 const changed = (a, b) => !a || a.hours !== b.hours || a.block !== b.block || !!a.recovery !== !!b.recovery;
 
-const SESSION_FIELDS = ['day', 'disc', 'focus', 'dur', 'zone', 'paceZone'];
-const sameSession = (a, b) => SESSION_FIELDS.every((f) => a[f] === b[f]);
+const SESSION_FIELDS = ['day', 'disc', 'focus', 'dur', 'zone', 'paceZone', 'status', 'source', 'garminId'];
+const sameSession = (a, b) => SESSION_FIELDS.every((f) => a[f] === b[f])
+  && JSON.stringify(a.steps ?? null) === JSON.stringify(b.steps ?? null);
 
 /**
  * Compare two plans week by week. This is what the athlete approves, so it
