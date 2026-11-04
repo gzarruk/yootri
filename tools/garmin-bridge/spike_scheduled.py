@@ -35,6 +35,24 @@ def attempt(label, fn):
     return out
 
 
+def print_steps(detail, indent="  "):
+    """Print only step types and conditions, no ids."""
+    if not isinstance(detail, dict):
+        return
+    for seg in detail.get("workoutSegments", []) or []:
+        for st in seg.get("workoutSteps", []) or []:
+            walk(st, indent)
+
+
+def walk(st, indent):
+    key = (st.get("stepType") or {}).get("stepTypeKey")
+    end = (st.get("endCondition") or {}).get("conditionTypeKey")
+    tgt = (st.get("targetType") or {}).get("workoutTargetTypeKey")
+    print(f"{indent}{key} | end={end} {st.get('endConditionValue')} | target={tgt} {st.get('targetValueOne')}-{st.get('targetValueTwo')} | iterations={st.get('numberOfIterations')}")
+    for child in st.get("workoutSteps", []) or []:
+        walk(child, indent + "  ")
+
+
 def main() -> None:
     api = open_api(Store())
     today = dt.date.today()
@@ -45,6 +63,21 @@ def main() -> None:
     print(f"\ncalendar items: {len(items)}")
     for it in items:
         print(" ", it.get("itemType"), it.get("date"), "|", it.get("sportTypeKey") or it.get("sportType"), "|", (it.get("title") or "")[:40])
+    upcoming = [it for it in items if it.get("itemType") == "workout"
+                and (it.get("sportTypeKey") or "") == "running" and (it.get("date") or "") >= today.isoformat()][:3]
+    for it in upcoming:
+        print(f"\n##### {it.get('date')} | {it.get('title')} (trainingPlanId present: {it.get('trainingPlanId') is not None})")
+        sched = attempt("get_scheduled_workout_by_id", lambda: api.get_scheduled_workout_by_id(it["id"]))
+        wid = None
+        if isinstance(sched, dict):
+            w = sched.get("workout") or {}
+            wid = sched.get("workoutId") or w.get("workoutId")
+            print("  workoutId found:", wid is not None, "| top-level keys:", sorted(sched)[:30])
+        if wid:
+            detail = attempt("get_workout_by_id", lambda: api.get_workout_by_id(wid))
+            print_steps(detail)
+        elif isinstance(sched, dict):
+            print_steps(sched)
     plans = attempt("get_training_plans()", api.get_training_plans)
     for p in (plans or {}).get("trainingPlanList", []) if isinstance(plans, dict) else []:
         print("  plan:", p.get("trainingPlanCategory"), "|", p.get("name"), "|", p.get("trainingStatus") or p.get("status"))
