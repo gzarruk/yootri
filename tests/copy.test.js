@@ -152,11 +152,11 @@ test('what is estimated or illustrative says so wherever it is shown', () => {
   const { section } = fitnessSurfaces();
   assert.match(section, /Planned and race-day figures are estimates/, 'the cards say which figures are estimates');
   assert.match(section, /<span class="tag tag-neutral">Estimate<\/span>/, 'the race-day card is tagged Estimate');
-  assert.match(section, /CTL planned, estimated/, 'the planned CTL line is called an estimate in the legend');
-  assert.match(section, /ATL planned, estimated/, 'and so is the planned ATL line');
-  assert.match(section, /Predicted ATL is an estimate and is noisier than predicted CTL/, 'with the reason ATL reads rougher');
-  assert.match(section, /Planned fitness \(an estimate\)/, 'the CTL chart is described as an estimate to a screen reader');
-  assert.match(section, /Planned fatigue \(an estimate\)/, 'and the ATL chart');
+  assert.match(section, /Fitness planned, estimated/, 'the planned fitness line is called an estimate in the legend');
+  assert.match(section, /Fatigue planned, estimated/, 'and so is the planned fatigue line');
+  assert.match(section, /Predicted fatigue is an estimate and is noisier than predicted fitness/, 'with the reason fatigue reads rougher');
+  assert.match(section, /Planned fitness \(an estimate\)/, 'the fitness chart is described as an estimate to a screen reader');
+  assert.match(section, /Planned fatigue \(an estimate\)/, 'and the fatigue chart');
   assert.match(section, /illustrative/i, 'the bands are called illustrative');
 });
 
@@ -226,7 +226,7 @@ test('what the placeholder says is plain: it names what is missing and makes no 
     const hit = body.match(re);
     assert.equal(hit, null, `the placeholder says "${hit && hit[0]}"`);
   }
-  assert.match(body, /CTL and ATL appear once/);
+  assert.match(body, /Fitness and fatigue appear once/);
 });
 
 test('the Local setup page is plain enough for the stricter list too', () => {

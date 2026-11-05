@@ -331,7 +331,7 @@ test('a figure the athlete types is not a source: nothing in startFitness reads 
 
 test('the line shown beside the plan says where today\'s fitness comes from, or that it is not available yet', () => {
   const g = startFitness(base);
-  assert.equal(startLine(g), `Your fitness today: ${Math.round(g.ctl)} (CTL), from ${g.coveredWeeks} weeks of your synced sessions.`);
+  assert.equal(startLine(g), `Your fitness today: ${Math.round(g.ctl)}, from ${g.coveredWeeks} weeks of your synced sessions.`);
   const est = startFitness({ today: TODAY, athlete: { recentWeeklyHours: 8 } });
   assert.equal(startLine(est), 'Not available yet. We’ll size your season from your recent weekly hours and update it once your Garmin sessions give us enough data.');
   const none = startFitness({ today: TODAY });

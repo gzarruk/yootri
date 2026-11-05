@@ -85,6 +85,13 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `races.js` | Where a plan's races fall: `landingsOf`, `landingsDetail`, `raceDayFor`, `raceClosure`, and `plannedRaceLoads` (what each tune-up adds to its day). Split out of `plan.js`, which hands them back, so the planner can read them without importing the plan. |
 | `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness, **the peak before the taper** (race day settles lower, by a two-week taper that takes under a tenth off — `PLAN_MODEL.taperTail`, the model's own three-week tail being kept only for `targetAt: 'raceDay'` — and is read as the morning of it, the end of the day before, and reported as `raceCtl`, not aimed at): even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`, and two hard ceilings — fitness never above the target on any day, and acute load within `PLAN_MODEL.ramp.acuteRatioMax` times chronic load on every day (neither is shown on a screen). Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `targetAt: 'raceDay'` is the first version's solve, kept for plans whose target was made that way. `planLevers` works out, by rebuilding, what would make it reachable. Pure. `refit` and `newPlan` call it for a plan that has a `target` (see below). The climb is laid once from where the season starts and **laid again from where fitness actually is** when a pinned week leaves it ahead of its own waypoint (`climbFrom`), so a run of pinned weeks never starves the weeks after it; an athlete past the level is held, not unwound. See `docs/FINDINGS.md` (30 Oct, second entry). |
 
+**On screen it is fitness and fatigue, never CTL or ATL.** The two abbreviations are
+another company's product vocabulary, so every string an athlete (or the coach) reads says
+*fitness* (the 42-day average of training load), *fatigue* (the 7-day average) and *form*
+(fitness − fatigue). `CTL`/`ATL`, `ctl`, `plannedFat` and the rest stay as code names, comments
+and stored fields (`target.ctl` is on saved plans: renaming it would be a schema change), and
+`tests/index-html.test.js` fails if either abbreviation appears in the page's text.
+
 **Nothing edits a stored plan in place.** A change builds a *draft* (a detached
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
 is what makes it safe to point an agent at a training plan, and it is why the

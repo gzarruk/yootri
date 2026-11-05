@@ -865,7 +865,7 @@ test('the race this season is for is shown above the week and the month, with it
 test('a target made to peak is shown as the peak before the taper, with race day beside it; an older one as it was', () => {
   const body = fnBody('targetFactsHTML');
   assert.match(body, /target\.at === 'peak'/);
-  assert.match(body, /Peak fitness \(CTL\), before the taper/);
+  assert.match(body, /Peak fitness, before the taper/);
   assert.match(body, /Target on race day/, 'a target made for race day is still labelled so');
   assert.match(body, /On race day/);
   assert.match(body, /feasibility|f\.raceCtl/);
@@ -912,12 +912,12 @@ test('a change that moves only the target can still be applied', () => {
 });
 
 
-/* ---- CTL and ATL: one basis, one placeholder, two charts, and their names ---- */
+/* ---- Fitness and fatigue: one basis, one placeholder, two charts, and their names ---- */
 
 const fitnessSection = () => section('/* ---- Fitness, fatigue and form', '/* ---- Init ---- */');
 const APP_CSS = readFileSync(new URL('assets/app-shell.css', ROOT), 'utf8');
 
-test('CTL and ATL are drawn only from a basis; every surface otherwise shows the one placeholder', () => {
+test('fitness and fatigue are drawn only from a basis; every surface otherwise shows the one placeholder', () => {
   for (const fn of ['renderFitness', 'renderStatusPage']) {
     assert.match(fnBody(fn), /basis\.enough/, `${fn} asks the shared basis`);
     assert.match(fnBody(fn), /basisPlaceholderHTML\(/, `${fn} shows the placeholder`);
@@ -926,10 +926,10 @@ test('CTL and ATL are drawn only from a basis; every surface otherwise shows the
   }
   assert.doesNotMatch(HTML, /function ffmEmptyHTML/, 'the two empty cards are one placeholder now');
   const body = fnBody('basisPlaceholderHTML');
-  assert.match(body, /CTL and ATL appear once your Garmin sessions are synced\./);
-  assert.match(body, /CTL and ATL appear once about /);
+  assert.match(body, /Fitness and fatigue appear once your Garmin sessions are synced\./);
+  assert.match(body, /Fitness and fatigue appear once about /);
   assert.match(body, /weeks of your Garmin sessions are in\./);
-  assert.match(body, /CTL and ATL appear once most of your synced sessions can be scored\./);
+  assert.match(body, /Fitness and fatigue appear once most of your synced sessions can be scored\./);
   assert.match(body, /neededShare/, 'how much can be read, against how much is needed');
   assert.doesNotMatch(body, /fetch\(|bridgeFetch|checkBridge/, 'an unpaired browser asks this computer for nothing');
 });
@@ -948,35 +948,38 @@ test('the placeholder holds its place and has no motion of its own', () => {
   assert.match(APP_CSS, /\.fit-empty-cards[^{]*\{[^}]*min-height/);
 });
 
-test('ATL is drawn in the same plot as CTL, on the same y axis, with lines of its own', () => {
+test('fatigue is drawn in the same plot as fitness, on the same y axis, with lines of its own', () => {
   const chart = fnBody('fitnessChart');
   assert.match(chart, /--disc-bike/, 'the colour the Status page already gives it');
   for (const k of ['plannedFat', 'actualFat', 'followedFat']) assert.match(chart, new RegExp(k), k);
   assert.doesNotMatch(HTML, /function fatigueChart|fplot-atl/, 'there is one plot, not a second chart');
-  assert.match(fnBody('chartTop'), /plannedFat/, 'the shared top takes ATL into account');
+  assert.match(fnBody('chartTop'), /plannedFat/, 'the shared top takes fatigue into account');
   assert.match(fnBody('chartTop'), /actualFat/);
   const render = fnBody('renderFitness');
   assert.match(render, /chartTop\(/);
   assert.equal((render.match(/<div class="fplot">/g) || []).length, 1, 'one plot');
-  assert.match(HTML, /Predicted ATL is an estimate and is noisier than predicted CTL\./);
-  assert.match(HTML, /ATL is read at the end of each week; within a week it moves more than shown\./);
+  assert.match(HTML, /Predicted fatigue is an estimate and is noisier than predicted fitness\./);
+  assert.match(HTML, /Fatigue is read at the end of each week; within a week it moves more than shown\./);
 });
 
-test('fitness and fatigue are named CTL and ATL wherever they are shown', () => {
+test('fitness and fatigue are named so wherever they are shown, and CTL and ATL are not', () => {
   for (const text of [
-    'Fitness (CTL)', 'Fatigue (ATL)', 'Form (CTL − ATL)',
-    'How fitness (CTL), fatigue (ATL) and form are worked out',
-    'aria-label="Fitness (CTL), fatigue (ATL) and form"',
-    'Season fitness (CTL), fatigue (ATL) and training load',
-    'Fitness (CTL) and fatigue (ATL) by week. Planned fitness (an estimate)',
+    'Fitness', 'Fatigue', 'Form (fitness − fatigue)',
+    'How fitness, fatigue and form are worked out',
+    'aria-label="Fitness, fatigue and form"',
+    'Season fitness, fatigue and training load',
+    'Fitness and fatigue by week. Planned fitness (an estimate)',
     'Planned fatigue (an estimate)',
-    'CTL actual, synced from Garmin', 'CTL planned, estimated', 'ATL actual, synced from Garmin', 'ATL planned, estimated',
-    'chronic training load', 'acute training load',
+    'Fitness actual, synced from Garmin', 'Fitness planned, estimated', 'Fatigue actual, synced from Garmin', 'Fatigue planned, estimated',
   ]) assert.ok(HTML.includes(text), `"${text}" is on the page`);
   const info = fnBody('openFitnessInfo');
-  assert.match(info, /<b>CTL<\/b> is chronic training load/);
-  assert.match(info, /<b>ATL<\/b> is acute training load/);
-  assert.match(info, /<b>Form<\/b> is CTL minus ATL/);
+  assert.match(info, /<b>Fitness<\/b> is the average of that over the last 42 days/);
+  assert.match(info, /<b>Fatigue<\/b> is the average over the last 7 days/);
+  assert.match(info, /<b>Form<\/b> is fitness minus fatigue/);
+  // Those two abbreviations are another company's product vocabulary: they stay in code comments
+  // and stored field names, never in text an athlete reads.
+  const shown = HTML.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|\s)\/\/.*$/gm, '');
+  assert.doesNotMatch(shown, /\b(CTL|ATL)\b/, 'no screen says CTL or ATL');
 });
 
 test('every training load the page asks for starts from the level the window opened at', () => {
