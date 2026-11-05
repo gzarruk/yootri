@@ -40,6 +40,7 @@ const SHELL = [
   'assets/coach/athlete.js',
   'assets/coach/backplan.js',
   'assets/coach/calendar.js',
+  'assets/coach/cloudplans.js',
   'assets/coach/dates.js',
   'assets/coach/duration.js',
   'assets/coach/events.js',

@@ -35,6 +35,8 @@ test('the newest plan in a Firestore listing is read, and a bad record is skippe
   const doc = (updatedAt, data) => ({ fields: { updatedAt: { integerValue: String(updatedAt) }, data: { stringValue: data } } });
   const listing = { documents: [doc(5, JSON.stringify({ id: 'old' })), doc(9, JSON.stringify({ id: 'new' })), doc(12, '{broken')] };
   assert.equal(latestPlan(listing).id, 'new');
+  const gone = doc(99, JSON.stringify({ id: 'newest', deleted: true, deletedAt: 99 }));
+  assert.equal(latestPlan({ documents: [...listing.documents, gone] }).id, 'new', 'a deleted plan is never the plan');
   assert.equal(latestPlan({}), null);
   assert.match(plansUrl('p-1', 'u1'), /\/projects\/p-1\/databases\/\(default\)\/documents\/users\/u1\/plans$/);
 });

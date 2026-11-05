@@ -253,12 +253,16 @@ test('no cloud call runs without consent', () => {
 
 /* ---- the Garmin bridge ---- */
 
-test('the Garmin button is hidden until this browser is paired', () => {
-  /* The published page must not advertise a flow no visitor can use: the
-     button only appears once this browser holds a bridge address and token. */
+test('the Garmin item is there on a computer from the start, and a phone only sees it once paired', () => {
+  /* It used to appear only after pairing, so the published site never showed it. It now shows by default
+     at computer width — unpaired it reads "Not paired" and a click opens the pairing panel, which asks
+     nothing of this computer. At phone width, where no bridge can be reached, it stays hidden until paired. */
   const m = HTML.match(/<button\b[^>]*\bid="garmin-btn"[^>]*>/);
-  assert.ok(m, 'the Garmin button is gone from the toolbar');
-  assert.match(m[0], /class="[^"]*\bhidden\b/, 'the Garmin button is visible before anything is paired');
+  assert.ok(m, 'the Garmin button is gone from the sidebar');
+  assert.match(m[0], /class="[^"]*\bhidden\b/, 'it starts hidden so there is no flash before the toolbar is drawn');
+  assert.match(HTML, /els\.garminBtn\.classList\.toggle\('hidden', !\(garminConfig\(\) \|\| matchMedia\('\(min-width: 761px\)'\)\.matches\)\)/,
+    'the toolbar must show it on a computer even when unpaired, and on a phone only when paired');
+  assert.match(HTML, /if \(!garminConfig\(\)\) \{ openGarminSetupPanel\(\); return; \}/, 'unpaired, a click opens the pairing panel');
 });
 
 test('the pairing token can only ever be sent to this computer', async () => {
@@ -650,7 +654,7 @@ test('the dialog roots sit outside every page, so a hidden page cannot hide a di
   }
 });
 
-test('Plan setup, Coach and Garmin keep their ids in the sidebar, and the Garmin item starts hidden', () => {
+test('Plan setup, Coach and Garmin keep their ids in the sidebar', () => {
   const side = HTML.slice(HTML.indexOf('<nav class="side"'), HTML.indexOf('</nav>'));
   for (const id of ['setup-btn', 'coach-btn', 'garmin-btn', 'theme-seg', 'account', 'mydata-btn']) {
     assert.ok(side.includes(`id="${id}"`), `#${id} is not in the sidebar`);
@@ -1046,4 +1050,15 @@ test('the page says outright when the sync job reports Garmin needs a sign-in, e
   const line = HTML.slice(HTML.indexOf('function garminStaleLine'));
   assert.ok(line.indexOf("state === 'auth_required'") < line.indexOf('GARMIN_STALE_MS'), 'the explicit state comes first');
   assert.match(line.slice(0, 600), /make garmin-login/);
+});
+
+test('a plan deleted from the account is recorded, and every device drops its copy of it', () => {
+  // Deleting the document would let the next device that still held the plan upload it again.
+  assert.match(HTML, /import \{ tombstoneData \} from '\.\/assets\/coach\/cloudplans\.js'/, 'the Firebase script needs its own import');
+  const del = HTML.slice(HTML.indexOf('async deletePlan(id)'));
+  assert.match(del.slice(0, 400), /setDoc\(doc\(db, 'users', uid, 'plans', id\)/);
+  assert.doesNotMatch(del.slice(0, 400), /deleteDoc\(/, 'a plan deletion must not remove the document');
+  const merge = HTML.slice(HTML.indexOf('function mergeCloudPlans'));
+  assert.match(merge.slice(0, 900), /splitCloud\(cloudRecords\)/);
+  assert.match(merge.slice(0, 900), /droppedByTombstones/);
 });

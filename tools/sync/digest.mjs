@@ -26,7 +26,7 @@ export function latestPlan(listing) {
     const at = Number(d.fields?.updatedAt?.integerValue);
     let plan = null;
     try { plan = JSON.parse(d.fields?.data?.stringValue); } catch { /* skip it */ }
-    if (plan && typeof plan === 'object' && (!best || at > best.at)) best = { at, plan };
+    if (plan && typeof plan === 'object' && !plan.deleted && (!best || at > best.at)) best = { at, plan };
   }
   return best?.plan ?? null;
 }
