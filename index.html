@@ -7007,6 +7007,9 @@
     if (act === 'export') return exportPlan();
     if (act === 'import') return openImportPanel(null);
     if (act === 'release') return toggleRelease();
+    if (act === 'addevent') return els.addEventBtn.click();
+    if (act === 'garmin-send') return els.garminSendBtn.click();
+    if (act === 'reset') return els.resetBtn.click();
     if (act === 'new' || act === 'startover') return openStartOverDialog();
   }
 
@@ -7019,6 +7022,7 @@
     renaming = true;
     const before = (plan && plan.name) || '';
     els.planTitle.classList.add('hidden');
+    els.planTitle.closest('.plan-title-wrap').classList.add('renaming');
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'im-h1-input';
@@ -7034,6 +7038,7 @@
       renaming = false;
       const next = input.value.trim();
       input.remove();
+      els.planTitle.closest('.plan-title-wrap').classList.remove('renaming');
       els.planTitle.classList.remove('hidden');
       els.planTitle.focus();
       if (commit && next && next !== before) renamePlan(plan.id, next);
@@ -7080,6 +7085,13 @@
   function popHtml(id) {
     if (id === 'more-pop') {
       return '<div class="pop" role="menu" aria-label="Plan actions">' +
+        // On a phone the toolbar's buttons are gone from the page and come here instead.
+        (phone.matches
+          ? popRow('addevent', 'i-flag', 'Add event') +
+            (els.garminSendBtn.classList.contains('hidden') ? '' : popRow('garmin-send', 'i-send', 'Send to Garmin')) +
+            popRow('reset', 'i-undo', 'Reset this week') +
+            '<div class="pop-sep" role="separator"></div>'
+          : '') +
         popRow('rename', 'i-pencil', 'Rename') +
         popRow('export', 'i-download', 'Export this plan') +
         popRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +
