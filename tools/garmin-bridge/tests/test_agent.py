@@ -146,3 +146,54 @@ def test_a_quiet_serve_prints_no_token_and_no_link(tmp_path):
     text = out.getvalue()
     assert "listening on" in text
     assert token not in text and "garmin=setup" not in text
+
+
+# ---- reinstalling while it is running ---------------------------------------
+
+class SlowTeardown(FakeLaunchctl):
+    """launchd's bootout returns before the job is gone: until then the service still
+    prints, and a bootstrap is refused with `Input/output error` (exit 5)."""
+
+    def __init__(self, polls=3):
+        super().__init__(loaded=True)
+        self.tearing_down = 0
+        self.polls = polls
+
+    def __call__(self, argv):
+        verb = argv[1]
+        if verb == "bootout":
+            self.calls.append(argv)
+            self.tearing_down = self.polls
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if self.tearing_down:
+            if verb == "print":
+                self.calls.append(argv)
+                self.tearing_down -= 1
+                return subprocess.CompletedProcess(argv, 0, "", "")
+            if verb == "bootstrap":
+                self.calls.append(argv)
+                return subprocess.CompletedProcess(argv, 5, "", "Bootstrap failed: 5: Input/output error")
+        return super().__call__(argv)
+
+
+def test_reinstalling_a_running_agent_waits_for_launchd_to_finish_unloading_it(tmp_path):
+    fake = SlowTeardown()
+    ag = Agent(home=tmp_path, project_dir=PROJECT, platform="darwin", uid=501, run=fake,
+               which=lambda name: UV, env={}, sleep=lambda s: None)
+    out = ag.install(port=8765, origins=["http://localhost:8000"])
+    assert out.startswith("Installed.")
+    assert fake.loaded is True
+
+
+def test_a_bootstrap_that_is_refused_for_good_still_says_so(tmp_path):
+    class Refuses(FakeLaunchctl):
+        def __call__(self, argv):
+            if argv[1] == "bootstrap":
+                self.calls.append(argv)
+                return subprocess.CompletedProcess(argv, 5, "", "Bootstrap failed: 5: Input/output error")
+            return super().__call__(argv)
+
+    ag = Agent(home=tmp_path, project_dir=PROJECT, platform="darwin", uid=501, run=Refuses(),
+               which=lambda name: UV, env={}, sleep=lambda s: None)
+    with pytest.raises(SystemExit, match="would not load the agent"):
+        ag.install(port=8765, origins=["http://localhost:8000"])

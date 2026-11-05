@@ -52,7 +52,17 @@ export function feedDocument(feed, { now, previous = null }) {
   const data = JSON.stringify(feed);
   const hash = hashOf(data);
   const same = previous && previous.hash === hash && Number.isFinite(previous.updatedAt);
-  return { updatedAt: same ? previous.updatedAt : now, checkedAt: now, data, hash };
+  return { updatedAt: same ? previous.updatedAt : now, checkedAt: now, data, hash, state: 'ok', stateAt: now };
+}
+
+export const AUTH_MESSAGE = 'Garmin needs you to sign in again. On your Mac, run `make garmin-login`.';
+
+/** What a failed fetch means: Garmin ended the session (`auth`), is limiting us (`rate`), or something passing (`other`). */
+export function failureKind(message) {
+  const m = String(message ?? '');
+  if (/not signed in|verification code|garmin-login|auth_required|mfa_required/i.test(m)) return 'auth';
+  if (/429|rate limit|too many/i.test(m)) return 'rate';
+  return 'other';
 }
 
 /** What is wrong with a sync config, in sentences, or [] when it can be used. */

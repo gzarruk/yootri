@@ -50,9 +50,13 @@ make garmin-uninstall
 This installs a per-user LaunchAgent (`~/Library/LaunchAgents/com.yootri.garmin-bridge.plist`).
 It is the same bridge on the same loopback address, started with `serve --quiet`
 so its log (`~/Library/Logs/yootri-garmin-bridge.log`) never holds the token or a
-link. Switch workout export or overnight figures on by setting
-`YOOTRI_GARMIN_WORKOUTS=1` / `YOOTRI_GARMIN_OVERNIGHT=1` when you run
-`make garmin-install`; they are carried into the agent only if set then. Sign in
+link. Switch workout export or overnight figures on by putting
+`YOOTRI_GARMIN_WORKOUTS=1` / `YOOTRI_GARMIN_OVERNIGHT=1` on lines of their own in
+`~/.config/yootri/yootri.conf` (see below): the bridge reads it each time it
+starts, so no reinstall. Setting them in the shell when you run `make garmin`
+or `make garmin-install` still works and wins over the file. `make setup`
+installs this agent, the coach bridge and the sync in one go; `make status`
+says which are running. Sign in
 to Garmin once with `make garmin-login`; when Garmin ends that session the page
 says "Sign in to Garmin" under the Garmin item.
 
@@ -182,6 +186,8 @@ a directory only you can read:
 
 - `garmin-tokens.json` is the Garmin session. Whoever holds it can read your
   Garmin account until you change your password, so guard it like one.
+- `yootri.conf` (optional) holds the two switches above, one `KEY=VALUE` per
+  line, `#` for comments. It holds no secret, and only those two keys are read.
 - `garmin-bridge-token` is the pairing token. `python -m garmin_bridge pair --rotate`
   (from this folder, via `uv run`) makes a new one; pages have to be paired again.
 

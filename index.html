@@ -2609,6 +2609,10 @@
   // A job that has stopped is told apart from a week that simply has not changed
   // by when it last checked, not by when the runs last moved.
   function garminStaleLine() {
+    // The job says outright when Garmin has ended its session: that beats waiting 36 hours to guess.
+    if (garminFeed && garminFeed.state === 'auth_required') {
+      return '<div class="advice-card"><span class="grow">Garmin needs you to sign in again. On the computer that runs the sync, run <b>make garmin-login</b>; newer Coach runs will appear after the next sync.</span></div>';
+    }
     const at = garminFeed && Number(garminFeed.checkedAt);
     if (!at || Date.now() - at < GARMIN_STALE_MS) return '';
     return '<div class="advice-card"><span class="grow">Garmin Coach runs were last checked ' +
@@ -7718,7 +7722,7 @@
   function fitnessNow() {
     const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
     const thresholds = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
-    return fitnessSeries(plan, { today: toISO(new Date()), thresholds, hrById: hrLookup(readHrStore()) });
+    return fitnessSeries(plan, { today: toISO(new Date()), thresholds });
   }
 
   const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(Math.round(n));
@@ -8206,7 +8210,9 @@
           const d = snap.data();
           let feed = null;
           try { feed = JSON.parse(d.data); } catch (e) {}
-          return feed ? { updatedAt: d.updatedAt || null, checkedAt: d.checkedAt || d.updatedAt || null, feed } : null;
+          const state = d.state === 'auth_required' ? 'auth_required' : null;
+          if (!feed && !state) return null;
+          return { updatedAt: d.updatedAt || null, checkedAt: d.checkedAt || d.updatedAt || null, feed, state, stateAt: d.stateAt || null };
         },
         async saveAthlete(athlete, consent) {
           if (!uid) throw new Error('Not signed in');

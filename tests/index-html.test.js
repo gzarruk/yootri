@@ -1037,3 +1037,13 @@ test('the Coach settings checkbox is the visible way into Local setup', () => {
   assert.match(HTML, /\$\('k-localdocs'\)\?\.addEventListener\('change', \(e\) => setLocalDocs\(e\.target\.checked\)\)/);
   assert.match(HTML, /function setLocalDocs\(on\)[\s\S]*?syncLocalNav\(\);[\s\S]*?navigate\('week'\)/, 'turning it off while on the page leaves it');
 });
+
+test('the page says outright when the sync job reports Garmin needs a sign-in, even with no feed yet', () => {
+  // The job writes `state: auth_required` beside the runs. The loader keeps a feed-less document that
+  // carries it, and the stale line names the command before it falls back to guessing from checkedAt.
+  assert.match(HTML, /d\.state === 'auth_required'/);
+  assert.match(HTML, /if \(!feed && !state\) return null/);
+  const line = HTML.slice(HTML.indexOf('function garminStaleLine'));
+  assert.ok(line.indexOf("state === 'auth_required'") < line.indexOf('GARMIN_STALE_MS'), 'the explicit state comes first');
+  assert.match(line.slice(0, 600), /make garmin-login/);
+});

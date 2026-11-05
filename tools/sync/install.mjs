@@ -11,6 +11,7 @@ import { existsSync, mkdirSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { reload } from '../launchd.mjs';
 
 export const LABEL = 'com.yootri.sync';
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -47,8 +48,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     const logPath = join(homedir(), '.config', 'yootri', 'sync.log');
     mkdirSync(dirname(plist), { recursive: true }); mkdirSync(dirname(logPath), { recursive: true });
     writeFileSync(plist, plistFor({ node: process.execPath, script: join(here, 'run.mjs'), cwd: join(here, '..', '..'), path: process.env.PATH, logPath }));
-    run(['bootout', `${domain}/${LABEL}`]);
-    if (run(['bootstrap', domain, plist]) === null) { console.error('launchctl refused the agent; the plist is at ' + plist); process.exit(1); }
+    if (!reload({ domain, label: LABEL, plist })) { console.error('launchctl refused the agent; the plist is at ' + plist); process.exit(1); }
     console.log(`Installed. Runs at 00:20 daily, 23:30 Sunday and 06:30 Monday. Log: ${logPath}`);
   } else if (cmd === 'uninstall') {
     run(['bootout', `${domain}/${LABEL}`]);

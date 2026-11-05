@@ -10,6 +10,7 @@ import {
   REPLY_SCHEMA, BRIDGE_SYSTEM, buildPrompt, toChatCompletion, isModelName,
 } from '../tools/claude-bridge/translate.mjs';
 import { createBridge, claudeArgs, readResult, loadToken } from '../tools/claude-bridge/bridge.mjs';
+import { plistFor, LABEL } from '../tools/claude-bridge/install.mjs';
 
 const provider = getProvider('openai-compatible');
 const tools = provider.translateTools(TOOL_DEFS);
@@ -221,4 +222,19 @@ test('the model is told the coach\'s tools are not native and go in tool_calls',
   const p = buildPrompt({ tools, messages: [{ role: 'user', content: 'x' }] });
   assert.match(p, /not native tools/);
   assert.match(p, /name it in tool_calls/);
+});
+
+test('the LaunchAgent keeps the bridge running at login, on loopback, quiet, for every allowed origin', () => {
+  const x = plistFor({
+    node: '/usr/bin/node', script: '/r/bridge.mjs', cwd: '/r', path: '/a&b:/c', logPath: '/l',
+    port: 8766, origins: ['http://localhost:8000', 'https://yootri.gzarruk.com'],
+  });
+  assert.equal(LABEL, 'com.yootri.claude-bridge');
+  assert.match(x, /<key>RunAtLoad<\/key><true\/>/);
+  assert.match(x, /<key>KeepAlive<\/key><true\/>/);
+  assert.match(x, /<string>--port<\/string><string>8766<\/string>/);
+  assert.match(x, /<string>--quiet<\/string>/);
+  assert.match(x, /<string>--allow-origin<\/string><string>https:\/\/yootri\.gzarruk\.com<\/string>/);
+  assert.ok(x.includes('/a&amp;b:/c'), 'the PATH is escaped, and it is how launchd finds `claude`');
+  assert.ok(!/ANTHROPIC_API_KEY/.test(x), 'no key ever goes into the plist');
 });

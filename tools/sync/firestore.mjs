@@ -34,11 +34,15 @@ export async function accessToken(sa, { now = Date.now(), fetchFn = fetch } = {}
 export const feedUrl = (projectId, uid) =>
   `https://firestore.googleapis.com/v1/projects/${encodeURIComponent(projectId)}/databases/(default)/documents/users/${encodeURIComponent(uid)}/garmin/feed`;
 
+/** Only these two fields, so a note that the session ended never rewrites the runs or `checkedAt`. */
+export const stateUrl = (projectId, uid) => `${feedUrl(projectId, uid)}?updateMask.fieldPaths=state&updateMask.fieldPaths=stateAt`;
+
 export const toFields = (d) => ({ fields: {
   updatedAt: { integerValue: String(d.updatedAt) },
   checkedAt: { integerValue: String(d.checkedAt) },
   data: { stringValue: d.data },
   hash: { stringValue: d.hash },
+  ...(d.state ? { state: { stringValue: d.state }, stateAt: { integerValue: String(d.stateAt) } } : {}),
 } });
 
 export async function readPrevious({ projectId, uid, token, fetchFn = fetch }) {
@@ -59,4 +63,13 @@ export async function writeFeed({ projectId, uid, token, doc, fetchFn = fetch })
     const hint = res.status === 403 ? ' The service account needs the "Cloud Datastore User" role.' : '';
     throw new Error(`Writing the feed failed (HTTP ${res.status}).${hint}`);
   }
+}
+
+export async function writeState({ projectId, uid, token, state, now, fetchFn = fetch }) {
+  const res = await fetchFn(stateUrl(projectId, uid), {
+    method: 'PATCH',
+    headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ fields: { state: { stringValue: state }, stateAt: { integerValue: String(now) } } }),
+  });
+  if (!res.ok) throw new Error(`Writing the state failed (HTTP ${res.status}).`);
 }

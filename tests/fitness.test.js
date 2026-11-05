@@ -556,12 +556,15 @@ test('the figures appear at exactly the minimum number of covered weeks and not 
   assert.ok(Number.isFinite(enough.weeks[0].actualFat));
 });
 
-test('heart rate cannot make a session count toward the basis; it may still colour a session that has one', () => {
+test('heart rate is never read: a device holding it shows the same figures as one that does not', () => {
   const hr = { lthr: 170, maxHr: 190, restHr: 50, trimp: 'male' };
   const hrById = new Map(Array.from({ length: 24 }, (_, i) => [`garmin:${i}`, { avg: 150 }]));
   const r = fitnessSeries(plan({ activities: noPower(24), activitySync: synced(START) }), { today: TODAY, thresholds: { ...T, ...hr }, hrById });
   assert.equal(r.basis.reason, 'unscorable');
   assert.equal(r.today, null, 'sessions only heart rate could score are not a basis');
+  const withHr = fitnessSeries(plan({ activities: rides(24).concat(noPower(6)), activitySync: synced(START) }), { today: TODAY, thresholds: { ...T, ...hr }, hrById });
+  const without = fitnessSeries(plan({ activities: rides(24).concat(noPower(6)), activitySync: synced(START) }), { today: TODAY, thresholds: T });
+  assert.deepEqual(withHr.today, without.today);
 });
 
 test('carry hands each day\'s fatigue to the caller as well as its fitness', () => {
