@@ -25,6 +25,7 @@ from garmin_bridge import __version__
 from garmin_bridge.agent import Agent
 from garmin_bridge.auth import ApiFactory, login, open_api, quiet_library
 from garmin_bridge.client import GarminClient
+from garmin_bridge.conf import with_conf
 from garmin_bridge.errors import BridgeError, RateLimited
 from garmin_bridge.server import DEFAULT_PORT, Config, make_server
 from garmin_bridge.store import Store
@@ -209,15 +210,16 @@ def main(
         return GarminClient(open_api(store, api_factory=api_factory),
                             on_tokens_changed=store.write_tokens)
 
+    env = with_conf(os.environ, store.dir)
     server = make_server(Config(token=token, origins=origins, store=store, client_provider=provider,
-                                  workouts=workouts_enabled(), overnight=overnight_enabled()),
+                                  workouts=workouts_enabled(env), overnight=overnight_enabled(env)),
                          port=args.port)
     port = server.server_address[1]
     say(f"yootri Garmin bridge {__version__} listening on http://127.0.0.1:{port}")
     say(f"Pages allowed to use it: {', '.join(origins)}")
-    if workouts_enabled():
+    if workouts_enabled(env):
         say("Workout export is ON (YOOTRI_GARMIN_WORKOUTS=1): the page may send bike workouts to Garmin.")
-    if overnight_enabled():
+    if overnight_enabled(env):
         say("Overnight figures are ON (YOOTRI_GARMIN_OVERNIGHT=1): the page may read sleep, overnight HRV "
             "and resting heart rate.")
     if not args.quiet:

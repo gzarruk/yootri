@@ -170,3 +170,18 @@ def test_pair_open_opens_the_first_link_once_and_does_not_launch_a_browser_in_te
 def test_a_plain_pair_still_prints_just_the_token(tmp_path):
     _, text, _ = run(["pair"], tmp_path)
     assert text.strip() == Store(tmp_path).pairing_token(create=False)
+
+
+# ---- yootri.conf: the switches, kept in one file instead of in each agent --------
+
+def test_the_conf_file_holds_the_switches_and_the_shell_still_wins(tmp_path):
+    from garmin_bridge.conf import read_conf, with_conf
+
+    (tmp_path / "yootri.conf").write_text(
+        "# yootri\nYOOTRI_GARMIN_WORKOUTS=1\n\nYOOTRI_GARMIN_OVERNIGHT = \"1\"\nNOT_ALLOWED=1\nbroken line\n",
+        encoding="utf-8")
+    assert read_conf(tmp_path) == {"YOOTRI_GARMIN_WORKOUTS": "1", "YOOTRI_GARMIN_OVERNIGHT": "1"}
+    assert read_conf(tmp_path / "missing") == {}
+    merged = with_conf({"YOOTRI_GARMIN_WORKOUTS": "0"}, tmp_path)
+    assert merged["YOOTRI_GARMIN_WORKOUTS"] == "0"
+    assert merged["YOOTRI_GARMIN_OVERNIGHT"] == "1"

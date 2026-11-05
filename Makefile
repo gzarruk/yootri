@@ -12,6 +12,10 @@
 #   make claude-bridge    answer the coach with the Claude Code signed in here, not an API key
 #   make claude-install   macOS: keep that running from login, no terminal (claude-uninstall to remove)
 #
+#   make setup            macOS, once: sign in to Garmin if needed, then start the Garmin bridge,
+#                         the coach bridge and the scheduled sync at login — no terminals
+#   make status           is each of those signed in / running?
+#
 #   make garmin-login     sign in to Garmin once (personal use; see tools/garmin-bridge)
 #   make garmin           run the Garmin bridge while you sync from the page
 #   make garmin-pair      open the one-click link that pairs this browser with it
@@ -31,7 +35,27 @@ NEED_UV = command -v uv >/dev/null 2>&1 || { \
 	exit 1; }
 
 .DEFAULT_GOAL := dev
-.PHONY: dev claude-bridge stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test claude-install claude-uninstall claude-agent-status sync sync-dry sync-install sync-uninstall
+.PHONY: setup status dev claude-bridge stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test claude-install claude-uninstall claude-agent-status sync sync-dry sync-install sync-uninstall
+
+## setup: macOS, once — sign in to Garmin if needed, then install the three always-on agents
+setup:
+	@$(NEED_UV)
+	@$(BRIDGE) python -m garmin_bridge status | grep -q '^Signed in' || $(BRIDGE) python -m garmin_bridge login
+	@$(MAKE) --no-print-directory garmin-install
+	@if [ -f "$${XDG_CONFIG_HOME:-$$HOME/.config}/yootri/sync.json" ]; then $(MAKE) --no-print-directory sync-install; \
+	else echo "  Scheduled sync skipped: no ~/.config/yootri/sync.json yet (see tools/sync/README.md), then run make sync-install."; fi
+	@if command -v claude >/dev/null 2>&1; then $(MAKE) --no-print-directory claude-install; \
+	else echo "  Coach bridge skipped: Claude Code is not installed (https://claude.com/claude-code), then run make claude-install."; fi
+	@echo "  Done. Switches (workout export, overnight figures) can go in ~/.config/yootri/yootri.conf — see tools/garmin-bridge/README.md."
+
+## status: Garmin session, and whether each always-on agent is running
+status:
+	@$(NEED_UV)
+	@echo "  Garmin session:   $$($(BRIDGE) python -m garmin_bridge status)"
+	@echo "  Garmin bridge:    $$($(BRIDGE) python -m garmin_bridge agent status 2>&1 | head -1)"
+	@echo "  Coach bridge:     $$(node tools/claude-bridge/install.mjs status)"
+	@echo "  Scheduled sync:   $$(node tools/sync/install.mjs status)"
+	@echo "  Last sync:        $$(tail -n 1 "$${XDG_CONFIG_HOME:-$$HOME/.config}/yootri/sync.log" 2>/dev/null || echo none)"
 
 ## dev: serve at http://localhost:8000/ (PORT=8001 to change)
 dev:
