@@ -25,6 +25,7 @@ import plistlib
 import shutil
 import subprocess
 import sys
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 
@@ -68,7 +69,7 @@ class Agent:
     def __init__(
         self, *, home: Path | None = None, project_dir: str | None = None, platform: str | None = None,
         uid: int | None = None, run: Run | None = None, which: Callable[[str], str | None] | None = None,
-        env: Mapping[str, str] | None = None,
+        env: Mapping[str, str] | None = None, sleep: Callable[[float], None] | None = None,
     ) -> None:
         self.home = Path(home) if home is not None else Path.home()
         self.project_dir = project_dir or str(Path(__file__).resolve().parents[1])
@@ -79,6 +80,7 @@ class Agent:
         # that an upgrade removes, and the link is what keeps working.
         self.which = which or shutil.which
         self.env = env if env is not None else os.environ
+        self.sleep = sleep or time.sleep
 
     @property
     def plist_path(self) -> Path:
@@ -100,6 +102,23 @@ class Agent:
     def _loaded(self) -> bool:
         return self.run(["launchctl", "print", f"{self._domain}/{LABEL}"]).returncode == 0
 
+    def _wait_unloaded(self, tries: int = 40) -> None:
+        """`bootout` returns before launchd has finished with the job; a bootstrap sent in that
+        window is refused with `Input/output error`. Wait until the service is gone."""
+        for _ in range(tries):
+            if not self._loaded():
+                return
+            self.sleep(0.25)
+
+    def _bootstrap(self, tries: int = 4) -> "subprocess.CompletedProcess[str]":
+        done = self.run(["launchctl", "bootstrap", self._domain, str(self.plist_path)])
+        for _ in range(tries - 1):
+            if done.returncode == 0:
+                break
+            self.sleep(0.5)
+            done = self.run(["launchctl", "bootstrap", self._domain, str(self.plist_path)])
+        return done
+
     def install(self, *, port: int, origins: tuple[str, ...] | list[str]) -> str:
         self._require_mac()
         uv = self.which("uv")
@@ -112,8 +131,9 @@ class Agent:
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
         if self._loaded():
             self.run(["launchctl", "bootout", f"{self._domain}/{LABEL}"])
+            self._wait_unloaded()
         self.plist_path.write_bytes(plistlib.dumps(plist))
-        done = self.run(["launchctl", "bootstrap", self._domain, str(self.plist_path)])
+        done = self._bootstrap()
         if done.returncode != 0:
             raise SystemExit("launchctl would not load the agent: " + (done.stderr or "").strip())
         return (f"Installed. The bridge now starts when you log in, on 127.0.0.1:{port}, and restarts if it stops.\n"

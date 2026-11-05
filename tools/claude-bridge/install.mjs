@@ -14,6 +14,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { reload } from '../launchd.mjs';
 
 export const LABEL = 'com.yootri.claude-bridge';
 const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -66,8 +67,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
     const logPath = join(homedir(), 'Library', 'Logs', 'yootri-claude-bridge.log');
     mkdirSync(dirname(plist), { recursive: true }); mkdirSync(dirname(logPath), { recursive: true });
     writeFileSync(plist, plistFor({ node: process.execPath, script: join(here, 'bridge.mjs'), cwd: root, path: process.env.PATH, logPath, port: opts.port, origins }));
-    run(['bootout', `${domain}/${LABEL}`]);
-    if (run(['bootstrap', domain, plist]) === null) { console.error('launchctl refused the agent; the plist is at ' + plist); process.exit(1); }
+    if (!reload({ domain, label: LABEL, plist })) { console.error('launchctl refused the agent; the plist is at ' + plist); process.exit(1); }
     console.log(`Installed. The coach answers on http://127.0.0.1:${opts.port}/v1 from login on, for ${origins.join(', ')}.\nToken: ~/.config/yootri-claude-bridge/token   Log: ${logPath}`);
   } else if (cmd === 'uninstall') {
     run(['bootout', `${domain}/${LABEL}`]);
