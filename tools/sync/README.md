@@ -72,6 +72,15 @@ again when you open it, because the page also sees what stays in a browser
 cannot be read is logged as "digest skipped" and never fails the sync. What has
 been said is remembered in `~/.config/yootri/sync-state.json`.
 
+## One plan in the account
+
+An account that has collected several plans under one name leaves each device
+working on a different one. `node tools/sync/prune.mjs --keep <plan id>` shows
+what would go and changes nothing; with `--yes` it copies the others to
+`~/.config/yootri/backups/` and replaces each with a small deletion record, which
+every device reads on its next pull and drops its own copy. Run it only after the
+page that understands those records is live.
+
 ## What it does and does not do
 
 - A failed run writes no runs (the one exception is the sign-in note above),

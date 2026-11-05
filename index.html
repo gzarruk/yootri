@@ -1538,6 +1538,7 @@
   import { minToDur } from './assets/coach/duration.js';
   import { createSession, sessionDiff, callTool, adviceCall } from './assets/coach/tools.js';
   import { newPlan, mintPlanId } from './assets/coach/plan.js';
+  import { splitCloud, droppedByTombstones } from './assets/coach/cloudplans.js';
   import {
     exportEnvelope, readPlanFile, adoptImported, summarizePlan,
   } from './assets/coach/portable.js';
@@ -1898,7 +1899,10 @@
   function renderToolbar() {
     els.viewSeg.querySelectorAll('input[name="view"]').forEach((r) => { r.checked = r.value === state.view; });
     syncNav();
-    els.garminBtn.classList.toggle('hidden', !garminConfig());
+    // On a computer the Garmin item is always there: unpaired it says "Not paired" and a click opens the
+    // pairing panel, which asks nothing of this computer. A phone cannot reach a bridge, so it keeps it
+    // hidden until paired. (Inline, not `desktop`: that const is declared further down the script.)
+    els.garminBtn.classList.toggle('hidden', !(garminConfig() || matchMedia('(min-width: 761px)').matches));
     renderBridgeState();
     els.garminSendBtn.classList.toggle('hidden', !garminConfig());
 
@@ -4453,7 +4457,15 @@
 
   // Union local + cloud plans by id; newer updatedAt wins. Pull cloud→local,
   // then push anything the cloud is missing or that changed locally.
-  function mergeCloudPlans(cloudPlans) {
+  function mergeCloudPlans(cloudRecords) {
+    // A plan deleted from the account is a record saying so (cloudplans.js). Without it, the device
+    // that still held the plan uploaded it again, and two devices ended up on two plans.
+    const { live: cloudPlans, tombstones } = splitCloud(cloudRecords);
+    const gone = droppedByTombstones(plans.map((e) => loadPlanLocal(e.id)).filter(Boolean), tombstones);
+    if (gone.length) {
+      gone.forEach((id) => remove(planKey(id)));
+      plans = plans.filter((e) => !gone.includes(e.id));
+    }
     const idx = {};
     plans.forEach((e) => { idx[e.id] = e; });
     const cloudById = {};
@@ -8129,6 +8141,7 @@
     import { initializeApp } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js';
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, deleteUser, reauthenticateWithPopup } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js';
     import { getFirestore, collection, getDocs, getDoc, doc, setDoc, deleteDoc } from 'https://www.gstatic.com/firebasejs/12.16.0/firebase-firestore.js';
+    import { tombstoneData } from './assets/coach/cloudplans.js';
 
     const firebaseConfig = {
       apiKey: 'AIzaSyDeJrxAeHHIBRTdfYBFBToDV8djv-p1nfo',
@@ -8183,9 +8196,14 @@
             data: JSON.stringify(syncable),
           });
         },
+        // A deletion is kept as a record, not removed, so a device that still holds the plan
+        // learns it was deleted instead of uploading it again (see assets/coach/cloudplans.js).
         async deletePlan(id) {
           if (!uid) return;
-          await deleteDoc(doc(db, 'users', uid, 'plans', id));
+          const now = Date.now();
+          await setDoc(doc(db, 'users', uid, 'plans', id), {
+            name: 'Deleted plan', updatedAt: now, data: tombstoneData(id, now),
+          });
         },
         // About you, at users/{uid}/athlete/profile, written only under its
         // own consent (the page checks). The consent it was written under goes
