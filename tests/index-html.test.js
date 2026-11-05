@@ -668,9 +668,11 @@ test('the app opens on the current week without writing the plan', () => {
 
 /* ---- The phone layout ---- */
 
-test('the phone has a tab bar with the four pages and a More sheet, and a day strip for the board', () => {
+test('the phone has a four-place tab bar (Today, Plan, Fitness, More), and a day strip for the board', () => {
   const bar = HTML.slice(HTML.indexOf('<nav class="tabbar"'), HTML.indexOf('</nav>', HTML.indexOf('<nav class="tabbar"')));
-  for (const r of ['week', 'status', 'biometrics', 'health']) assert.ok(bar.includes(`data-route="${r}"`), `the tab bar has no ${r} tab`);
+  for (const r of ['week', 'calendar', 'status']) assert.ok(bar.includes(`data-route="${r}"`), `the tab bar has no ${r} tab`);
+  // Biometrics and Health are reached from the More sheet, which is the sidebar.
+  for (const r of ['biometrics', 'health']) assert.ok(HTML.includes(`<a class="nav" data-route="${r}"`), `the sidebar has no ${r} item`);
   assert.ok(bar.includes('id="tab-more"'), 'the tab bar has no More button');
   assert.match(HTML, /id="dstrip"/);
   assert.match(HTML, /<meta name="viewport"[^>]*viewport-fit=cover/, 'the tab bar needs the safe-area inset');

@@ -1489,10 +1489,9 @@
   </div>
 
   <nav class="tabbar" id="tabbar" aria-label="Sections">
-    <a class="tab" data-route="week" href="#/week"><i class="ic i-calendar" aria-hidden="true"></i>Week</a>
-    <a class="tab" data-route="status" href="#/status"><i class="ic i-trend" aria-hidden="true"></i>Status</a>
-    <a class="tab" data-route="biometrics" href="#/biometrics"><i class="ic i-user" aria-hidden="true"></i>Biometrics</a>
-    <a class="tab" data-route="health" href="#/health"><i class="ic i-heart" aria-hidden="true"></i>Health</a>
+    <a class="tab" data-route="week" href="#/week"><i class="ic i-calendar" aria-hidden="true"></i>Today</a>
+    <a class="tab" data-route="calendar" href="#/calendar"><i class="ic i-month" aria-hidden="true"></i>Plan</a>
+    <a class="tab" data-route="status" href="#/status"><i class="ic i-trend" aria-hidden="true"></i>Fitness</a>
     <button type="button" class="tab" id="tab-more" aria-haspopup="dialog" aria-expanded="false"><i class="ic i-menu" aria-hidden="true"></i>More</button>
   </nav>
 
@@ -7224,8 +7223,7 @@
   function syncNav() {
     const on = activeRoute();
     document.querySelectorAll('#side [data-route], #tabbar [data-route]').forEach((n) => {
-      // The tab bar has no Calendar tab, so the Month view lights the Week tab.
-      const here = n.classList.contains('tab') ? n.dataset.route === (on === 'calendar' ? 'week' : on) : n.dataset.route === on;
+      const here = n.dataset.route === on;
       n.classList.toggle('on', here);
       if (here) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
     });
