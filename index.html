@@ -1209,10 +1209,12 @@
       </div>
       <div class="title-row">
         <div>
+          <h1 class="im-h1" id="page-h1"></h1>
+          <!-- The plan's name is in the sidebar and the phone's top bar. It shows here only while it is renamed. -->
           <div class="plan-title-wrap">
-            <h1 class="im-h1">
+            <div class="im-h1">
               <span class="plan-title" id="plan-title" tabindex="-1" title="Double-click to rename"><span id="plan-title-text"></span></span>
-            </h1>
+            </div>
           </div>
           <p class="im-sub" id="subtitle"></p>
         </div>
@@ -1223,13 +1225,20 @@
       </div>
     </header>
 
-    <section class="stack ffm" aria-label="Fitness (CTL), fatigue (ATL) and form">
-      <div class="k-row">
-        <span class="card-kicker">Fitness (CTL), fatigue (ATL) and form</span>
-        <span class="chip-sample" id="ffm-chip"></span>
+    <div class="top-band">
+      <div class="top-left">
+        <section class="today-panel" id="today-root" aria-label="Today's training" hidden></section>
+        <div id="orient-root"></div>
+        <div id="advice-root"></div>
       </div>
-      <div class="ind-grid" id="ffm-root"></div>
-    </section>
+      <section class="stack ffm" aria-label="Fitness (CTL), fatigue (ATL) and form">
+        <div class="k-row">
+          <span class="card-kicker">Fitness (CTL), fatigue (ATL) and form</span>
+          <span class="chip-sample" id="ffm-chip"></span>
+        </div>
+        <div class="ind-grid" id="ffm-root"></div>
+      </section>
+    </div>
 
     <div class="overview">
       <div class="ov-row">
@@ -1280,9 +1289,6 @@
         <button type="button" class="btn btn-ghost" id="reset-btn"><i class="ic i-undo"></i> Reset week</button>
       </div>
     </div>
-
-    <div id="orient-root"></div>
-    <div id="advice-root"></div>
 
     <div class="race-label" id="race-label" aria-label="The race this season is for"></div>
 
@@ -1852,6 +1858,11 @@
   function renderHeader() {
     const name = (plan && plan.name) || 'My plan';
     els.planTitleText.textContent = name;
+    // The page's own heading: today when this week holds it, else the week or the calendar.
+    const todayISO = toISO(new Date());
+    const hasToday = DAYS.some((d) => dateOf(state.start, state.week, d) === todayISO);
+    $('page-h1').textContent = state.view === 'month' ? 'Calendar'
+      : hasToday ? 'Today, ' + fmtDayISO(todayISO) : 'Week ' + (state.week + 1);
     // The untouched stand-in is not a plan the athlete made, so it is not named.
     $('plan-sw-name').textContent = currentPlanUntouched() ? 'Not set up yet' : name;
     $('m-plan-name').textContent = name;
@@ -2106,6 +2117,47 @@
     }).join('');
     applyMobileDay();
   }
+
+  /* Desktop: today's sessions beside fitness, above the week. Shown only while the board is on the
+     week that holds today, so every card here is one the board already has (same ids, same actions). */
+  function renderToday() {
+    const root = $('today-root');
+    const todayISO = toISO(new Date());
+    const day = state.view === 'week' ? DAYS.find((d) => dateOf(state.start, state.week, d) === todayISO) : null;
+    root.hidden = !day;
+    if (!day) { root.innerHTML = ''; return; }
+    const items = state.sessions.filter((s) => s.day === day);
+    const mins = items.reduce((a, s) => a + durToMin(s.dur), 0);
+    const row = (s) => {
+      const meta = DISC[s.disc] || {};
+      const color = meta.color || 'var(--color-neutral-500)';
+      const isDone = !!state.done[s.id];
+      const title = s.focus && s.focus.trim() ? esc(s.focus) : 'Untitled session';
+      return '<div class="today-row" style="--disc-color: ' + color + ';">' +
+        '<div class="today-main">' +
+          '<span class="disc-tag" style="background: color-mix(in srgb, ' + color + ' 20%, transparent); color: color-mix(in srgb, ' + color + ' 82%, var(--color-text));">' +
+            '<i class="ic ' + (meta.icon || 'i-circle') + '"></i>' + esc(s.disc) + '</span>' +
+          '<span class="today-focus">' + title + '</span>' +
+          '<span class="today-meta">' + esc(s.dur) + (s.zone ? ' · ' + esc(s.zone) : '') + '</span>' +
+        '</div>' +
+        (s.desc && s.desc.trim() ? '<div class="today-desc">' + esc(s.desc) + '</div>' : '') +
+        '<div class="today-acts">' +
+          (isDone
+            ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-check-circle"></i>Done</button>'
+            : '<button type="button" class="btn btn-primary" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-check-circle"></i>Mark done</button>') +
+          '<button type="button" class="icon-btn" data-act="edit" data-id="' + esc(s.id) + '" title="Edit session" aria-label="Edit session"><i class="ic i-pencil"></i></button>' +
+        '</div></div>';
+    };
+    root.innerHTML = '<div class="k-row"><span class="card-kicker">Today · ' + esc(fmtDayISO(todayISO)) + '</span>' +
+      '<span class="today-total">' + esc(fmtTotal(mins) || '') + '</span></div>' +
+      (items.length ? items.map(row).join('') : '<p class="note">Nothing planned today.</p>');
+  }
+  $('today-root').addEventListener('click', (e) => {
+    const act = e.target.closest('[data-act]');
+    if (!act) return;
+    if (act.dataset.act === 'edit') { state.editingId = act.dataset.id; renderModal(); }
+    else if (act.dataset.act === 'done') toggleDone(act.dataset.id);
+  });
 
   function applyMobileDay() {
     document.querySelectorAll('#dstrip .dchip').forEach((b) => {
@@ -2716,6 +2768,7 @@
     els.boardwrap.classList.toggle('hidden', month);
     els.calwrap.classList.toggle('hidden', !month);
     if (month) renderCalendar(); else renderBoard();
+    renderToday();
   }
 
   function renderAll() {
@@ -7084,13 +7137,11 @@
   function popHtml(id) {
     if (id === 'more-pop') {
       return '<div class="pop" role="menu" aria-label="Plan actions">' +
-        // On a phone the toolbar's buttons are gone from the page and come here instead.
-        (phone.matches
-          ? popRow('addevent', 'i-flag', 'Add event') +
-            (els.garminSendBtn.classList.contains('hidden') ? '' : popRow('garmin-send', 'i-send', 'Send to Garmin')) +
-            popRow('reset', 'i-undo', 'Reset this week') +
-            '<div class="pop-sep" role="separator"></div>'
-          : '') +
+        // The toolbar's one-off commands live here, on a phone and on a computer.
+        popRow('addevent', 'i-flag', 'Add event') +
+        (els.garminSendBtn.classList.contains('hidden') ? '' : popRow('garmin-send', 'i-send', 'Send to Garmin')) +
+        popRow('reset', 'i-undo', 'Reset this week') +
+        '<div class="pop-sep" role="separator"></div>' +
         popRow('rename', 'i-pencil', 'Rename') +
         popRow('export', 'i-download', 'Export this plan') +
         popRow('release', 'i-calendar', plan.release ? 'Show the whole season' : 'Show one week at a time') +

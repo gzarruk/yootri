@@ -267,6 +267,31 @@ table.t { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-
 table.t th { text-align: left; font-weight: 400; font-size: 11px; letter-spacing: 0.07em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 55%, transparent); padding: 0 0 8px; }
 table.t td { padding: 9px 0; border-top: 1px solid var(--color-divider); }
 table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transparent); }
+/* Desktop week page: today's sessions beside fitness, above everything else. */
+.top-band { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 22px; }
+.top-band .ffm { margin-bottom: 0; }
+.top-left { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.top-band .ind-grid { grid-template-columns: minmax(0, 1fr); }
+/* Race day is on the Fitness page; the band is for today. */
+.top-band .ind-grid > :nth-child(n + 2) { display: none; }
+.today-panel { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: var(--radius-lg); background: var(--color-surface); box-shadow: var(--shadow-sm); }
+.today-panel[hidden] { display: none; }
+.today-panel .k-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.today-total { font-size: 13px; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.today-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 10px 10px 10px 12px; border: 1px solid var(--color-divider); border-left: 3px solid var(--disc-color, var(--color-neutral-500)); border-radius: var(--radius-md); }
+.today-main { display: flex; align-items: center; gap: 10px; flex: 1 1 240px; min-width: 0; flex-wrap: wrap; }
+.today-focus { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; }
+.today-meta { font-size: 13px; font-variant-numeric: tabular-nums; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.today-desc { flex: 1 1 100%; order: 3; font-size: 13px; line-height: 1.5; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+.today-acts { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.today-acts .icon-btn { width: 28px; height: 28px; }
+@media (max-width: 1100px) { .top-band { grid-template-columns: minmax(0, 1fr); } }
+
+/* The plan's name is in the sidebar; the page heading names the page. The name shows here only while it is renamed. */
+.plan-title-wrap:not(.renaming) { display: none; }
+/* One-off commands live in the plan menu. Sync stays: it is the one the athlete reaches for. */
+.toolbar #add-event-btn, .toolbar #garmin-send-btn, .toolbar #reset-btn { display: none; }
+
 .race-line { gap: 8px; padding: 14px 18px; }
 .race-figs { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
 .race-figs b { font-weight: 500; font-size: 17px; margin-left: 4px; color: var(--color-text); font-variant-numeric: tabular-nums; }
@@ -436,10 +461,13 @@ table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transp
      order is: fitness today (CTL, ATL, form), the day's sessions, the coach's suggestions, and
      only then the week's controls, its totals and the season. */
   .page[data-page="week"] > header { order: 0; margin-bottom: 8px; }
-  .page[data-page="week"] > .ffm { order: 1; margin: 0 0 12px; }
+  .page[data-page="week"] > .top-band, .top-left { display: contents; }
+  .page[data-page="week"] .top-band .ffm { order: 1; margin: 0 0 12px; }
+  .top-band .today-panel { display: none; }
+  .page[data-page="week"] #page-h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .page[data-page="week"] > .im-boardwrap, .page[data-page="week"] > .im-calwrap { order: 2; }
   .page[data-page="week"] > .dstrip { order: 3; margin: 12px 0 0; }
-  .page[data-page="week"] > #orient-root, .page[data-page="week"] > #advice-root { order: 4; }
+  .page[data-page="week"] #orient-root, .page[data-page="week"] #advice-root { order: 4; }
   .page[data-page="week"] > .toolbar { order: 5; margin-top: 14px; }
   .page[data-page="week"] > .race-label { order: 6; }
   .page[data-page="week"] > .summary { order: 7; }
@@ -449,7 +477,6 @@ table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transp
 
   /* The plan's name is already in the top bar. The header keeps the one line about the plan and
      its menu; rename shows the field again while it is being edited. */
-  .page[data-page="week"] .plan-title-wrap:not(.renaming) { display: none; }
   .page[data-page="week"] .title-row { align-items: center; }
 
   /* Fitness today is one compact card; race day, the scale and the explanation live on Status. */
@@ -493,7 +520,7 @@ table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transp
   .im-card .done-toggle.is-done { font-size: 14px; }
 
   /* The commands that were a row of buttons live in the plan menu. */
-  .toolbar #add-event-btn, .toolbar #garmin-send-btn, .toolbar #sync-btn, .toolbar #reset-btn { display: none; }
+  .toolbar #sync-btn { display: none; }
   .toolbar { align-items: center; }
   .toolbar .wk-nav { order: 0; flex: 1 1 auto; width: auto; }
   .toolbar .im-actions { order: 3; flex: 1 1 100%; justify-content: flex-start; }
