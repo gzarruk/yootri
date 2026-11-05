@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createVerify, generateKeyPairSync } from 'node:crypto';
-import { slimWorkout, slimFeed, feedDocument, configProblems } from '../tools/sync/feed.mjs';
-import { buildJwt, feedUrl, toFields } from '../tools/sync/firestore.mjs';
+import { slimWorkout, slimFeed, feedDocument, configProblems, failureKind } from '../tools/sync/feed.mjs';
+import { buildJwt, feedUrl, toFields, stateUrl } from '../tools/sync/firestore.mjs';
 import { run } from '../tools/sync/run.mjs';
 import { plistFor } from '../tools/sync/install.mjs';
 import { runsByWeek } from '../assets/coach/syncweek.js';
@@ -129,4 +129,74 @@ test('the LaunchAgent runs at 00:20 daily, Sunday 23:30 and Monday 06:30, and es
   assert.match(x, /<key>Weekday<\/key><integer>0<\/integer><key>Hour<\/key><integer>23<\/integer>/);
   assert.match(x, /<key>Weekday<\/key><integer>1<\/integer><key>Hour<\/key><integer>6<\/integer>/);
   assert.ok(x.includes('/a&amp;b:/c'));
+});
+
+/* ---- Garmin ended the session: say so once, and say it on the page too ---- */
+
+test('a failure is told apart: sign-in needed, rate limited, or anything else', () => {
+  assert.equal(failureKind('Could not read the Garmin calendar: Not signed in to Garmin. Run `make garmin-login` in a terminal.'), 'auth');
+  assert.equal(failureKind('Garmin asked for a verification code. Run `make garmin-login` in a terminal.'), 'auth');
+  assert.equal(failureKind('Garmin returned 429 too many requests'), 'rate');
+  assert.equal(failureKind('Garmin Connect could not be reached.'), 'other');
+});
+
+test('a good run marks the feed ok; the state fields are written only when there is one', () => {
+  assert.equal(feedDocument(slimFeed(scheduled()), { now: 5 }).state, 'ok');
+  assert.equal(toFields({ updatedAt: 5, checkedAt: 6, data: '{}', hash: 'h' }).fields.state, undefined);
+  assert.deepEqual(toFields({ updatedAt: 5, checkedAt: 6, data: '{}', hash: 'h', state: 'ok', stateAt: 6 }).fields.state, { stringValue: 'ok' });
+  assert.match(stateUrl('p-1', 'u1'), /garmin\/feed\?updateMask\.fieldPaths=state&updateMask\.fieldPaths=stateAt$/);
+});
+
+const authError = () => { throw new Error('Could not read the Garmin calendar: Not signed in to Garmin. Run `make garmin-login` in a terminal.'); };
+const withNote = (over = {}) => { let note = {}; const pushes = [];
+  return { pushes, get note() { return note; }, over: { loadNote: () => note, saveNote: (n) => { note = n; }, push: (m) => pushes.push(m), ...over } }; };
+
+test('a sign-in failure is said once, recorded on the account, and leaves the runs alone', async () => {
+  const n = withNote();
+  const h = harness({ fetchRuns: authError, ...n.over });
+  const first = await run(h.opts);
+  assert.equal(first.ok, false);
+  assert.match(first.message, /make garmin-login/);
+  assert.equal(h.notes.length, 1);
+  assert.equal(n.pushes.length, 1);
+  const patch = h.calls.filter((c) => c.method === 'PATCH');
+  assert.equal(patch.length, 1);
+  assert.match(patch[0].url, /updateMask\.fieldPaths=state/);
+  const sent = JSON.parse(patch[0].body).fields;
+  assert.deepEqual(Object.keys(sent).sort(), ['state', 'stateAt'], 'only the state moves: runs and checkedAt stay as they were');
+  assert.equal(sent.state.stringValue, 'auth_required');
+
+  const h2 = harness({ fetchRuns: authError, ...n.over });
+  await run(h2.opts);
+  assert.equal(h2.notes.length, 0, 'the second run of the same outage stays quiet');
+  assert.equal(n.pushes.length, 1);
+  assert.match(h2.logs[0], /FAILED/);
+});
+
+test('signing in again re-arms the notice and clears the state on the page', async () => {
+  const n = withNote();
+  await run(harness({ fetchRuns: authError, ...n.over }).opts);
+  const ok = harness({ ...n.over });
+  await run(ok.opts);
+  assert.deepEqual(n.note, {});
+  const doc = JSON.parse(ok.calls.find((c) => c.method === 'PATCH').body).fields;
+  assert.equal(doc.state.stringValue, 'ok');
+  const again = harness({ fetchRuns: authError, ...n.over });
+  await run(again.opts);
+  assert.equal(again.notes.length, 1);
+});
+
+test('a failure that is not a sign-in keeps the old behaviour: no write, a notice every time', async () => {
+  const n = withNote();
+  const h = harness({ fetchRuns: async () => { throw new Error('Garmin Connect could not be reached.'); }, ...n.over });
+  await run(h.opts);
+  assert.equal(h.calls.filter((c) => c.method === 'PATCH').length, 0);
+  assert.equal(h.notes.length, 1);
+  assert.equal(n.pushes.length, 0);
+});
+
+test('the phone push carries one fixed sentence and no plan content', async () => {
+  const n = withNote();
+  await run(harness({ fetchRuns: authError, ...n.over }).opts);
+  assert.equal(n.pushes[0], 'yootri: Garmin needs you to sign in again. On your Mac, run `make garmin-login`.');
 });
