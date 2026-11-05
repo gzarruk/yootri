@@ -10,6 +10,7 @@
 #   make check            everything CI runs: unit tests + repo hygiene
 #
 #   make claude-bridge    answer the coach with the Claude Code signed in here, not an API key
+#   make claude-install   macOS: keep that running from login, no terminal (claude-uninstall to remove)
 #
 #   make garmin-login     sign in to Garmin once (personal use; see tools/garmin-bridge)
 #   make garmin           run the Garmin bridge while you sync from the page
@@ -30,7 +31,7 @@ NEED_UV = command -v uv >/dev/null 2>&1 || { \
 	exit 1; }
 
 .DEFAULT_GOAL := dev
-.PHONY: dev claude-bridge stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test sync sync-dry sync-install sync-uninstall
+.PHONY: dev claude-bridge stop test hygiene check help garmin garmin-pair garmin-link garmin-install garmin-uninstall garmin-agent-status garmin-login garmin-logout garmin-status garmin-test claude-install claude-uninstall claude-agent-status sync sync-dry sync-install sync-uninstall
 
 ## dev: serve at http://localhost:8000/ (PORT=8001 to change)
 dev:
@@ -40,6 +41,18 @@ dev:
 claude-bridge:
 	@command -v claude >/dev/null 2>&1 || { echo "  Needs Claude Code, signed in: https://claude.com/claude-code"; exit 1; }
 	@node tools/claude-bridge/bridge.mjs --port $(CLAUDE_PORT) --allow-origin http://localhost:$(PORT)
+
+## claude-install: macOS — start the coach bridge at login and keep it running (allows localhost and the published site)
+claude-install:
+	@node tools/claude-bridge/install.mjs install --port $(CLAUDE_PORT)
+
+## claude-uninstall: remove the always-on coach bridge
+claude-uninstall:
+	@node tools/claude-bridge/install.mjs uninstall
+
+## claude-agent-status: is the always-on coach bridge installed and running?
+claude-agent-status:
+	@node tools/claude-bridge/install.mjs status
 
 ## stop: stop whatever is serving on PORT (a dev server outlives a closed terminal)
 stop:

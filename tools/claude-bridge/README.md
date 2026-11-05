@@ -20,6 +20,17 @@ for it, and answers in that provider's format. Nothing in the page changes.
 
 `make claude-bridge CLAUDE_PORT=8767 PORT=8001` changes the ports.
 
+### Always on (macOS)
+
+`make claude-install` starts the bridge at login and keeps it running, with no
+terminal (`make claude-uninstall` removes it, `make claude-agent-status` checks
+it). It is the same bridge started with `--quiet`, so the token is not in its
+log (`~/Library/Logs/yootri-claude-bridge.log`); read it from the token file
+above. It allows this machine's dev page and the published site (the `CNAME`),
+so the coach works from either in a browser on this computer. The plist holds
+no key, and your `PATH` at install time is written into it so launchd can find
+`claude` — run it again if you move Claude Code.
+
 ## What it does and does not do
 
 - It answers only a request that carries the token, and only lets a page read the
