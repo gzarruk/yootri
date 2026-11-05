@@ -161,7 +161,7 @@ export function startNote(start) {
  */
 export function startLine(r) {
   if (r?.source === 'garmin' && Number.isFinite(r.ctl)) {
-    return `Your fitness today: ${Math.round(r.ctl)} (CTL), from ${r.coveredWeeks ?? 'several'} weeks of your synced sessions.`;
+    return `Your fitness today: ${Math.round(r.ctl)}, from ${r.coveredWeeks ?? 'several'} weeks of your synced sessions.`;
   }
   const meanwhile = r && Number.isFinite(r.ctl)
     ? 'We’ll size your season from your recent weekly hours and update it'

@@ -195,7 +195,7 @@ test('trainingLoad reports the two averages, weekly totals and what is behind th
   assert.ok(r.acute > r.chronic, 'a steady block raises the short average faster');
   assert.equal(r.historyDays, 89);
   assert.deepEqual(r.byMethod, { pace: 60 });
-  assert.deepEqual(r.labels, { chronic: 'chronic training load (CTL, 42-day)', acute: 'acute training load (ATL, 7-day)' });
+  assert.deepEqual(r.labels, { chronic: 'fitness (42-day training load average)', acute: 'fatigue (7-day training load average)' });
 });
 
 test('the load figures never carry heart rate', () => {

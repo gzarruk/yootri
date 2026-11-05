@@ -257,6 +257,6 @@ export function trainingLoad(activities, { today, weeks = 12, thresholds = {}, h
     byMethod: d.byMethod,
     missing: d.missing,
     historyDays: start && today ? Math.max(0, Math.round((parseISO(today) - parseISO(start)) / 86400000)) : 0,
-    labels: { chronic: `chronic training load (CTL, ${LOAD.chronicDays}-day)`, acute: `acute training load (ATL, ${LOAD.acuteDays}-day)` },
+    labels: { chronic: `fitness (${LOAD.chronicDays}-day training load average)`, acute: `fatigue (${LOAD.acuteDays}-day training load average)` },
   };
 }

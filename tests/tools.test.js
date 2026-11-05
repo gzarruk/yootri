@@ -761,7 +761,7 @@ test('get_training_load reports the two averages and what the figures rest on', 
   assert.equal(t.weeks.length, 4);
   assert.ok(t.chronic > 0 && t.acute > 0);
   assert.deepEqual(Object.keys(t.byMethod).sort(), ['pace', 'power']);
-  assert.match(t.labels.chronic, /chronic training load/);
+  assert.match(t.labels.chronic, /fitness/);
   assert.equal(s.draft, null);
 });
 
