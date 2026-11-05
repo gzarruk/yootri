@@ -429,9 +429,38 @@ table.t td:first-child { color: color-mix(in srgb, var(--color-text) 82%, transp
   .fplot-key { display: flex; }
   /* The week is what the app opens for: the sample cards follow the sessions on a phone. */
   .page[data-page="week"] { display: flex; flex-direction: column; }
-  .page[data-page="week"] > .overview { order: 3; margin-top: 8px; }
-  .page[data-page="week"] > .ffm { order: 4; margin: 8px 0 22px; }
-  .page[data-page="week"] > .season { order: 5; }
+  /* Today first. Opening the app on a phone is almost always "what do I train now?", so the
+     order is: fitness today (CTL, ATL, form), the day's sessions, the coach's suggestions, and
+     only then the week's controls, its totals and the season. */
+  .page[data-page="week"] > header { order: 0; margin-bottom: 8px; }
+  .page[data-page="week"] > .ffm { order: 1; margin: 0 0 12px; }
+  .page[data-page="week"] > .dstrip { order: 2; }
+  .page[data-page="week"] > .im-boardwrap, .page[data-page="week"] > .im-calwrap { order: 3; }
+  .page[data-page="week"] > #orient-root, .page[data-page="week"] > #advice-root { order: 4; }
+  .page[data-page="week"] > .toolbar { order: 5; margin-top: 14px; }
+  .page[data-page="week"] > .race-label { order: 6; }
+  .page[data-page="week"] > .summary { order: 7; }
+  .page[data-page="week"] > .overview { order: 8; margin-top: 8px; }
+  .page[data-page="week"] > .foot-note { display: none; }
+  .page[data-page="week"] > .season { order: 9; }
+
+  /* The plan's name is already in the top bar. The header keeps the one line about the plan and
+     its menu; rename shows the field again while it is being edited. */
+  .page[data-page="week"] .plan-title-wrap:not(.renaming) { display: none; }
+  .page[data-page="week"] .title-row { align-items: center; }
+
+  /* Fitness today is one compact card; race day, the scale and the explanation live on Status. */
+  .ffm .k-row { display: none; }
+  .ffm .ind-grid > :nth-child(n + 2) { display: none; }
+  .ffm .ind .scale-wrap { display: none; }
+  .ffm .fit-empty-cards { min-height: 0; padding: 14px; gap: 6px; }
+  .ffm .ind .ind-h .ind-t span { display: none; }
+
+  /* The commands that were a row of buttons live in the plan menu. */
+  .toolbar #add-event-btn, .toolbar #garmin-send-btn, .toolbar #sync-btn, .toolbar #reset-btn { display: none; }
+  .toolbar { align-items: center; }
+  .toolbar .wk-nav { order: 0; flex: 1 1 auto; width: auto; }
+  .toolbar .im-actions { order: 3; flex: 1 1 100%; justify-content: flex-start; }
   .page .summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; }
   .summary .sum-cell, .summary .sum-cell:first-child, .summary .sum-cell.wide { min-width: 0; padding: 10px 12px; }
   .summary .sum-cell:nth-child(3n + 1) { border-left: 0; }
