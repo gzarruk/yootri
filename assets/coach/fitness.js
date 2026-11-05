@@ -174,7 +174,7 @@ export function carry(state, from, to, loadOn, each) {
 
 /**
  * Everything the Fitness chart, the two cards and the Status page show.
- * `today` is an ISO date; `thresholds` and `hrById` are what load.js takes.
+ * `today` is an ISO date; `thresholds` is what load.js takes.
  *
  * **CTL and ATL are read only from a basis** (`basis`, startfit.js `syncBasis`):
  * enough weeks of synced sessions, enough of them scoreable by power, pace,
@@ -183,22 +183,24 @@ export function carry(state, from, to, loadOn, each) {
  * it `today`, `race`, `trend` and every `actual`, `followed` and `trend` entry
  * are null; the plan alone (`planned`, `plannedFat`, `plannedRace`) is still
  * worked out, and it is the page that decides not to draw it. Heart rate is
- * never part of the basis; it may still score a session that has no better
- * method once there is one.
+ * never read at all, so every device shows the same figures for the same plan.
  *
  * Both averages begin at the mean daily load of the sync window's first days
  * (load.js `warmStart`), not at zero, as the planner's starting fitness does.
  * Each week is read at its Sunday, for CTL and ATL alike; ATL moves more than
  * that inside a week.
  */
-export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map() } = {}) {
+export function fitnessSeries(plan, { today, thresholds = {} } = {}) {
   const N = Array.isArray(plan?.season) ? plan.season.length : 0;
   if (!plan || !parseISO(plan.start) || !N || !parseISO(today)) return empty();
 
   const start = plan.start;
   const planned = plannedByDate(plan, N);
   const acts = Array.isArray(plan.activities) ? plan.activities : [];
-  const d = dailyLoads(acts, thresholds, hrById);
+  // Heart rate is never read here: it lives on one device only, so a figure that
+  // used it would differ between that device and every other one that shows the
+  // same synced plan. Power, pace, swim pace and effort are on the plan; they agree.
+  const d = dailyLoads(acts, thresholds);
   const hasHistory = d.scored > 0;
 
   const basis = syncBasis({ today, activities: acts, activitySync: plan.activitySync, thresholds });
