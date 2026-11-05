@@ -7683,6 +7683,9 @@
       const get = (sel) => els.modalRoot.querySelector(sel)?.value ?? '';
       const dur = get('#ed-dur').trim() || '—';
       const zone = get('#ed-zone').trim() || '—';
+      // Every field is read before the modal is closed: closing empties it, and
+      // a read after that comes back blank.
+      const patch = { disc: get('#ed-disc'), focus: get('#ed-focus'), dur, zone, desc: get('#ed-desc') };
       const log = readLogFromModal();
       state.editingId = null;
       renderModal();
@@ -7690,9 +7693,7 @@
       // session edit persists — updateSession re-renders from `plan`.
       plan = setActual(plan, id, log);
       state.done = plan.done;
-      updateSession(id, {
-        disc: get('#ed-disc'), focus: get('#ed-focus'), dur, zone, desc: get('#ed-desc'),
-      });
+      updateSession(id, patch);
     } else if (act.dataset.act === 'send-garmin') {
       sendSessionToGarmin(state.editingId);
     } else if (act.dataset.act === 'modal-delete') {

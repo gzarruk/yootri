@@ -1065,3 +1065,15 @@ test('a plan deleted from the account is recorded, and every device drops its co
   assert.match(merge.slice(0, 900), /splitCloud\(cloudRecords\)/);
   assert.match(merge.slice(0, 900), /droppedByTombstones/);
 });
+
+test('saving the session modal reads every field before the modal is closed', () => {
+  const at = HTML.indexOf("act.dataset.act === 'save'");
+  assert.ok(at > 0, 'the modal save handler is gone');
+  const handler = HTML.slice(at, HTML.indexOf("act.dataset.act === 'send-garmin'", at));
+  const closed = handler.indexOf('renderModal()');
+  assert.ok(closed > 0);
+  for (const field of ['#ed-disc', '#ed-focus', '#ed-dur', '#ed-zone', '#ed-desc']) {
+    const read = handler.indexOf(field);
+    assert.ok(read > -1 && read < closed, field + ' is read after the modal was emptied');
+  }
+});
