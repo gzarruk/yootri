@@ -7733,8 +7733,8 @@
       '<div class="ind-body">' +
         '<div class="ind-hero"><span class="kicker kicker-sm">Fitness (CTL)</span><span class="ind-num">' + whole(d.fit) + '</span>' + deltaHTML(d.dFit, tail) + '</div>' +
         '<div class="ind-side">' +
-          '<div class="ind-row"><span class="ind-lbl">Fatigue (ATL)' + deltaHTML(d.dFat, tail) + '</span><span class="ind-val">' + whole(d.fat) + '</span></div>' +
-          '<div class="ind-row"><span class="ind-lbl">Form (CTL − ATL)' + deltaHTML(d.dForm, tail) + '</span><span class="ind-val">' + signed(d.form) + '</span></div>' +
+          '<div class="ind-row"><span class="ind-lbl"><span class="ind-name">Fatigue (ATL)</span>' + deltaHTML(d.dFat, tail) + '</span><span class="ind-val">' + whole(d.fat) + '</span></div>' +
+          '<div class="ind-row"><span class="ind-lbl"><span class="ind-name">Form (CTL − ATL)</span>' + deltaHTML(d.dForm, tail) + '</span><span class="ind-val">' + signed(d.form) + '</span></div>' +
         '</div>' +
       '</div>' +
       '<div class="scale-wrap"><div class="scale" role="img" aria-label="Form is ' + z.name.toLowerCase() + '">' +
@@ -7949,6 +7949,13 @@
         '</div>'
       : basisPlaceholderHTML(fs, 'cards');
 
+    // Where the season is headed: race day as the plan stands, and the peak it was built to reach.
+    const raceLine = ok && fs.race
+      ? '<div class="panel race-line"><span class="card-kicker">Race day · ' + esc(fmtLongDate(fs.race.date)) + ' <span class="tag tag-neutral">Estimate</span></span>' +
+          '<div class="race-figs"><span>Fitness <b>' + whole(fs.race.fit) + '</b></span><span>Fatigue <b>' + whole(fs.race.fat) + '</b></span><span>Form <b>' + signed(fs.race.form) + '</b></span>' +
+          (plan.target ? '<span>Peak target <b>' + whole(plan.target.ctl) + '</b></span>' : '') + '</div></div>'
+      : '';
+
     // Last twelve plan weeks up to this one, at the end of each.
     const nowW = fs.weeks.filter((w) => w.actual !== null);
     const rows = nowW.slice(-12);
@@ -7976,7 +7983,7 @@
       .map(([n, icon, color]) => '<div class="hbar"><div class="hbar-h"><b style="font-weight: 500"><i class="ic ' + icon + '" style="color: ' + color + '; margin-right: 6px" aria-hidden="true"></i>' + n + '</b><span>' +
         hm(mins[n]) + ' · ' + Math.round((mins[n] / total) * 100) + '%</span></div><div class="bar"><i style="width: ' + Math.round((mins[n] / total) * 100) + '%; background: ' + color + '"></i></div></div>').join('');
 
-    $('status-root').innerHTML = cards +
+    $('status-root').innerHTML = cards + raceLine +
       '<section class="panel" aria-label="Fitness (CTL) and fatigue (ATL) by week"><div class="panel-h"><span class="card-kicker">Fitness (CTL) and fatigue (ATL) · by plan week</span></div>' +
         chart + '</section>' +
       '<div class="grid-2">' +
