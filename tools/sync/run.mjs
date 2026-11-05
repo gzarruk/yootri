@@ -14,6 +14,7 @@ import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AUTH_MESSAGE, configProblems, failureKind, feedDocument, slimFeed } from './feed.mjs';
+import { runDigest } from './digest.mjs';
 import { accessToken, readPrevious, writeFeed, writeState } from './firestore.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -99,8 +100,9 @@ export async function run({ argv = [], now = Date.now(), fetchFn = fetch, ...ove
     const previous = await readPrevious({ projectId: cfg.projectId, uid: cfg.uid, token, fetchFn });
     const doc = feedDocument(feed, { now, previous });
     await writeFeed({ projectId: cfg.projectId, uid: cfg.uid, token, doc, fetchFn });
-    if (d.loadNote().authNotifiedAt) d.saveNote({});
+    { const note = d.loadNote(); if (note.authNotifiedAt) { const { authNotifiedAt, ...rest } = note; d.saveNote(rest); } }
     d.log(`${stamp} ok runs=${feed.runs.length}${feed.runs.length ? '' : ' (nothing published yet)'}`);
+    await runDigest({ cfg, token, now, fetchFn, d });
     return { ok: true, runs: feed.runs.length, changed: doc.updatedAt === now };
   } catch (e) {
     const m = String(e?.message ?? e);

@@ -57,6 +57,21 @@ set. The message is one fixed sentence, never a plan, a run or a name; anyone wh
 learns the topic could read it or post to it, so make it long and unguessable.
 Signing in itself stays by hand: Garmin's code goes to you, not to a script.
 
+## Told when something is ready
+
+After a good sync the job also reads your synced plan and asks the engine two
+questions: has the week you released ended (so it is time to review it and
+release the next), and are there suggestions for the current week. Each is said
+**once**, as a macOS notice and, if `YOOTRI_NTFY_TOPIC` is set, to your phone:
+"Week 12 is over. Open yootri to review it and release week 13." or "2
+suggestions for this week are waiting in yootri." The sentences carry a week
+number and a count, never a session, a run or a name. Nothing is applied and
+nothing is stored for the page: the review and the suggestions are worked out
+again when you open it, because the page also sees what stays in a browser
+(overnight figures, heart-rate load) and this job never does. A plan that
+cannot be read is logged as "digest skipped" and never fails the sync. What has
+been said is remembered in `~/.config/yootri/sync-state.json`.
+
 ## What it does and does not do
 
 - A failed run writes no runs (the one exception is the sign-in note above),
