@@ -7,7 +7,8 @@
    session logged by hand.
 
    The rule is deliberately plain: **same date, same discipline, one activity per
-   session, the closest duration first.** A session moved to another day is not
+   session, the closest duration first** — a session Garmin Coach scheduled is
+   forgiven `garminBonus` minutes, being the one the athlete was told to do. A session moved to another day is not
    chased across the week; it shows up as an extra, which the athlete can read
    and a day tolerance could later absorb. And a session the athlete already
    logged is theirs — an activity never overwrites an actual, because the
@@ -22,6 +23,7 @@ import { normalizeActual } from './actuals.js';
 
 export const MATCH = Object.freeze({
   doneRatio: 0.8,   // at least this share of the planned minutes counts as done
+  garminBonus: 10,  // minutes of duration gap forgiven a session Garmin Coach scheduled
   minMinutes: 10,   // anything shorter is a warm-up or a stray recording
   disciplines: Object.freeze(['Swim', 'Bike', 'Run', 'Strength']),
 });
@@ -33,12 +35,21 @@ const byStart = (a, b) =>
 /**
  * @param {object} plan
  * @param {object[]} activities  as stored on `plan.activities`
- * @param {{from?: string, to?: string}} [window]  only consider activities in it
+ * @param {{from?: string, to?: string, repoint?: boolean}} [window]  only consider
+ *   activities in it. With `repoint`, a link an earlier match made and the athlete
+ *   never touched (its minutes are still the activity's) is reconsidered, so a Garmin
+ *   Coach session that arrived afterwards can take it: the proposal then carries
+ *   `clears`, the sessions whose log it replaces.
  * @returns {{proposals: object[], extra: object[]}}
  */
-export function matchActivities(plan, activities, { from = null, to = null } = {}) {
+export function matchActivities(plan, activities, { from = null, to = null, repoint = false } = {}) {
   const weeks = plan.season?.length ?? 0;
-  const linked = new Set(Object.values(plan.actuals ?? {}).map((a) => a?.activityId).filter(Boolean));
+  const byId = new Map((Array.isArray(activities) ? activities : []).filter((a) => a && a.id).map((a) => [a.id, a]));
+  // A link is movable when it is still exactly what a match wrote.
+  const movable = (actual) => repoint && actual?.activityId && byId.has(actual.activityId)
+    && actual.min === minutesOf(byId.get(actual.activityId)) && !actual.note;
+  const linked = new Set(Object.values(plan.actuals ?? {})
+    .filter((a) => !movable(a)).map((a) => a?.activityId).filter(Boolean));
 
   // Every matchable session, keyed by date and discipline.
   const open = new Map();
@@ -52,9 +63,10 @@ export function matchActivities(plan, activities, { from = null, to = null } = {
       const date = dateOf(plan.start, w, s.day);
       if (!date) continue;
       const key = `${date}|${s.disc}`;
-      if (plan.actuals?.[s.id]) { logged.add(key); continue; }
+      const have = plan.actuals?.[s.id];
+      if (have && !movable(have)) { logged.add(key); continue; }
       if (!open.has(key)) open.set(key, []);
-      open.get(key).push({ session: s, absWeek: w, date, planned, order });
+      open.get(key).push({ session: s, absWeek: w, date, planned, order, prior: have?.activityId ?? null });
     }
   }
 
@@ -87,7 +99,10 @@ export function matchActivities(plan, activities, { from = null, to = null } = {
     // answer never depends on the order things arrived in.
     const pairs = [];
     for (const a of acts) {
-      for (const x of sessions) pairs.push({ a, x, gap: Math.abs(minutesOf(a) - x.planned) });
+      for (const x of sessions) {
+        const gap = Math.abs(minutesOf(a) - x.planned) - (x.session.source === 'garmin' ? MATCH.garminBonus : 0);
+        pairs.push({ a, x, gap });
+      }
     }
     pairs.sort((p, q) => p.gap - q.gap || minutesOf(q.a) - minutesOf(p.a)
       || p.a.id.localeCompare(q.a.id) || p.x.session.id.localeCompare(q.x.session.id));
@@ -98,8 +113,11 @@ export function matchActivities(plan, activities, { from = null, to = null } = {
       if (usedA.has(a.id) || usedS.has(x.session.id)) continue;
       usedA.add(a.id);
       usedS.add(x.session.id);
+      if (x.prior === a.id) continue; // already linked to the right session
       const min = minutesOf(a);
+      const clears = sessions.filter((y) => y.prior === a.id).map((y) => y.session.id);
       proposals.push({
+        ...(clears.length ? { clears } : {}),
         order: x.order,
         sessionId: x.session.id,
         absWeek: x.absWeek,

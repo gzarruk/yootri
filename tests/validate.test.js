@@ -16,13 +16,18 @@ test('a sane week produces no issues', () => {
   assert.deepEqual(validateWeek(week, { profile, budgetMinutes: 240 }), []);
 });
 
-test('a day scheduled past its available time is an error', () => {
+test('a day scheduled past its available time is a warning, not a block', () => {
   const tight = normalizeProfile({ availability: { ...anyDay(180), Tue: 60 } });
   const issues = validateWeek([s('Tue', 'Bike', '2:00')], { profile: tight, budgetMinutes: 120 });
   const hit = issues.find((i) => i.code === 'day-over-capacity');
   assert.ok(hit, `expected day-over-capacity, got ${codes(issues)}`);
-  assert.equal(hit.level, 'error');
+  assert.equal(hit.level, 'warn');
   assert.match(hit.message, /Tue/);
+});
+
+test('a day longer than 24 hours is still an error', () => {
+  const issues = validateWeek([s('Tue', 'Bike', '25:00')], { profile, budgetMinutes: 1500 });
+  assert.equal(issues.find((i) => i.code === 'day-over-capacity').level, 'error');
 });
 
 test('scheduling a discipline on a day it is barred from is an error', () => {
@@ -380,8 +385,8 @@ test('no refused landings is no new warnings', () => {
 
 /* ---- long days and sessions a day ---- */
 
-test('more sessions on a day than the athlete allows is a warning', () => {
-  const capped = normalizeProfile({ availability: anyDay(180), maxSessionsPerDay: 1 });
+test('more sessions on a day than the athlete allows is a warning only when the day is also over its time', () => {
+  const capped = normalizeProfile({ availability: { ...anyDay(180), Tue: 60 }, maxSessionsPerDay: 1 });
   const week = [s('Tue', 'Swim', '0:45'), s('Tue', 'Run', '0:40'), s('Wed', 'Bike', '1:00')];
   const hits = validateWeek(week, { profile: capped }).filter((i) => i.code === 'too-many-sessions');
   assert.equal(hits.length, 1);
@@ -389,6 +394,12 @@ test('more sessions on a day than the athlete allows is a warning', () => {
   assert.match(hits[0].message, /Tue/);
   assert.deepEqual(codes(validateWeek(week, { profile })).filter((c) => c === 'too-many-sessions'), [],
     'without a cap, two on a day is fine');
+});
+
+test('over the session count but inside the day\'s time is not worth a warning', () => {
+  const capped = normalizeProfile({ availability: anyDay(120), maxSessionsPerDay: 2 });
+  const week = [s('Thu', 'Strength', '0:50'), s('Thu', 'Strength', '0:25'), s('Thu', 'Run', '0:25')];
+  assert.deepEqual(codes(validateWeek(week, { profile: capped })).filter((c) => c === 'too-many-sessions'), []);
 });
 
 test('a long day with no time on it is said once for the season, not every week', () => {

@@ -141,7 +141,7 @@ test('the diff names sessions added, removed and changed', () => {
 test('the diff carries validation issues so the UI can warn before applying', () => {
   const p = loadPlan(v2());
   // One day deliberately over its available time.
-  const over = [{ id: 'x', day: 'Mon', disc: 'Run', dur: '9:00', focus: '', zone: 'Z2' }];
+  const over = [{ id: 'x', day: 'Mon', disc: 'Run', dur: '25:00', focus: '', zone: 'Z2' }];
   const d = diffPlans(p, setSessionsAt(p, 0, over));
   assert.ok(d.issues.some((i) => i.code === 'day-over-capacity' && i.level === 'error'));
   assert.equal(d.blocked, true, 'an impossible week must block the apply');

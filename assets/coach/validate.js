@@ -80,10 +80,17 @@ export function validateWeek(sessions, { profile, budgetMinutes, weekIndex = 0 }
   for (const d of DAYS) {
     const have = profile.availability[d] || 0;
     const used = perDay[d] ?? 0;
-    if (used > have) {
+    // The time an athlete lists for a day is their guidance, not a wall: over it
+    // is a warn they can overrule. Only more than a day's hours is impossible.
+    if (used > 24 * 60) {
       out.push(
         issue('error', 'day-over-capacity', weekIndex,
-          `${d} is scheduled for ${fmtH(used)} but only ${fmtH(have)} is available.`),
+          `${d} is scheduled for ${fmtH(used)}, more than the day holds.`),
+      );
+    } else if (used > have) {
+      out.push(
+        issue('warn', 'day-over-capacity', weekIndex,
+          `${d} is scheduled for ${fmtH(used)} but you listed ${fmtH(have)} for it.`),
       );
     }
   }
@@ -113,13 +120,14 @@ export function validateWeek(sessions, { profile, budgetMinutes, weekIndex = 0 }
   }
 
   // A cap the athlete set, broken by a session moved or added by hand — or by
-  // the coach. A warn: two sessions on one day is not impossible, only not
-  // what they asked for.
+  // the coach. Time is what limits a day; the count is a preference. So it is
+  // said only when the day's time is also over what they listed for it: two
+  // short sessions inside the day's hours are not a problem to report.
   if (profile.maxSessionsPerDay) {
     const count = {};
     for (const s of sessions) if (durToMin(s.dur) > 0) count[s.day] = (count[s.day] ?? 0) + 1;
     for (const d of DAYS) {
-      if ((count[d] ?? 0) > profile.maxSessionsPerDay) {
+      if ((count[d] ?? 0) > profile.maxSessionsPerDay && (perDay[d] ?? 0) > (profile.availability[d] || 0)) {
         out.push(
           issue('warn', 'too-many-sessions', weekIndex,
             `${d} has ${count[d]} sessions; you asked for at most ${profile.maxSessionsPerDay} a day.`),

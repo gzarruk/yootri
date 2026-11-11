@@ -21,6 +21,8 @@ import {
   weeklyAvailableMinutes,
 } from './profile.js';
 import { generateWeek } from './generate.js';
+import { balanceWeek } from './balance.js';
+import { revertDraft } from './autoapply.js';
 import { trailingCompliance, weekCompliance } from './actuals.js';
 import { suggest } from './adapt.js';
 import { releaseState, reviewWeek, proposeNextWeek } from './review.js';
@@ -68,8 +70,8 @@ const SCORE_MORE = {
     keeps no clock of its own). `device` holds what this browser knows and the
     plan deliberately does not — the heart rate synced from Garmin — so a tool
     can compute from it without the plan ever carrying it. */
-export function createSession(plan, { today = null, hrById = null, hrThresholds = null } = {}) {
-  return { plan, draft: null, today, device: { hrById, hrThresholds } };
+export function createSession(plan, { today = null, hrById = null, hrThresholds = null, changeLog = null } = {}) {
+  return { plan, draft: null, today, device: { hrById, hrThresholds }, changeLog: Array.isArray(changeLog) ? changeLog : [] };
 }
 
 /**
@@ -612,6 +614,34 @@ export const TOOL_DEFS = [
         day: { type: 'string', enum: DAYS },
       },
       required: ['week', 'session_id', 'day'],
+    },
+  },
+  {
+    name: 'list_changes',
+    description:
+      'The changes made to the plan automatically, newest first, each with an id, when, what and which weeks. Call it when the athlete asks what changed or wants a change undone.',
+    input_schema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'revert_change',
+    description:
+      'Put the weeks a logged change touched back as they were before it. Use the id from list_changes. Only for a change the athlete asks to undo; weeks changed again since are put back too, so say so.',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'The change id from list_changes.' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'balance_week',
+    description:
+      'Tidy one week that has more sessions on a day than the athlete prefers (maxSessionsPerDay) without losing any training time: two sessions of one discipline on a day are folded into one, otherwise the least important session moves to a day with room. Time is the limit and the count a preference, so a day that fits its time is left alone. Never moves the long ride or long run.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        week: { type: 'integer', description: 'Which week, counting from 1 — the same number the athlete sees on the board.' },
+      },
+      required: ['week'],
     },
   },
   {
@@ -1231,6 +1261,37 @@ const HANDLERS = {
     draft.weeks[weekKey(week)] = sessions;
     s.draft = draft;
     return ok(`Moved ${hit.disc} to ${input.day} in week ${weekLabel(week)}.`);
+  },
+
+  list_changes(s) {
+    const rows = (s.changeLog ?? []).map((e) => ({
+      id: e.id, at: new Date(e.at).toISOString(), source: e.source, summary: e.summary, weeks: e.weeks,
+      canRevert: !!e.before,
+    }));
+    return ok(JSON.stringify({ changes: rows }));
+  },
+
+  revert_change(s, input) {
+    const entry = (s.changeLog ?? []).find((e) => e.id === input.id);
+    if (!entry) return fail(`No change "${input.id}". Call list_changes first.`);
+    const draft = revertDraft(draftOf(s), entry);
+    if (!draft) return fail('That change kept no copy of the weeks, so it cannot be undone from here.');
+    s.draft = draft;
+    return ok(`Week${entry.weeks.length === 1 ? '' : 's'} ${entry.weeks.join(', ')} put back as they were before "${entry.summary}".`);
+  },
+
+  balance_week(s, input) {
+    const base = draftOf(s);
+    const week = toIndex(base, input.week);
+    const sessions = base.weeks[weekKey(week)] ?? [];
+    const balanced = balanceWeek(sessions, { profile: base.profile });
+    if (JSON.stringify(balanced) === JSON.stringify(sessions)) {
+      return ok(`Week ${weekLabel(week)} already fits the sessions-a-day preference, or cannot be mended without losing time. Nothing changed.`);
+    }
+    const draft = clone(base);
+    draft.weeks[weekKey(week)] = balanced;
+    s.draft = draft;
+    return ok(`Week ${weekLabel(week)} tidied: ${sessions.length - balanced.length} session(s) folded into another, the rest moved. No time lost.`);
   },
 
   regenerate_weeks(s, input) {

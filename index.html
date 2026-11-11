@@ -921,6 +921,8 @@
   .bm-list .bm-tag { font-size: .68rem; letter-spacing: .05em; text-transform: uppercase;
     color: color-mix(in srgb, var(--color-text) 55%, transparent); }
   .bm-list .btn { padding: .2rem .55rem; font-size: .74rem; min-height: 0; }
+  .changes-list { margin: .35rem 0 .35rem 1.1rem; padding: 0; }
+  .changes-hint { color: var(--color-text-muted, inherit); font-size: .9em; }
   .gm-list label { display: flex; align-items: center; gap: .55rem; width: 100%; cursor: pointer; }
   .gm-list .bm-what { margin-right: auto; }
   .card-actual .i-watch { font-size: .85em; vertical-align: -.05em; }
@@ -1576,6 +1578,7 @@
   } from './assets/coach/synced.js';
   import { PRIVACY_VERSION, PRIVACY_REGION, privacySectionsHtml, privacyRightsHtml } from './assets/privacy.js';
   import { matchActivities, MATCH } from './assets/coach/match.js';
+  import { autoApply, appendLog, normalizeChangeLog } from './assets/coach/autoapply.js';
   import { pendingWeeks, weekSuggestions, draftForWeek } from './assets/coach/syncweek.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
   import { bikeWorkout, workoutHash, planSyncSet } from './assets/coach/workout.js';
@@ -2629,94 +2632,161 @@
     try { return pendingWeeks(plan, garminFeed.feed, { today: toISO(new Date()) }); } catch (e) { return []; }
   }
 
-  /* One week of Garmin Coach runs against the plan: the runs themselves, then each
-     rebalancing proposal on its own tick. Nothing is applied here; Apply builds a
-     draft from what is ticked and hands it to the same review as any change. */
-  function openGarminWeek(week) {
-    const today = toISO(new Date());
+  /* ---- Changes the coach makes on its own ----------------------------------
+
+     The coach does not wait for a review. A change goes through the same gate as
+     any other — diffed and validated, and refused if a week would be impossible
+     (autoapply.js) — then is applied and written to a log the athlete reads.
+     The log is this device's own (never on a plan, so never synced or exported)
+     and each entry keeps the weeks as they were, so asking the coach to undo a
+     change is exact. Entries say what changed, never a sleep or heart-rate figure. */
+  const CHANGELOG_KEY = 'yootri_changelog_v1';
+  const CHANGE_SEEN_KEY = 'yootri_changelog_seen_v1';
+  let changeLog = normalizeChangeLog((() => { try { return JSON.parse(localStorage.getItem(CHANGELOG_KEY)); } catch (e) { return []; } })());
+  const blockedSeen = new Set();
+  let autoBusy = false;
+
+  const changeSeenAt = () => { try { return Number(localStorage.getItem(CHANGE_SEEN_KEY)) || 0; } catch (e) { return 0; } };
+  function recordChange(entry) {
+    changeLog = appendLog(changeLog, entry);
+    try { localStorage.setItem(CHANGELOG_KEY, JSON.stringify(changeLog)); } catch (e) {}
+  }
+  function markChangesSeen() {
+    try { localStorage.setItem(CHANGE_SEEN_KEY, String(Date.now())); } catch (e) {}
+    renderAdvice();
+  }
+  const sessionNamed = (id) => {
+    for (const list of Object.values(plan.weeks || {})) {
+      const hit = (list || []).find((x) => x.id === id);
+      if (hit) return hit;
+    }
+    return null;
+  };
+
+  /* Applies `next` as the plan, or says why it could not. A change that would
+     leave a week impossible is refused, and said once. */
+  function autoCommit(next, { source, summary, context } = {}) {
+    const r = autoApply(plan, next, { now: now(), source, summary, context });
+    if (!r.applied) {
+      if (r.blocked) {
+        const why = r.issues.map((i) => i.message).slice(0, 2).join(' ');
+        const sig = source + '|' + why;
+        if (!blockedSeen.has(sig)) {
+          blockedSeen.add(sig);
+          recordChange({ id: 'b' + now() + '-' + blockedSeen.size, at: now(), source, summary: 'Could not apply a change: ' + why, weeks: [] });
+        }
+      }
+      return r;
+    }
+    adoptPlan(r.plan);
+    persistPlan();
+    recordChange(r.entry);
+    if (coach && coach.session) coach.session = createSession(plan, coachContext());
+    return r;
+  }
+
+  // Garmin Coach runs the job found, in place of the planned runs, with the
+  // rebalancing that follows from them.
+  function autoGarminWeeks() {
     const feed = garminFeed && garminFeed.feed;
-    const r = feed ? weekSuggestions(plan, feed, week, { today }) : null;
-    if (!r || !r.published) { closePanel(); return; }
-    const runs = (r.plan.weeks['w' + week] || []).filter((s) => s.status === 'confirmed' && s.source === 'garmin');
-    const runRows = runs.map((s) => '<li class="gw-run"><span>' + esc(s.day) + ' · ' + esc(s.focus) +
-      '</span><span>' + esc(s.dur) + ' · ' + esc(s.zone) + '</span></li>').join('');
-    const props = r.proposals.map((p, i) => '<li><label><input type="checkbox" data-prop="' + i + '"><span>' +
-      esc(p.reason) + '</span></label></li>').join('');
-    panelShell(
-      '<h2>Garmin Coach, week ' + (week + 1) + '</h2>' +
-      '<p class="pnl-sub">Garmin has published these runs. Use them in place of the planned runs, then choose any changes to the rest of the week.</p>' +
-      '<ul class="gw-list">' + runRows + '</ul>' +
-      '<label class="gw-run"><span><input type="checkbox" id="gw-use" checked> Use these runs</span></label>' +
-      (props
-        ? '<h3 class="gw-note">Suggested changes to the rest of the week</h3><ul class="gw-list" id="gw-props">' + props + '</ul>'
-        : '<p class="gw-note">The rest of the week still fits, so nothing else is suggested.</p>') +
-      '<div class="pnl-act"><button type="button" class="btn btn-ghost spacer" id="gw-cancel">Cancel</button>' +
-      '<button type="button" class="btn btn-primary" id="gw-review">Review changes</button></div>',
-      'Garmin Coach week');
-    const use = $('gw-use');
-    use.addEventListener('change', () => {
-      els.panelRoot.querySelectorAll('[data-prop]').forEach((c) => { c.disabled = !use.checked; if (!use.checked) c.checked = false; });
+    if (!feed) return;
+    const today = toISO(new Date());
+    for (const w of garminWeeks()) {
+      const r = weekSuggestions(plan, feed, w, { today });
+      if (!r || !r.published) continue;
+      const accepted = r.proposals.map((p) => p.id);
+      let next = draftForWeek(plan, feed, w, { confirm: true, accepted, today });
+      let done = autoCommit(next, { source: 'garmin', summary: 'Week ' + (w + 1) + ': Garmin Coach runs used' +
+        (accepted.length ? ', and ' + accepted.length + ' change' + (accepted.length === 1 ? '' : 's') + ' to the rest of the week' : '') + '.' });
+      if (!done.applied && done.blocked && accepted.length) {
+        next = draftForWeek(plan, feed, w, { confirm: true, accepted: [], today });
+        autoCommit(next, { source: 'garmin', summary: 'Week ' + (w + 1) + ': Garmin Coach runs used.' });
+      }
+    }
+  }
+
+  // The week that just ended is reviewed and the next one released. The
+  // hardest session is made easy only when the last nights are outside the
+  // athlete's usual range and they have opted in to reading them; decided here, on
+  // this device. The model never sees the nights and the entry never says why.
+  function autoRelease() {
+    const today = toISO(new Date());
+    for (let guard = 0; guard < 8 && releaseState(plan, { today }).due; guard++) {
+      const nights = overnightOn() ? compareNights(readJson(GARMIN_OVERNIGHT_KEY), { today }) : null;
+      let r;
+      try { r = proposeNextWeek(plan, { today, ease: !!(nights && nights.offer) }); } catch (e) { console.error(e); return; }
+      const done = autoCommit(r.draft, {
+        source: r.eased ? 'eased' : 'release',
+        summary: 'Week ' + (r.review.absWeek + 1) + ' reviewed, week ' + (r.nextWeek + 1) + ' released' +
+          (r.change ? ' (' + r.change.fromHours + ' h → ' + r.change.toHours + ' h)' : '') +
+          (r.eased ? '; the ' + r.eased.day + ' ' + r.eased.disc.toLowerCase() + ' made easy' : '') + '.',
+      });
+      if (!done.applied) return;
+      state.week = Math.max(state.week, r.nextWeek);
+    }
+  }
+
+  // Synced activities are logged against the session they were, and a link
+  // the athlete never touched moves to a Garmin Coach session that arrived later.
+  function autoLogMatches(window) {
+    if (!(plan.activities || []).length) return 0;
+    const found = matchActivities(plan, plan.activities, { ...(window || {}), repoint: true });
+    if (!found.proposals.length) return 0;
+    const lines = found.proposals.map((x) => {
+      const s = sessionNamed(x.sessionId);
+      return (s ? s.day + ' ' + (s.focus || s.disc) : x.disc) + ' (' + (fmtTotal(x.actual.min) || '0m') + ')';
     });
-    $('gw-cancel').addEventListener('click', closePanel);
-    $('gw-review').addEventListener('click', () => {
-      const accepted = [...els.panelRoot.querySelectorAll('[data-prop]')]
-        .filter((c) => c.checked).map((c) => r.proposals[Number(c.dataset.prop)].id);
-      const next = draftForWeek(plan, feed, week, { confirm: use.checked, accepted, today });
-      if (next === plan) { closePanel(); return; }
-      const d = diffPlans(plan, next);
-      draft = next;
-      renderDiff(d, () => openGarminWeek(week));
+    let next = plan;
+    for (const x of found.proposals) {
+      for (const id of x.clears || []) next = setActual(next, id, null);
+      next = setActual(next, x.sessionId, x.actual);
+    }
+    plan = next;
+    state.done = plan.done;
+    persistPlan();
+    if (coach && coach.session) coach.session.plan = plan;
+    recordChange({
+      id: 'm' + now(), at: now(), source: 'match',
+      summary: 'Logged from Garmin: ' + lines.slice(0, 3).join(', ') + (lines.length > 3 ? ' and ' + (lines.length - 3) + ' more' : '') + '.',
+      weeks: [...new Set(found.proposals.map((x) => x.absWeek + 1))],
     });
+    return found.proposals.length;
+  }
+
+  function autoRoutine() {
+    if (autoBusy || currentPlanUntouched()) return;
+    autoBusy = true;
+    try { autoGarminWeeks(); autoRelease(); autoLogMatches(); }
+    catch (e) { console.error(e); }
+    finally { autoBusy = false; }
+  }
+
+  function changesCard() {
+    const seen = changeSeenAt();
+    const fresh = changeLog.filter((e) => e.at > seen);
+    if (!fresh.length) return '';
+    return '<div class="advice-card info changes-card"><div class="grow"><b>What changed</b><ul class="changes-list">' +
+      fresh.slice(0, 5).map((e) => '<li>' + esc(e.summary) + '</li>').join('') +
+      (fresh.length > 5 ? '<li>and ' + (fresh.length - 5) + ' more</li>' : '') +
+      '</ul><span class="changes-hint">Follow the plan as it stands, or ask the coach to change or undo anything.</span></div>' +
+      '<button type="button" class="btn btn-secondary" data-act="changes-seen">Got it</button></div>';
   }
 
   function renderAdvice() {
     const list = suggest(plan, { week: state.week });
-    const garminCards = garminWeeks().map((w) =>
-      '<div class="advice-card info">' +
-        '<span class="grow"><b>Garmin has published your Coach runs for week ' + (w + 1) + '.</b> Compare them with the plan.</span>' +
-        '<button type="button" class="btn btn-primary" data-act="garmin-week" data-week="' + w + '">Review week ' + (w + 1) + '</button>' +
-      '</div>').join('');
     const staleCard = garminStaleLine();
-    const rel = releaseState(plan, { today: toISO(new Date()) });
-    const releaseCard = rel.due
-      ? '<div class="advice-card info release-card">' +
-          '<span class="grow"><b>Week ' + (rel.reviewWeek + 1) + ' is over.</b> Review how it went and release week ' +
-            (rel.nextWeek + 1) + '.</span>' +
-          '<button type="button" class="btn btn-primary" data-act="review-week">Review week ' + (rel.reviewWeek + 1) + '</button>' +
-        '</div>'
-      : '';
-    if (!list.length && !releaseCard && !garminCards && !staleCard) { els.adviceRoot.innerHTML = ''; return; }
+    const changeCard = changesCard();
+    if (!list.length && !changeCard && !staleCard) { els.adviceRoot.innerHTML = ''; return; }
 
-    els.adviceRoot.innerHTML = '<div class="advice">' + staleCard + garminCards + releaseCard + list.map((x, i) =>
+    els.adviceRoot.innerHTML = '<div class="advice">' + staleCard + changeCard + list.map((x, i) =>
       '<div class="advice-card ' + esc(x.severity) + '">' +
         '<span class="grow">' + esc(x.message) + '</span>' +
-        (x.action
-          ? '<button type="button" class="btn btn-secondary" data-advice="' + i + '">Preview</button>'
-          : '') +
         (x.offer && x.offer.kind === 'benchmark'
           ? '<button type="button" class="btn btn-secondary" data-offer="' + i + '">Use for paces</button>'
           : '') +
       '</div>').join('') + '</div>';
 
-    els.adviceRoot.querySelectorAll('[data-act="review-week"]').forEach((b) => b.addEventListener('click', () => openWeekReview()));
-    els.adviceRoot.querySelectorAll('[data-act="garmin-week"]').forEach((b) =>
-      b.addEventListener('click', () => openGarminWeek(Number(b.dataset.week))));
-    els.adviceRoot.querySelectorAll('[data-advice]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        // Route it through the same tools → draft → diff → apply path the coach
-        // uses, so a suggestion is reviewed exactly like any other proposal.
-        // adviceCall turns the engine's 0-based week into the 1-based one every
-        // tool takes; passing the action straight through pinned the week before.
-        const s = list[Number(btn.dataset.advice)];
-        const session = createSession(plan, coachContext());
-        const call = adviceCall(s.action);
-        const r = callTool(session, call.tool, call.input);
-        if (r.isError) { setStatus(r.content, true); return; }
-        draft = session.draft;
-        renderDiff(sessionDiff(session));
-      });
-    });
-
+    els.adviceRoot.querySelectorAll('[data-act="changes-seen"]').forEach((b) => b.addEventListener('click', markChangesSeen));
     // A faster synced run, offered as the result the paces come from. Adopted
     // the way any picked result is: it changes no session, so no draft.
     els.adviceRoot.querySelectorAll('[data-offer]').forEach((btn) => {
@@ -2926,6 +2996,7 @@
       today: toISO(new Date()),
       hrById: hrLookup(readHrStore()),
       hrThresholds: normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) ?? null,
+      changeLog,
     };
   }
 
@@ -2934,6 +3005,7 @@
     if (!coach) coach = { session: createSession(plan, ctx), busy: false };
     coach.session.plan = plan;   // always reason about the plan as it is now
     coach.session.today = ctx.today;
+    coach.session.changeLog = ctx.changeLog;
     coach.session.device = { ...coach.session.device, hrById: ctx.hrById, hrThresholds: ctx.hrThresholds };
     if (!getKey()) return renderKeyForm();
     renderCoach();
@@ -3064,7 +3136,7 @@
 
     panelShell(
       '<h2>Coach</h2>' +
-      '<p class="pnl-sub">It can read your plan and propose changes. Nothing is written until you review and apply it.</p>' +
+      '<p class="pnl-sub">It can read your plan and change it. Changes are applied straight away and listed under What changed; ask it to undo any of them.</p>' +
       // EU AI Act Art. 50(1): people must be told they are interacting with an
       // AI system. It is stated here, in the panel, rather than in a tooltip.
       '<p class="ai-note">Responses are generated by an AI model using the API key you configured. This is not advice from a human coach.</p>' +
@@ -3145,7 +3217,14 @@
 
     coach.busy = false;
     if (out.messages) coach.wire = out.messages;
-    log.push({ role: 'coach', content: out.text || '(no reply)', error: !!(out.error || out.refused) });
+    let note = '';
+    if (coach.session.draft) {
+      const r = autoCommit(coach.session.draft, { source: 'coach', context: '(you asked: “' + text.slice(0, 80) + '”)' });
+      if (r.applied) { note = ' Applied: ' + r.entry.summary; renderAll(); }
+      else if (r.blocked) note = ' I could not apply it, because ' + r.issues.map((i) => i.message).slice(0, 2).join(' ');
+      coach.session.draft = null;
+    }
+    log.push({ role: 'coach', content: (out.text || '(no reply)') + note, error: !!(out.error || out.refused) });
     // Keep the stored transcript bounded; a season of chat should not crowd out
     // the training data in a 5MB localStorage budget.
     if (log.length > 40) plan.chat = log.slice(-40);
@@ -4522,6 +4601,7 @@
       try { await pullAthlete(); } catch (e) { console.error(e); }
       // The Coach runs the scheduled job found; refused or absent is not a failed sync.
       try { await pullGarminFeed(); } catch (e) { console.error(e); }
+      autoRoutine();
       setStatus('Synced ' + timeStr());
       renderAll();
       renderAccount();
@@ -6554,7 +6634,6 @@
   window.addEventListener('focus', () => { if (garminConfig() && Date.now() - bridgeCheckedAt > 30000) checkBridge(); });
 
   let garminBusy = false;
-  let garminReview = null;
 
   async function syncFromGarmin() {
     if (garminBusy) return;
@@ -6589,20 +6668,14 @@
     persistPlan();
     if (coach && coach.session) coach.session.plan = plan;
 
-    const found = matchActivities(plan, plan.activities, { from: body.since, to: body.until });
     bridgeNow = bridgeState({ status: { ok: true, connected: true } });
     renderAll();
     setStatus('Garmin: ' + got.activities.length + ' activit' + (got.activities.length === 1 ? 'y' : 'ies') + ' read');
-    openGarminReviewPanel({
-      ...found,
-      read: got.activities.length,
-      since: body.since,
-      until: body.until,
-      unreadable: (Array.isArray(body.skipped) ? body.skipped.length : 0) + got.rejected,
-      nights,
-    });
+    const n = autoLogMatches({ from: body.since, to: body.until });
+    autoRoutine();
+    renderAll();
+    if (n) setStatus('Garmin: ' + n + ' session' + (n === 1 ? '' : 's') + ' logged');
   }
-
 
   /* ---- Sleep and overnight heart rate -------------------------------------
 
@@ -6913,105 +6986,6 @@
     $('gw-close').addEventListener('click', closePanel);
     const fit = $('gw-fit');
     if (fit) fit.addEventListener('click', () => downloadFit(item));
-  }
-
-  const MATCH_REASONS = {
-    'no-session': 'no planned session that day',
-    'session-logged': 'that session is already logged',
-    'already-linked': 'already logged',
-    'outside-plan': 'outside this plan’s weeks',
-    'too-short': 'under ' + MATCH.minMinutes + ' minutes',
-    'not-matchable': 'not a discipline the plan schedules',
-  };
-
-  function openGarminReviewPanel(r) {
-    garminReview = r;
-    const day = (iso) => fmtLongDate(iso);
-    const rows = r.proposals.map((x, i) =>
-      '<li><label>' +
-        '<input type="checkbox" data-gm-pick="' + i + '" checked />' +
-        '<span class="bm-what">' + esc(x.disc) + ' · ' + esc(fmtTotal(x.plannedMin)) + ' planned → did ' +
-          esc(fmtTotal(x.actual.min) || '0m') + '</span>' +
-        '<span class="bm-when">Week ' + (x.absWeek + 1) + ' · ' + esc(day(x.date)) + '</span>' +
-        '<span class="bm-tag">' + esc(x.actual.status) + '</span>' +
-      '</label></li>').join('');
-    const extras = r.extra.map((x) =>
-      '<li><span class="bm-what">' + esc(x.disc) + ' · ' + esc(fmtTotal(x.min) || '0m') + '</span>' +
-        '<span class="bm-when">' + esc(day(x.date)) + '</span>' +
-        '<span class="bm-tag">' + esc(MATCH_REASONS[x.reason] || x.reason) + '</span></li>').join('');
-
-    panelShell(
-      '<h2>From Garmin</h2>' +
-      '<p class="pnl-sub">' + r.read + ' activit' + (r.read === 1 ? 'y' : 'ies') + (r.all ? ' synced to this plan, ' : ' read, ') +
-        esc(day(r.since)) + ' – ' + esc(day(r.until)) + '. ' +
-        (r.proposals.length === 1
-          ? 'One matches a planned session. Untick it if it is wrong, then log it.'
-          : r.proposals.length
-            ? r.proposals.length + ' match planned sessions. Untick any that are wrong, then log them.'
-            : 'None of them match a planned session that is not already logged.') +
-      '</p>' +
-      (rows ? '<ul class="bm-list gm-list">' + rows + '</ul>' : '') +
-      (extras
-        ? '<h3 class="pnl-h3">Not logged against a session</h3>' +
-          '<p class="pnl-hint">Kept in this plan’s training history, where the coach can see them.</p>' +
-          '<ul class="bm-list">' + extras + '</ul>'
-        : '') +
-      (r.unreadable ? '<p class="pnl-hint">' + r.unreadable + ' could not be read and ' + (r.unreadable === 1 ? 'was' : 'were') + ' skipped.</p>' : '') +
-      (r.nights ? '<p class="pnl-hint">' + esc(overnightSyncNote(r.nights)) + '</p>' : '') +
-      '<div class="pnl-act">' +
-        '<button type="button" class="btn btn-ghost spacer" id="gm-close">Close</button>' +
-        (r.all ? '' : '<button type="button" class="btn btn-secondary" id="gm-all">Check everything synced</button>') +
-        (rows ? '<button type="button" class="btn btn-primary" id="gm-log">Log these</button>' : '') +
-      '</div>',
-      'From Garmin',
-    );
-    $('gm-close').addEventListener('click', closePanel);
-    const log = $('gm-log');
-    if (log) log.addEventListener('click', logGarminMatches);
-    const all = $('gm-all');
-    if (all) all.addEventListener('click', reviewAllSynced);
-  }
-
-  /* A sync only looks again at the last few days, so matches from an earlier
-     sync that were closed rather than logged would otherwise never come back.
-     This reads every activity on the plan; logged sessions and activities
-     already logged are skipped exactly as they are after a sync. */
-  function reviewAllSynced() {
-    const acts = plan.activities || [];
-    const cover = plan.activitySync;
-    openGarminReviewPanel({
-      ...matchActivities(plan, acts),
-      read: acts.length,
-      since: cover ? cover.from : (acts[0] || {}).date,
-      until: cover ? cover.through : (acts[acts.length - 1] || {}).date,
-      unreadable: 0,
-      all: true,
-    });
-  }
-
-  function logGarminMatches() {
-    const picked = [...els.panelRoot.querySelectorAll('[data-gm-pick]')]
-      .filter((b) => b.checked)
-      .map((b) => garminReview.proposals[Number(b.getAttribute('data-gm-pick'))])
-      .filter(Boolean);
-    closePanel();
-    if (!picked.length) return;
-
-    const snapshot = JSON.parse(JSON.stringify(plan));
-    let next = plan;
-    for (const x of picked) next = setActual(next, x.sessionId, x.actual);
-    plan = next;
-    state.done = plan.done;
-    persistPlan();
-    if (coach && coach.session) coach.session.plan = plan;
-
-    clearUndo();
-    pendingUndo = { kind: 'refit', plan: snapshot, label: 'Logging from Garmin undone' };
-    els.undoBtn.classList.remove('hidden');
-    undoTimer = setTimeout(clearUndo, UNDO_MS);
-
-    renderAll();
-    setStatus('Logged ' + picked.length + ' session' + (picked.length === 1 ? '' : 's') + ' from Garmin');
   }
 
   /* ---- Small dialogs (confirm) reusing the modal styles ---- */
@@ -8108,6 +8082,10 @@
   renderAll();
   renderAccount();
   maybeShowFirstRun();
+  // A reload alone writes nothing; this writes only when the coach has something
+  // to do (a week that ended, a Garmin week published) and says so in the log.
+  autoRoutine();
+  if (changeLog.some((e) => e.at > changeSeenAt())) renderAll();
 
   // A Strava connection finishes on a redirect back to this page, so the code
   // in the address bar has to be spent on the way in. Does nothing at all
