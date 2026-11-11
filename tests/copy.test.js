@@ -44,7 +44,7 @@ function surfaces() {
   const html = read('../index.html');
   const notice = read('../assets/privacy.js');   // the notice's text, shared by the app and privacy.html
   const from = html.indexOf('/* ---- Workouts to Garmin');
-  const to = html.indexOf('const MATCH_REASONS');
+  const to = html.indexOf('/* ---- Small dialogs (confirm)');
   assert.ok(from > 0 && to > from, 'the Workouts to Garmin section is still where this test looks');
   const privacy = notice.match(/\['Workouts sent to Garmin\.',[\s\S]*?\],\n/);
   assert.ok(privacy, 'the privacy notice describes workouts');

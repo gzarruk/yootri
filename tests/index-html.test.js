@@ -1077,3 +1077,27 @@ test('saving the session modal reads every field before the modal is closed', ()
     assert.ok(read > -1 && read < closed, field + ' is read after the modal was emptied');
   }
 });
+
+/* ---- The coach decides, the athlete is informed ---- */
+
+test('the daily review prompts are gone: changes are applied through autoApply and listed', () => {
+  const advice = fnBody('renderAdvice');
+  assert.doesNotMatch(advice, /Review week|garmin-week|data-advice/, 'no card asks the athlete to review a change');
+  assert.match(advice, /changesCard\(\)/);
+  assert.match(HTML, /from '\.\/assets\/coach\/autoapply\.js'/);
+  assert.match(fnBody('autoCommit'), /autoApply\(plan, next/);
+  // adapt.js's suggestions are options, not decisions (a split-drift card offers to
+  // re-split the whole season): they are never applied on their own.
+  assert.doesNotMatch(HTML, /function autoAdvice/);
+  for (const fn of ['autoGarminWeeks', 'autoRelease', 'autoLogMatches']) {
+    assert.match(fnBody('autoRoutine'), new RegExp(fn + '\\(\\)'), `${fn} is part of the routine`);
+  }
+});
+
+test('the change log stays on this device and never on a plan', () => {
+  assert.match(HTML, /const CHANGELOG_KEY = 'yootri_changelog_v1'/);
+  assert.doesNotMatch(fnBody('recordChange'), /plan\./, 'the log is not a plan field');
+  // The nights decide on this device; the entry and the coach never carry them.
+  assert.doesNotMatch(fnBody('autoRelease'), /summary:[^}]*nights/);
+  assert.doesNotMatch(fnBody('coachContext'), /overnight|nights/i);
+});

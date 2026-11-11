@@ -60,7 +60,9 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `generate.js` | One week's hour budget → actual sessions. Deterministic. `easySession` is one session made easy — same id, day and length, at the Prep row's focus and zone — so easing adds no coaching content. When the athlete has a weekly pattern and the block has counts, `patternWeek` builds the week from slots instead of the shape table (see below); `recovery` is read only there. |
 | `profile.js` | Athlete profile: availability, constraints, per-block discipline splits, and two optional preferences — `longDays` (the day the long ride and long run land on) and `maxSessionsPerDay` (1 = no two-a-days). Absent means today's behaviour, and generation for a profile without them is unchanged. A third, `weekPattern` + `sessionCounts`, is the athlete's fixed week: which days each discipline takes, in priority order, and how many sessions it has in a block (`normalizeWeekPattern`, `normalizeSessionCounts`; absent stays absent, and counts go when their day list does). |
 | `pattern.js` | The weekly pattern's questions, and nothing about minutes: `resolveCounts` (exact block, then family, per discipline, as splits resolve), `patternSlots` (the first N listed days that can be used; a day that cannot is skipped and the next takes the slot), `unusableNeeded` (what the validator reads), and `nextDrop` / `DROP_ORDER` / `recoveryDropCount` (which session a small or recovery week gives up). Pure; takes the block's family as an argument so `generate.js` can import it. |
-| `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). `pattern-slot-unavailable` is said once for the season when a listed day a count needs has no time or is ruled out, like `long-day-unavailable`; it never fires without a pattern. |
+| `balance.js` | `balanceWeek`: a day over the session count the athlete prefers is mended without losing time — two sessions of one discipline are folded into one, else the least important moves to a day with room; never the long ride or run. Used by the coach's `balance_week` tool, not by generation (a weekly pattern's counts are the athlete's own). |
+| `autoapply.js` | See "The coach's own changes are applied without a review". |
+| `validate.js` | Deterministic rules. `error` = physically impossible (blocks an apply); `warn` = coaching judgement (the athlete's call). A day's listed time is guidance: `day-over-capacity` is a warn, an error only past 24 hours; `too-many-sessions` (the count is a preference) says so only when the day's time is over too. `pattern-slot-unavailable` is said once for the season when a listed day a count needs has no time or is ruled out, like `long-day-unavailable`; it never fires without a pattern. |
 | `plan.js` | Plan-level operations and the draft → diff → apply flow. `freshWeek` rebuilds one week from the stored season with its race day (Reset week); `isUntouchedPlan` recognises the first-visit stand-in "My plan", which creating or importing a season replaces and a sign-in never uploads. `carryOver`/`upcomingEvents` say what survives a start-over. |
 | `migrate.js` | Schema v2 → v3. `legacy-plan.js` is the frozen old template it needs. |
 | `portable.js` | The plan-file envelope: what `exportPlan` writes and what `Import plan…` will accept. Import is total — every bad file comes back as a reason, never a throw. |
@@ -96,6 +98,24 @@ and stored fields (`target.ctl` is on saved plans: renaming it would be a schema
 copy), which is diffed, validated, shown, and only written by `applyDraft`. That
 is what makes it safe to point an agent at a training plan, and it is why the
 Plan setup form goes through the same ceremony a model would.
+
+**The coach's own changes are applied without a review, and the athlete is told.**
+`autoapply.js` is the one gate: `autoApply(plan, draft, …)` diffs and validates exactly
+as a reviewed change is, **refuses one the validator calls `error`**, applies the rest
+through `applyDraft` and returns a change-log entry (what, which weeks, and the weeks —
+plus profile/season/pins — as they were, so `revert_change` is exact). The log
+(`yootri_changelog_v1`, capped, `normalizeChangeLog`) is this device's, never on a plan,
+so never synced or exported; entries say what changed and never a sleep or heart-rate
+figure. What is applied this way: the coach's chat edits, the Garmin Coach week with its
+rebalancing (`autoGarminWeeks`), the weekly release (`autoRelease`) and synced activities
+logged against their sessions (`autoLogMatches`, with `repoint`: a link the athlete never
+touched moves to a Garmin Coach session that arrived later). The page shows a **What
+changed** card (Got it to dismiss) in place of review prompts; the athlete's own edits
+(Plan setup, race changes) still show the diff. **`adapt.js` suggestions are options, not
+decisions, and are never applied on their own** (a split-drift card offers to re-split the
+whole season). The hardest session is made easy on its own only when the athlete opted in to
+overnight data and the last seven nights are outside their usual range, decided on this
+device; the model never sees the nights and the entry names the session, not the reason.
 
 Events live on the plan as `events`, alongside `weekBudgets` — both are fields
 added without a schema bump, because `migratePlan` passes a v3 record through

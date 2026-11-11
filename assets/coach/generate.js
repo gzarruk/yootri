@@ -65,6 +65,9 @@ const MAX_LONG_SHARE = 0.7;
 
 const demandFor = (raceType) => RACE_DEMAND[raceType] ?? RACE_DEMAND[DEFAULT_RACE];
 
+/** The longest one session of a discipline may be, in minutes. */
+export const sessionMax = (disc) => DISC[disc]?.max ?? Infinity;
+
 /**
  * Total race-specific work a distance calls for, in minutes — the sum of the
  * long-session targets above. Exported so the validator can ask whether a

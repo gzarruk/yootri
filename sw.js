@@ -39,6 +39,8 @@ const SHELL = [
   'assets/coach/agent.js',
   'assets/coach/athlete.js',
   'assets/coach/backplan.js',
+  'assets/coach/balance.js',
+  'assets/coach/autoapply.js',
   'assets/coach/calendar.js',
   'assets/coach/cloudplans.js',
   'assets/coach/dates.js',

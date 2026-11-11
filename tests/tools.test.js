@@ -1398,3 +1398,30 @@ test('clear_week_budget with all leaves the weeks already trained exactly as the
   }
   assert.deepEqual(s.draft.weekBudgets ?? {}, {});
 });
+
+test('balance_week folds a day over the session count and loses no time', () => {
+  const plan = basePlan();
+  plan.profile = { ...plan.profile, maxSessionsPerDay: 2, availability: Object.fromEntries(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => [d, 120])) };
+  plan.weeks.w0 = [
+    { id: 'a', day: 'Thu', disc: 'Strength', focus: '', dur: '0:50', zone: '—' },
+    { id: 'b', day: 'Thu', disc: 'Strength', focus: '', dur: '0:25', zone: '—' },
+    { id: 'c', day: 'Thu', disc: 'Run', focus: '', dur: '0:25', zone: 'Z2' },
+  ];
+  const s = createSession(plan);
+  const r = call(s, 'balance_week', { week: 1 });
+  assert.ok(!r.isError, r.content);
+  assert.equal(s.draft.weeks.w0.filter((x) => x.day === 'Thu').length, 2);
+});
+
+test('revert_change puts the logged weeks back through a draft', () => {
+  const plan = basePlan();
+  plan.weeks.w0 = [{ id: 'a', day: 'Tue', disc: 'Run', focus: '', dur: '1:00', zone: 'Z2' }];
+  const changed = structuredClone(plan);
+  changed.weeks.w0[0].day = 'Wed';
+  const entry = { id: 'c1', at: 1, source: 'coach', summary: 'moved', weeks: [1], before: { w0: plan.weeks.w0 } };
+  const s = createSession(changed, { changeLog: [entry] });
+  assert.equal(parse(call(s, 'list_changes')).changes[0].canRevert, true);
+  call(s, 'revert_change', { id: 'c1' });
+  assert.equal(s.draft.weeks.w0[0].day, 'Tue');
+  assert.ok(call(s, 'revert_change', { id: 'nope' }).isError);
+});

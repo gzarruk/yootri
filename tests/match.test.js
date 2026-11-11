@@ -131,3 +131,47 @@ test('applying the proposals logs the week', () => {
   assert.equal(p.actuals.ride.activityId, 'garmin:2');
   assert.equal(weekCompliance(p, 0).actualMinutes, 58 + 90);
 });
+
+/* ---- a Garmin Coach session is the one the athlete was told to do ---- */
+
+const garminWeek = () => {
+  const p = plan();
+  p.weeks.w0 = [
+    { id: 'easy', day: 'Tue', disc: 'Run', focus: 'Easy aerobic', dur: '1:15', zone: 'Z2' },
+    { id: 'gpr', day: 'Tue', disc: 'Run', focus: 'Goal Pace Repeats', dur: '1:01', zone: 'Z3', source: 'garmin', garminId: 7 },
+  ];
+  return p;
+};
+
+test('a run that fits a Garmin Coach session within a few minutes goes to it, not to a placeholder', () => {
+  // 70 min is 5 from the easy run and 9 from the repeats: the Garmin session still wins.
+  const { proposals } = matchActivities(garminWeek(), [act(1, '2026-01-06', 'Run', 70)]);
+  assert.deepEqual(ids(proposals), [['gpr', 'garmin:1']]);
+});
+
+test('a placeholder far closer in time still wins over a Garmin session far off', () => {
+  const { proposals } = matchActivities(garminWeek(), [act(1, '2026-01-06', 'Run', 80)]);
+  assert.deepEqual(ids(proposals), [['easy', 'garmin:1']]);
+});
+
+test('an automatic link to a placeholder moves to the Garmin session that arrived later', () => {
+  let p = garminWeek();
+  p = setActual(p, 'easy', { status: 'done', min: 64, activityId: 'garmin:1' });
+  const a = [act(1, '2026-01-06', 'Run', 64)];
+  assert.deepEqual(matchActivities(p, a).proposals, [], 'without repoint the athlete\'s log stands');
+  const { proposals } = matchActivities(p, a, { repoint: true });
+  assert.deepEqual(ids(proposals), [['gpr', 'garmin:1']]);
+  assert.deepEqual(proposals[0].clears, ['easy']);
+});
+
+test('a log the athlete changed is never moved', () => {
+  let p = garminWeek();
+  p = setActual(p, 'easy', { status: 'done', min: 90, activityId: 'garmin:1' });
+  assert.deepEqual(matchActivities(p, [act(1, '2026-01-06', 'Run', 64)], { repoint: true }).proposals, []);
+});
+
+test('an already correct link proposes nothing', () => {
+  let p = garminWeek();
+  p = setActual(p, 'gpr', { status: 'done', min: 64, activityId: 'garmin:1' });
+  assert.deepEqual(matchActivities(p, [act(1, '2026-01-06', 'Run', 64)], { repoint: true }).proposals, []);
+});
