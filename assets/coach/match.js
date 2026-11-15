@@ -141,3 +141,14 @@ export function matchActivities(plan, activities, { from = null, to = null, repo
   extra.sort((p, q) => p.date.localeCompare(q.date) || p.activityId.localeCompare(q.activityId));
   return { proposals: proposals.map(({ order: _, ...p }) => p), extra };
 }
+
+/**
+ * The activities no session's log points at, whatever their discipline or date:
+ * what the calendar draws on a day of its own, so nothing synced is missing from it.
+ * @param {object} plan
+ * @param {object[]} [activities]  default `plan.activities`
+ */
+export function unlinkedActivities(plan, activities = plan?.activities) {
+  const linked = new Set(Object.values(plan?.actuals ?? {}).map((a) => a?.activityId).filter(Boolean));
+  return (Array.isArray(activities) ? activities : []).filter((a) => a && a.id && a.date && !linked.has(a.id));
+}

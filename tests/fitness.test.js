@@ -556,15 +556,26 @@ test('the figures appear at exactly the minimum number of covered weeks and not 
   assert.ok(Number.isFinite(enough.weeks[0].actualFat));
 });
 
-test('heart rate is never read: a device holding it shows the same figures as one that does not', () => {
+test('heart rate is read for the actual lines only, and never makes a basis', () => {
   const hr = { lthr: 170, maxHr: 190, restHr: 50, trimp: 'male' };
-  const hrById = new Map(Array.from({ length: 24 }, (_, i) => [`garmin:${i}`, { avg: 150 }]));
+  const hrById = new Map(Array.from({ length: 30 }, (_, i) => [`garmin:${i}`, { avg: 150 }]));
+  // Sessions only heart rate could score are still not a basis: the bar ignores it.
   const r = fitnessSeries(plan({ activities: noPower(24), activitySync: synced(START) }), { today: TODAY, thresholds: { ...T, ...hr }, hrById });
   assert.equal(r.basis.reason, 'unscorable');
   assert.equal(r.today, null, 'sessions only heart rate could score are not a basis');
-  const withHr = fitnessSeries(plan({ activities: rides(24).concat(noPower(6)), activitySync: synced(START) }), { today: TODAY, thresholds: { ...T, ...hr }, hrById });
-  const without = fitnessSeries(plan({ activities: rides(24).concat(noPower(6)), activitySync: synced(START) }), { today: TODAY, thresholds: T });
-  assert.deepEqual(withHr.today, without.today);
+  // Given a basis, an activity with no power counts when this device holds its heart rate...
+  const acts = rides(24).concat(noPower(6).map((a, i) => ({ ...a, id: `garmin:${i}`, date: dayISO(i) })));
+  const withHr = fitnessSeries(plan({ activities: acts, activitySync: synced(START) }), { today: TODAY, thresholds: { ...T, ...hr }, hrById });
+  const without = fitnessSeries(plan({ activities: acts, activitySync: synced(START) }), { today: TODAY, thresholds: T });
+  assert.ok(withHr.today.fit > without.today.fit, 'heart rate adds fitness');
+  assert.ok(withHr.today.fat > without.today.fat, 'heart rate adds fatigue');
+  // ...and a device without it, or without thresholds, shows today's figures.
+  const noThresholds = fitnessSeries(plan({ activities: acts, activitySync: synced(START) }), { today: TODAY, thresholds: T, hrById });
+  assert.deepEqual(noThresholds.today, without.today);
+  // The basis is the same either way.
+  assert.deepEqual(withHr.basis, without.basis);
+  // No heart rate comes back in the series.
+  assert.ok(!/\bhr\b|"avg"/.test(JSON.stringify(withHr)));
 });
 
 test('carry hands each day\'s fatigue to the caller as well as its fitness', () => {

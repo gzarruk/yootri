@@ -561,6 +561,15 @@
     background: color-mix(in srgb, var(--disc-color) 18%, transparent);
     cursor: grab;
   }
+  .cal-act {
+    display: flex; align-items: center; gap: 3px; min-width: 0;
+    padding: 2px 4px; border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--disc-color) 40%, transparent);
+    color: color-mix(in srgb, var(--disc-color) 88%, var(--color-text));
+    font: inherit; font-size: .7rem; line-height: 1.3; cursor: pointer; background: none; text-align: left;
+  }
+  .cal-act:hover { background: color-mix(in srgb, var(--disc-color) 14%, transparent); }
+  .cal-act-dur { font-variant-numeric: tabular-nums; }
   .cal-chip.dragging { opacity: .45; }
   .cal-chip.is-done { opacity: .58; }
   .cal-chip-main, .cal-chip-done {
@@ -1038,8 +1047,8 @@
     .cal-dow.rail { display: none; }
     /* At this width a day is 44px: the chips and the week rail carry the
        numbers, and a per-day total only wraps onto a second line. */
-    .cal-chip-dur, .cal-evt span, .cal-dmins { display: none; }
-    .cal-chip { display: inline-flex; }
+    .cal-chip-dur, .cal-act-dur, .cal-evt span, .cal-dmins { display: none; }
+    .cal-chip, .cal-act { display: inline-flex; }
     .cal-evt { width: auto; }
     .cal-rail {
       grid-column: 1 / -1; flex-direction: row; align-items: center;
@@ -1577,7 +1586,8 @@
     BRIDGE_URL_RE, MIN_TOKEN, parsePairing, bridgeState,
   } from './assets/coach/synced.js';
   import { PRIVACY_VERSION, PRIVACY_REGION, privacySectionsHtml, privacyRightsHtml } from './assets/privacy.js';
-  import { matchActivities, MATCH } from './assets/coach/match.js';
+  import { matchActivities, unlinkedActivities, MATCH } from './assets/coach/match.js';
+  import { dismissRun } from './assets/coach/confirm.js';
   import { autoApply, appendLog, normalizeChangeLog } from './assets/coach/autoapply.js';
   import { pendingWeeks, weekSuggestions, draftForWeek } from './assets/coach/syncweek.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
@@ -2088,6 +2098,9 @@
         '</div>';
     }
 
+    const actsByDate = {};
+    for (const a of unlinkedActivities(plan)) (actsByDate[a.date] = actsByDate[a.date] || []).push(a);
+
     els.board.innerHTML = unreleasedNote + DAYS.map((day) => {
       // Same mapping the month grid uses, so the two cannot disagree about
       // which date a session sits on.
@@ -2103,6 +2116,7 @@
             '<span class="total">' + fmtTotal(mins) + '</span>' +
           '</div>' +
           dayItems.map(sessionCardHTML).join('') +
+          (actsByDate[iso] || []).map(calActHTML).join('') +
           (dayItems.length === 0 ? '<div class="rest-zone">Rest day — drag or add a session</div>' : '') +
           '<button type="button" class="add-btn" data-day="' + day + '"><i class="ic i-plus"></i>Add session</button>' +
         '</div>'
@@ -2211,6 +2225,21 @@
     );
   }
 
+  /* A synced activity no session was logged from — an elliptical, a ride nobody
+     planned — on a day of its own. Opens its details; heart rate is not shown here. */
+  function calActHTML(a) {
+    const meta = DISC[a.disc] || { icon: 'i-watch', color: 'var(--color-neutral-500)' };
+    const min = Math.round((Number(a.durationS) || 0) / 60);
+    const label = (a.name && a.name.trim()) || (a.disc === 'Other' ? 'Activity' : a.disc);
+    return (
+      '<button type="button" class="cal-act" data-act="activity" data-id="' + esc(a.id) + '" style="--disc-color: ' + meta.color + ';"' +
+        ' title="' + esc(label + (min ? ' · ' + fmtTotal(min) : '') + ' · From Garmin') + '">' +
+        '<i class="ic ' + meta.icon + '" aria-hidden="true"></i>' +
+        '<span class="cal-act-dur">' + esc(min ? fmtTotal(min) : label) + '</span>' +
+      '</button>'
+    );
+  }
+
   function calEventHTML(ev) {
     const label = ev.name || (ev.kind === 'race' ? 'Race' : 'Event');
     const title = label + (ev.priority ? ' · ' + PRIORITY_LABELS[ev.priority] : '');
@@ -2255,6 +2284,8 @@
         if (iso) (byDay[iso] = byDay[iso] || []).push(s);
       }
     }
+    const actsByDay = {};
+    for (const a of unlinkedActivities(plan)) (actsByDay[a.date] = actsByDay[a.date] || []).push(a);
     const byDate = eventsByDate(state.events);
     const todayISO = toISO(new Date());
 
@@ -2278,6 +2309,7 @@
             '</div>' +
             (byDate[d.iso] || []).map(calEventHTML).join('') +
             sessions.map(calChipHTML).join('') +
+            (actsByDay[d.iso] || []).map(calActHTML).join('') +
             (d.inPlan
               ? '<button type="button" class="cal-add" data-act="add" data-date="' + d.iso + '"' +
                 ' aria-label="Add a session"><i class="ic i-plus" aria-hidden="true"></i></button>'
@@ -3243,6 +3275,50 @@
      ========================================================================= */
 
   let draft = null;
+
+  /* What the Garmin sync brought for one activity: only what the plan keeps (the
+     allowlist in synced.js) plus this device's own heart-rate figures, which are not
+     on the plan and are shown only here. Read-only; it changes nothing. */
+  function openActivityPanel(id) {
+    const a = syncedActivity(id);
+    if (!a) return;
+    const hr = hrLookup(readHrStore()).get(a.id) || null;
+    const fact = (label, value) => value ? '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>' : '';
+    const secs = a.movingS || a.durationS;
+    const km = a.distanceM ? a.distanceM / 1000 : 0;
+    let speed = '';
+    if (km && secs) {
+      if (a.disc === 'Run') speed = formatPace(secs / km) + ' /km';
+      else if (a.disc === 'Swim') speed = formatPace(secs / (a.distanceM / 100)) + ' /100 m';
+      else speed = (km / (secs / 3600)).toFixed(1) + ' km/h';
+    }
+    const linked = Object.entries(plan.actuals || {}).find(([, x]) => x && x.activityId === a.id);
+    const session = linked ? sessionById(linked[0]) : null;
+    const hrText = hr && (hr.avg || hr.max)
+      ? [hr.avg ? 'average ' + hr.avg : '', hr.max ? 'highest ' + hr.max : ''].filter(Boolean).join(' · ') + ' bpm'
+      : '';
+    const sportText = a.sport ? a.sport.replace(/_/g, ' ') : '';
+    panelShell(
+      '<h2>' + esc(a.name || (a.disc === 'Other' ? 'Activity' : a.disc)) + '</h2>' +
+      '<p class="pnl-sub">' + esc(fmtLongDate(a.date)) + (a.time ? ' · ' + esc(a.time) : '') + ' · from Garmin</p>' +
+      '<dl class="imp-facts">' +
+        fact('Type', esc(sportText ? sportText + ' (' + a.disc + ')' : a.disc)) +
+        fact('Duration', esc(fmtTotal(Math.round(a.durationS / 60)) || '—')) +
+        (a.movingS && a.movingS < a.durationS ? fact('Moving time', esc(fmtTotal(Math.round(a.movingS / 60)))) : '') +
+        fact('Distance', km ? (a.disc === 'Swim' ? Math.round(a.distanceM) + ' m' : km.toFixed(2) + ' km') : '') +
+        fact(a.disc === 'Run' || a.disc === 'Swim' ? 'Pace' : 'Average speed', esc(speed)) +
+        fact('Average power', a.avgPowerW ? a.avgPowerW + ' W' : '') +
+        fact('Normalised power', a.normPowerW ? a.normPowerW + ' W' : '') +
+        fact('Effort rating', a.rpe != null ? 'RPE ' + a.rpe : '') +
+        fact('Heart rate', hrText ? esc(hrText) + ' <small>(kept on this device)</small>' : '') +
+        fact('Race', a.race ? 'Yes' : '') +
+        fact('Logged against', session ? esc(session.day + ' · ' + (session.focus || session.disc)) : 'No planned session') +
+      '</dl>' +
+      '<div class="pnl-act"><button type="button" class="btn btn-primary" id="act-close">Close</button></div>',
+      'Activity details',
+    );
+    $('act-close').addEventListener('click', closePanel);
+  }
 
   function closePanel() {
     draft = null;
@@ -4417,6 +4493,8 @@
   function deleteSession(id) {
     const at = locateSession(id);
     if (!at) return;
+    // A Garmin Coach run that is deleted must not be put back by the next sync.
+    plan = dismissRun(plan, at.sessions.find((s) => s.id === id));
     writeWeek(at.absWeek, at.sessions.filter((s) => s.id !== id));
   }
 
@@ -7483,6 +7561,8 @@
         renderModal();
       } else if (act.dataset.act === 'delete') {
         deleteSession(id);
+      } else if (act.dataset.act === 'activity') {
+        openActivityPanel(id);
       } else if (act.dataset.act === 'done') {
         toggleDone(id);
       }
@@ -7544,6 +7624,8 @@
       addSessionAt(Number(cell.dataset.week), cell.dataset.day);
     } else if (kind === 'event') {
       openEventPanel(act.dataset.id);
+    } else if (kind === 'activity') {
+      openActivityPanel(act.dataset.id);
     } else if (kind === 'week') {
       state.view = 'week';
       select(Number(act.dataset.week));
@@ -7709,7 +7791,7 @@
   function fitnessNow() {
     const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
     const thresholds = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
-    return fitnessSeries(plan, { today: toISO(new Date()), thresholds });
+    return fitnessSeries(plan, { today: toISO(new Date()), thresholds, hrById: hrLookup(readHrStore()) });
   }
 
   const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(Math.round(n));
@@ -7763,6 +7845,15 @@
           (garminConfig() ? 'Sync from Garmin' : 'Set up Garmin sync') + '</button>' : '') +
       '</div>' +
     '</div>';
+  }
+
+  /* Activities power, pace and effort cannot score are counted from heart rate kept on
+     this device. Where that is not possible they are left out, and the athlete is told. */
+  function unscoredNoteHTML(fs) {
+    const lacks = fs.missing.map((m) => MISSING_WORDS[m]).filter(Boolean);
+    return '<p class="note">Sessions without power, pace or an effort rating are counted from heart rate kept on this device, so another device can show slightly different figures.' +
+      (fs.unscored ? ' ' + fs.unscored + ' synced ' + (fs.unscored === 1 ? 'activity is' : 'activities are') + ' not counted yet' +
+        (lacks.length ? ': ' + esc(lacks.join(', ')) + ' would let ' + (fs.unscored === 1 ? 'it' : 'them') + ' count' : '') + '.' : '') + '</p>';
   }
 
   function ffmCardHTML(title, sub, d, tail, foot, estimate) {
@@ -7929,7 +8020,8 @@
           ? ffmCardHTML('Race day · ' + fmtLongDate(fs.race.date), 'The plan followed from today', fs.race, 'vs today',
               (fs.race.form > PLANNED.form.high ? 'Fitness is well above fatigue on the day.' : fs.race.form < PLANNED.form.low ? 'Fatigue is well above fitness on the day.' : 'Fitness and fatigue are close on the day.') +
               ' A range often used on race day (illustrative): +' + PLANNED.raceForm.low + ' to +' + PLANNED.raceForm.high + '.', true)
-          : ffmNoteHTML('Race day', 'The plan followed from today', 'The race date has passed, or the plan has none.'))
+          : ffmNoteHTML('Race day', 'The plan followed from today', 'The race date has passed, or the plan has none.')) +
+        unscoredNoteHTML(fs)
       : basisPlaceholderHTML(fs, 'cards');
 
     if (!ok) {

@@ -84,3 +84,21 @@ test('run-walk steps drive zone and planned load', () => {
   const load = plannedLoad(s);
   assert.ok(load > 0 && load < plannedLoad({ ...s, steps: undefined, dur: '0:48', zone: 'Z3' }));
 });
+
+test('a Garmin Coach run the athlete deleted is not put back by the next sync', async () => {
+  const { dismissRun } = await import('../assets/coach/confirm.js');
+  const { newPlan } = await import('../assets/coach/plan.js');
+  let p = newPlan({ name: 'T', startISO: '2026-11-02', now: 1 });
+  const run = { garminId: 77, day: 'Tue', name: 'Hard', durationS: 3600 };
+  const first = confirmWeek(p, 0, [run]);
+  p = { ...p, weeks: { ...p.weeks, w0: first.sessions } };
+  const mine = p.weeks.w0.find((s) => s.source === 'garmin');
+  // The athlete deletes it, and the page remembers which Garmin run it was.
+  p = dismissRun({ ...p, weeks: { ...p.weeks, w0: p.weeks.w0.filter((s) => s.id !== mine.id) } }, mine);
+  assert.deepEqual(p.dismissedGarmin, ['77']);
+  assert.equal(dismissRun(p, mine), p, 'twice changes nothing');
+  assert.equal(dismissRun(p, { id: 'x', source: 'generated' }), p, 'only a Garmin run is remembered');
+  const again = confirmWeek(p, 0, [run]);
+  assert.ok(!again.sessions.some((s) => s.source === 'garmin'), 'it stays deleted');
+  assert.equal(again.published, false, 'a week of only dismissed runs is not published');
+});

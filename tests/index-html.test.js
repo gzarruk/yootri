@@ -566,6 +566,19 @@ test('a week after the release horizon is shown, labelled as not released, on th
   assert.doesNotMatch(month, /if \(!isReleased\(plan, w\.absWeek\)\) continue;/);
   assert.match(month, /!isReleased\(plan, d\.absWeek\) \? ' unrel'/);
   assert.match(fnBody('calRailHTML'), /' · not released'/);
+  // Every synced activity no session was logged from sits on its day, in both views, with no heart rate.
+  assert.match(month, /unlinkedActivities\(plan\)/);
+  assert.match(month, /calActHTML/);
+  assert.match(board, /unlinkedActivities\(plan\)/);
+  assert.doesNotMatch(fnBody('calActHTML'), /\.hr\b|hrById/);
+  // They open: a read-only panel of what the sync brought, heart rate only from this device's store.
+  assert.match(fnBody('calActHTML'), /data-act="activity"/);
+  assert.match(fnBody('openActivityPanel'), /hrLookup\(readHrStore\(\)\)/);
+  assert.doesNotMatch(fnBody('openActivityPanel'), /setActual|persistPlan|plan\.activities\s*=/);
+  // A deleted Garmin Coach run is remembered so the next sync does not add it back.
+  assert.match(fnBody('deleteSession'), /dismissRun\(plan,/);
+  // The chart reads this device's heart rate, and only through the store.
+  assert.match(fnBody('fitnessNow'), /hrById: hrLookup\(readHrStore\(\)\)/);
   assert.doesNotMatch(fnBody('renderSummary'), /isReleased/);
 });
 
