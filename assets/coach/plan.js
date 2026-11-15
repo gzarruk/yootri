@@ -551,6 +551,8 @@ export function applyDraft(plan, draft, { now = Date.now() } = {}) {
   // snapshot reason: a sync that lands while the athlete is reading the diff
   // must not be rolled back by pressing Apply.
   next.activities = plan.activities ?? [];
+  // A Garmin run the athlete deleted stays deleted, whatever draft was taken before.
+  if (plan.dismissedGarmin) next.dismissedGarmin = plan.dismissedGarmin;
   if (plan.activitySync) next.activitySync = plan.activitySync;
   else delete next.activitySync;
   // FTP and CSS are entered in a panel that writes straight to the plan, so the

@@ -35,10 +35,24 @@ const asSession = (base, g) => {
   return s;
 };
 
+/**
+ * Remember that the athlete deleted a Garmin Coach run, so the next sync does not
+ * add it back. `plan.dismissedGarmin` is a field added without a schema bump, like
+ * `events`; it holds Garmin's own ids as strings and nothing else.
+ */
+export function dismissRun(plan, session) {
+  if (session?.source !== 'garmin' || session.garminId == null) return plan;
+  const id = String(session.garminId);
+  const have = Array.isArray(plan.dismissedGarmin) ? plan.dismissedGarmin : [];
+  return have.includes(id) ? plan : { ...plan, dismissedGarmin: [...have, id].slice(-200) };
+}
+
 export function confirmWeek(plan, absWeek, garminRuns, { prefix } = {}) {
   const key = `w${absWeek}`;
   const week = plan.weeks?.[key] ?? [];
-  const runs = (garminRuns ?? []).filter((g) => g && g.garminId != null && DAYS.includes(g.day) && g.durationS > 0);
+  const dismissed = new Set((Array.isArray(plan.dismissedGarmin) ? plan.dismissedGarmin : []).map(String));
+  const runs = (garminRuns ?? []).filter((g) => g && g.garminId != null && !dismissed.has(String(g.garminId))
+    && DAYS.includes(g.day) && g.durationS > 0);
   if (!runs.length) {
     return { published: false, sessions: week.map((s) => ({ ...s })), changes: [], unmatched: [] };
   }
