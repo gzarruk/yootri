@@ -561,6 +561,14 @@
     background: color-mix(in srgb, var(--disc-color) 18%, transparent);
     cursor: grab;
   }
+  .cal-act {
+    display: flex; align-items: center; gap: 3px; min-width: 0;
+    padding: 2px 4px; border-radius: var(--radius-sm);
+    border: 1px solid color-mix(in srgb, var(--disc-color) 40%, transparent);
+    color: color-mix(in srgb, var(--disc-color) 88%, var(--color-text));
+    font-size: .7rem; line-height: 1.3; cursor: default;
+  }
+  .cal-act-dur { font-variant-numeric: tabular-nums; }
   .cal-chip.dragging { opacity: .45; }
   .cal-chip.is-done { opacity: .58; }
   .cal-chip-main, .cal-chip-done {
@@ -1038,8 +1046,8 @@
     .cal-dow.rail { display: none; }
     /* At this width a day is 44px: the chips and the week rail carry the
        numbers, and a per-day total only wraps onto a second line. */
-    .cal-chip-dur, .cal-evt span, .cal-dmins { display: none; }
-    .cal-chip { display: inline-flex; }
+    .cal-chip-dur, .cal-act-dur, .cal-evt span, .cal-dmins { display: none; }
+    .cal-chip, .cal-act { display: inline-flex; }
     .cal-evt { width: auto; }
     .cal-rail {
       grid-column: 1 / -1; flex-direction: row; align-items: center;
@@ -1577,7 +1585,7 @@
     BRIDGE_URL_RE, MIN_TOKEN, parsePairing, bridgeState,
   } from './assets/coach/synced.js';
   import { PRIVACY_VERSION, PRIVACY_REGION, privacySectionsHtml, privacyRightsHtml } from './assets/privacy.js';
-  import { matchActivities, MATCH } from './assets/coach/match.js';
+  import { matchActivities, unlinkedActivities, MATCH } from './assets/coach/match.js';
   import { autoApply, appendLog, normalizeChangeLog } from './assets/coach/autoapply.js';
   import { pendingWeeks, weekSuggestions, draftForWeek } from './assets/coach/syncweek.js';
   import { normalizeLoadRefs, normalizeHrThresholds, loadThresholds, trainingLoad } from './assets/coach/load.js';
@@ -2088,6 +2096,9 @@
         '</div>';
     }
 
+    const actsByDate = {};
+    for (const a of unlinkedActivities(plan)) (actsByDate[a.date] = actsByDate[a.date] || []).push(a);
+
     els.board.innerHTML = unreleasedNote + DAYS.map((day) => {
       // Same mapping the month grid uses, so the two cannot disagree about
       // which date a session sits on.
@@ -2103,6 +2114,7 @@
             '<span class="total">' + fmtTotal(mins) + '</span>' +
           '</div>' +
           dayItems.map(sessionCardHTML).join('') +
+          (actsByDate[iso] || []).map(calActHTML).join('') +
           (dayItems.length === 0 ? '<div class="rest-zone">Rest day — drag or add a session</div>' : '') +
           '<button type="button" class="add-btn" data-day="' + day + '"><i class="ic i-plus"></i>Add session</button>' +
         '</div>'
@@ -2211,6 +2223,21 @@
     );
   }
 
+  /* A synced activity no session was logged from — an elliptical, a ride nobody
+     planned — on a day of its own. Read-only; heart rate is not shown. */
+  function calActHTML(a) {
+    const meta = DISC[a.disc] || { icon: 'i-watch', color: 'var(--color-neutral-500)' };
+    const min = Math.round((Number(a.durationS) || 0) / 60);
+    const label = (a.name && a.name.trim()) || (a.disc === 'Other' ? 'Activity' : a.disc);
+    return (
+      '<span class="cal-act" style="--disc-color: ' + meta.color + ';"' +
+        ' title="' + esc(label + (min ? ' · ' + fmtTotal(min) : '') + ' · From Garmin') + '">' +
+        '<i class="ic ' + meta.icon + '" aria-hidden="true"></i>' +
+        '<span class="cal-act-dur">' + esc(min ? fmtTotal(min) : label) + '</span>' +
+      '</span>'
+    );
+  }
+
   function calEventHTML(ev) {
     const label = ev.name || (ev.kind === 'race' ? 'Race' : 'Event');
     const title = label + (ev.priority ? ' · ' + PRIORITY_LABELS[ev.priority] : '');
@@ -2255,6 +2282,8 @@
         if (iso) (byDay[iso] = byDay[iso] || []).push(s);
       }
     }
+    const actsByDay = {};
+    for (const a of unlinkedActivities(plan)) (actsByDay[a.date] = actsByDay[a.date] || []).push(a);
     const byDate = eventsByDate(state.events);
     const todayISO = toISO(new Date());
 
@@ -2278,6 +2307,7 @@
             '</div>' +
             (byDate[d.iso] || []).map(calEventHTML).join('') +
             sessions.map(calChipHTML).join('') +
+            (actsByDay[d.iso] || []).map(calActHTML).join('') +
             (d.inPlan
               ? '<button type="button" class="cal-add" data-act="add" data-date="' + d.iso + '"' +
                 ' aria-label="Add a session"><i class="ic i-plus" aria-hidden="true"></i></button>'
@@ -7709,7 +7739,7 @@
   function fitnessNow() {
     const hr = normalizeHrThresholds(readJson(HR_THRESHOLDS_KEY)) || {};
     const thresholds = loadThresholds({ benchmarks: state.benchmarks, loadRefs: plan.loadRefs, hrThresholds: hr });
-    return fitnessSeries(plan, { today: toISO(new Date()), thresholds });
+    return fitnessSeries(plan, { today: toISO(new Date()), thresholds, hrById: hrLookup(readHrStore()) });
   }
 
   const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + Math.abs(Math.round(n));
@@ -7763,6 +7793,15 @@
           (garminConfig() ? 'Sync from Garmin' : 'Set up Garmin sync') + '</button>' : '') +
       '</div>' +
     '</div>';
+  }
+
+  /* Activities power, pace and effort cannot score are counted from heart rate kept on
+     this device. Where that is not possible they are left out, and the athlete is told. */
+  function unscoredNoteHTML(fs) {
+    const lacks = fs.missing.map((m) => MISSING_WORDS[m]).filter(Boolean);
+    return '<p class="note">Sessions without power, pace or an effort rating are counted from heart rate kept on this device, so another device can show slightly different figures.' +
+      (fs.unscored ? ' ' + fs.unscored + ' synced ' + (fs.unscored === 1 ? 'activity is' : 'activities are') + ' not counted yet' +
+        (lacks.length ? ': ' + esc(lacks.join(', ')) + ' would let ' + (fs.unscored === 1 ? 'it' : 'them') + ' count' : '') + '.' : '') + '</p>';
   }
 
   function ffmCardHTML(title, sub, d, tail, foot, estimate) {
@@ -7929,7 +7968,8 @@
           ? ffmCardHTML('Race day · ' + fmtLongDate(fs.race.date), 'The plan followed from today', fs.race, 'vs today',
               (fs.race.form > PLANNED.form.high ? 'Fitness is well above fatigue on the day.' : fs.race.form < PLANNED.form.low ? 'Fatigue is well above fitness on the day.' : 'Fitness and fatigue are close on the day.') +
               ' A range often used on race day (illustrative): +' + PLANNED.raceForm.low + ' to +' + PLANNED.raceForm.high + '.', true)
-          : ffmNoteHTML('Race day', 'The plan followed from today', 'The race date has passed, or the plan has none.'))
+          : ffmNoteHTML('Race day', 'The plan followed from today', 'The race date has passed, or the plan has none.')) +
+        unscoredNoteHTML(fs)
       : basisPlaceholderHTML(fs, 'cards');
 
     if (!ok) {

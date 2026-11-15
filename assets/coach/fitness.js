@@ -182,25 +182,27 @@ export function carry(state, from, to, loadOn, each) {
  * nothing the page draws is a figure the planner would not size a season from. Without
  * it `today`, `race`, `trend` and every `actual`, `followed` and `trend` entry
  * are null; the plan alone (`planned`, `plannedFat`, `plannedRace`) is still
- * worked out, and it is the page that decides not to draw it. Heart rate is
- * never read at all, so every device shows the same figures for the same plan.
+ * worked out, and it is the page that decides not to draw it. Heart rate
+ * is read only for activities nothing else can score, from this device's own store,
+ * and never counts toward the basis.
  *
  * Both averages begin at the mean daily load of the sync window's first days
  * (load.js `warmStart`), not at zero, as the planner's starting fitness does.
  * Each week is read at its Sunday, for CTL and ATL alike; ATL moves more than
  * that inside a week.
  */
-export function fitnessSeries(plan, { today, thresholds = {} } = {}) {
+export function fitnessSeries(plan, { today, thresholds = {}, hrById = new Map() } = {}) {
   const N = Array.isArray(plan?.season) ? plan.season.length : 0;
   if (!plan || !parseISO(plan.start) || !N || !parseISO(today)) return empty();
 
   const start = plan.start;
   const planned = plannedByDate(plan, N);
   const acts = Array.isArray(plan.activities) ? plan.activities : [];
-  // Heart rate is never read here: it lives on one device only, so a figure that
-  // used it would differ between that device and every other one that shows the
-  // same synced plan. Power, pace, swim pace and effort are on the plan; they agree.
-  const d = dailyLoads(acts, thresholds);
+  // Heart rate scores an activity power, pace and effort cannot (an elliptical, a
+  // ride with no power meter) when this device holds it and the thresholds are set.
+  // It lives on one device only, so these lines can differ from another device's;
+  // it never makes a basis (`syncBasis` below reads none) and is never stored.
+  const d = dailyLoads(acts, thresholds, hrById);
   const hasHistory = d.scored > 0;
 
   const basis = syncBasis({ today, activities: acts, activitySync: plan.activitySync, thresholds });

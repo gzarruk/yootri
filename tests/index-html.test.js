@@ -566,6 +566,13 @@ test('a week after the release horizon is shown, labelled as not released, on th
   assert.doesNotMatch(month, /if \(!isReleased\(plan, w\.absWeek\)\) continue;/);
   assert.match(month, /!isReleased\(plan, d\.absWeek\) \? ' unrel'/);
   assert.match(fnBody('calRailHTML'), /' · not released'/);
+  // Every synced activity no session was logged from sits on its day, in both views, with no heart rate.
+  assert.match(month, /unlinkedActivities\(plan\)/);
+  assert.match(month, /calActHTML/);
+  assert.match(board, /unlinkedActivities\(plan\)/);
+  assert.doesNotMatch(fnBody('calActHTML'), /\.hr\b|hrById/);
+  // The chart reads this device's heart rate, and only through the store.
+  assert.match(fnBody('fitnessNow'), /hrById: hrLookup\(readHrStore\(\)\)/);
   assert.doesNotMatch(fnBody('renderSummary'), /isReleased/);
 });
 

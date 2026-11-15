@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { MATCH, matchActivities } from '../assets/coach/match.js';
+import { MATCH, matchActivities, unlinkedActivities } from '../assets/coach/match.js';
 import { newPlan } from '../assets/coach/plan.js';
 import { setActual, weekCompliance } from '../assets/coach/actuals.js';
 
@@ -174,4 +174,18 @@ test('an already correct link proposes nothing', () => {
   let p = garminWeek();
   p = setActual(p, 'gpr', { status: 'done', min: 64, activityId: 'garmin:1' });
   assert.deepEqual(matchActivities(p, [act(1, '2026-01-06', 'Run', 64)], { repoint: true }).proposals, []);
+});
+
+test('activities no session was logged from are the ones the calendar draws on their own', () => {
+  const p = plan();
+  p.actuals = { run: { status: 'done', min: 58, activityId: 'garmin:1' } };
+  const acts = [
+    act(1, '2026-01-06', 'Run', 58),
+    act(2, '2026-01-10', 'Other', 40),          // an elliptical: never matchable
+    act(3, '2026-01-12', 'Bike', 30),           // no session that day
+    act(4, '2025-12-01', 'Run', 20),            // before the plan: still history
+  ];
+  assert.deepEqual(unlinkedActivities(p, acts).map((a) => a.id), ['garmin:2', 'garmin:3', 'garmin:4']);
+  assert.deepEqual(unlinkedActivities(p, undefined).map((a) => a.id), []);
+  assert.deepEqual(unlinkedActivities({}, [{ id: 'x' }, null]), [], 'an activity with no date has no day to sit on');
 });
