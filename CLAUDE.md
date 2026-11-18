@@ -86,6 +86,7 @@ case-insensitive macOS filesystem otherwise hides until Pages serves it.
 | `startfit.js` | `startFitness`: the athlete's chronic training load today, from their synced sessions (power, pace, swim pace and session effort only — never heart rate) or, failing that, an estimate from recent weekly hours, years in the sport and per-sport level. The estimate sizes a season and is never drawn as the athlete's CTL. **A figure can no longer be typed in**; a plan made before that may carry `target.start.source === 'entered'`, which is read and described (`startNote`) and never written. `syncBasis` is the bar for the synced source as a record `{ enough, reason, coveredWeeks, neededWeeks, scoredShare, neededShare }` (`reason`: `no-sync`, `too-short`, `unscorable`), shared with every display of CTL or ATL; `startLine` is the read-only sentence shown beside a plan's start. Body measurements play no part. |
 | `races.js` | Where a plan's races fall: `landingsOf`, `landingsDetail`, `raceDayFor`, `raceClosure`, and `plannedRaceLoads` (what each tune-up adds to its day). Split out of `plan.js`, which hands them back, so the planner can read them without importing the plan. |
 | `backplan.js` | The planner. `planSeason` builds a season backwards from a target fitness, **the peak before the taper** (race day settles lower, by a two-week taper that takes under a tenth off — `PLAN_MODEL.taperTail`, the model's own three-week tail being kept only for `targetAt: 'raceDay'` — and is read as the morning of it, the end of the day before, and reported as `raceCtl`, not aimed at): even climb over the loading weeks from where the athlete is, hours found by bisection through `generateWeek` and `plannedLoad` (the Fitness chart's own estimate), each week inside the athlete's week, the validator's volume steps and `PLAN_MODEL.ramp.max`, and two hard ceilings — fitness never above the target on any day, and acute load within `PLAN_MODEL.ramp.acuteRatioMax` times chronic load on every day (neither is shown on a screen). Returns the season with `ctl` per week and a feasibility record; builds the best it can and says so when the target is out of reach, never overshoots. `targetAt: 'raceDay'` is the first version's solve, kept for plans whose target was made that way. `planLevers` works out, by rebuilding, what would make it reachable. Pure. `refit` and `newPlan` call it for a plan that has a `target` (see below). The climb is laid once from where the season starts and **laid again from where fitness actually is** when a pinned week leaves it ahead of its own waypoint (`climbFrom`), so a run of pinned weeks never starves the weeks after it; an athlete past the level is held, not unwound. See `docs/FINDINGS.md` (30 Oct, second entry). |
+| `lifts.js`, `liftsessions.js` | The six strength sessions (C1–C4 calisthenics, L1–L2 legs) as data, and what is read from their logs. A done session's weights are `actual.lifts = { session, kg }` (`kg` maps `<exercise>-<set>` to kilograms), an allowlist `normalizeActual` runs and `loadPlan` re-runs (`cleanActualLifts`), so the weights travel with the plan — sync, export, import — like any logged figure. `liftLog`, `topSetSeries`, `lastKg` and `nextInRotation` (c1, l1, c2, c3, l2, c4) are worked out on read and never stored. Weights are not health data; heart rate and body figures stay out of this field. Pure. |
 
 **On screen it is fitness and fatigue, never CTL or ATL.** The two abbreviations are
 another company's product vocabulary, so every string an athlete (or the coach) reads says
@@ -430,6 +431,15 @@ Plans are schema v3: absolute week keys (`w0`…`w15`), materialized sessions, a
 a stored `season`. A plan is self-contained, so changing the engine never
 reshapes a season somebody is midway through. `adoptPlan` migrates older records
 on the way in and writes the upgrade back immediately.
+
+**Strength sessions are done in the app and logged on the plan.** The Strength page (`#/strength`)
+runs one of the six sessions: ticks, a weight per set and the circuit's rounds are kept in this
+browser while it is under way (`yootri_lift_draft_v1`, never on the plan), and **Finish** writes
+the log through `setActual` onto the planned Strength session it was started from, else an open
+one today, else a new one on today — the same path as the session modal, so completion, weekly
+compliance and the review read it as they read any log. A Strength card's **Start** button opens
+the next session in the rotation against that card. The session text is the athlete's own, in
+`liftsessions.js`; it names an old injury in two cues, kept on purpose (owner decision) in a public repo.
 
 ## R&D notebooks
 
