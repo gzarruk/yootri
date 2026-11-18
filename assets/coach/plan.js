@@ -25,6 +25,7 @@ import { normalizeBenchmarks } from './paces.js';
 import { normalizeActivities, normalizeActivitySync } from './synced.js';
 import { normalizeLoadRefs } from './load.js';
 import { setActual } from './actuals.js';
+import { cleanActualLifts } from './lifts.js';
 
 export { landingsOf, landingsDetail, raceDayFor, raceClosure } from './races.js';
 
@@ -52,14 +53,17 @@ export function loadPlan(raw) {
   const activitySync = normalizeActivitySync(p.activitySync) ?? undefined;
   const loadRefs = normalizeLoadRefs(p.loadRefs);
   const release = normalizeRelease(p.release, p.season?.length ?? 0);
+  const actuals = cleanActualLifts(p.actuals);
 
   // Avoid handing back a needlessly different object for an already-clean plan,
   // so `loadPlan(loadPlan(x))` stays deep-equal to `loadPlan(x)`.
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   if (same(profile, p.profile) && same(benchmarks, p.benchmarks)
     && same(activities, p.activities) && same(activitySync, p.activitySync)
-    && same(loadRefs, p.loadRefs) && same(release, p.release) && same(target, p.target) && !('athlete' in p)) return p;
+    && same(loadRefs, p.loadRefs) && same(release, p.release) && same(target, p.target)
+    && actuals === p.actuals && !('athlete' in p)) return p;
   const out = { ...p, profile, benchmarks, activities };
+  if (actuals !== undefined) out.actuals = actuals;
   // What the season was built to arrive with (normalizeTarget): kept if usable, absent if not.
   if (target) out.target = target;
   else delete out.target;
