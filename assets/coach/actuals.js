@@ -12,6 +12,7 @@
    `done` flags as completed sessions. */
 
 import { durToMin } from './duration.js';
+import { normalizeLifts } from './lifts.js';
 
 export const STATUSES = ['done', 'partial', 'missed', 'sick'];
 
@@ -46,6 +47,12 @@ export function normalizeActual(raw) {
   // than null when there is none, so an actual stored before this existed is
   // still exactly what it normalizes to.
   if (raw.activityId) out.activityId = String(raw.activityId).slice(0, 64);
+  // The weights lifted, for a strength session from the library (lifts.js). Kept
+  // only on a session that happened, and absent rather than empty otherwise.
+  if (!ZERO_STATUSES.has(raw.status)) {
+    const lifts = normalizeLifts(raw.lifts);
+    if (lifts) out.lifts = lifts;
+  }
   return out;
 }
 

@@ -50,6 +50,8 @@ const SHELL = [
   'assets/coach/generate.js',
   'assets/coach/history.js',
   'assets/coach/legacy-plan.js',
+  'assets/coach/lifts.js',
+  'assets/coach/liftsessions.js',
   'assets/coach/load.js',
   'assets/coach/match.js',
   'assets/coach/confirm.js',

@@ -1114,3 +1114,24 @@ test('the change log stays on this device and never on a plan', () => {
   assert.doesNotMatch(fnBody('autoRelease'), /summary:[^}]*nights/);
   assert.doesNotMatch(fnBody('coachContext'), /overnight|nights/i);
 });
+
+/* ---- Strength sessions ---- */
+
+test('Strength is a page of its own: sidebar item, route, root, and the engine module it reads', () => {
+  assert.match(HTML, /<a class="nav" data-route="strength" href="#\/strength">/);
+  assert.match(HTML, /data-page="strength"[\s\S]*id="strength-root"/);
+  assert.match(HTML, /import \{[^}]*liftLog[^}]*\} from '\.\/assets\/coach\/lifts\.js'/);
+});
+
+test('a session under way is kept in this browser, and Finish writes it through setActual', () => {
+  assert.match(HTML, /const LIFT_DRAFT_KEY = 'yootri_lift_draft_v1'/);
+  const fn = HTML.slice(HTML.indexOf('function finishLift()'), HTML.indexOf('function renderStrengthForce()'));
+  assert.match(fn, /setActual\(plan, id, \{ status: 'done'[^}]*lifts: \{ session: t\.id, kg: liftDraft\.kg \}/);
+  // The draft is never folded into the plan.
+  assert.doesNotMatch(HTML, /plan\.(liftDraft|lifts)\s*=/);
+});
+
+test('a Strength card offers Start, and it opens the runner against that session', () => {
+  assert.match(HTML, /data-act="lift-start"/);
+  assert.match(HTML, /startLift\(null, (act\.dataset\.act|id|act\.dataset\.id)\)|startLift\(null, id\)/);
+});

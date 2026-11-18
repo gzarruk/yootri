@@ -1134,6 +1134,49 @@
     .icon-btn { position: relative; }
     .icon-btn::after { content: ""; position: absolute; inset: -11px -7px; }
   }
+  /* ---- Strength sessions ---- */
+  .lf-wrap { display: flex; flex-direction: column; gap: 12px; max-width: 760px; }
+  .lf-card {
+    display: flex; flex-direction: column; gap: 8px; padding: 12px 12px 12px 14px;
+    border: 1px solid var(--color-divider); border-left: 3px solid var(--disc-strength, var(--color-accent));
+    border-radius: var(--radius-md); background: var(--color-surface);
+  }
+  .lf-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  .lf-title { font-weight: 600; font-size: 15px; }
+  .lf-sub { font-size: 13px; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+  .lf-list { display: flex; flex-direction: column; gap: 8px; }
+  .lf-sec { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: color-mix(in srgb, var(--color-text) 60%, transparent); margin: 6px 0 0; }
+  .lf-ex { display: flex; flex-direction: column; gap: 6px; padding: 10px 0; border-top: 1px solid var(--color-divider); }
+  .lf-ex-name { font-weight: 600; font-size: 14px; }
+  .lf-ex-rx { font-size: 13px; color: var(--color-accent-300); }
+  .lf-ex-cue { font-size: 13px; line-height: 1.45; color: color-mix(in srgb, var(--color-text) 72%, transparent); }
+  .lf-set { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .lf-set-n { width: 44px; font-size: 13px; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+  .lf-kg { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+  .lf-kg input {
+    width: 76px; padding: 7px 8px; border-radius: var(--radius-sm); border: 1px solid var(--color-divider);
+    background: var(--color-bg); color: var(--color-text); font: inherit; font-size: 15px;
+  }
+  .lf-kg input::placeholder { color: color-mix(in srgb, var(--color-text) 38%, transparent); }
+  .lf-ticks { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+  .lf-tick {
+    min-height: 36px; min-width: 56px; padding: 0 12px; border-radius: var(--radius-sm);
+    border: 1px solid var(--color-divider); background: transparent; color: var(--color-text); font: inherit; font-size: 13px; cursor: pointer;
+  }
+  .lf-tick.on { background: var(--color-accent-900); border-color: var(--color-accent); color: var(--color-accent-300); }
+  .lf-guide { font-size: 13px; line-height: 1.5; }
+  .lf-guide ol { margin: 6px 0 0; padding-left: 18px; }
+  .lf-rounds { display: inline-flex; align-items: center; gap: 10px; }
+  .lf-rounds b { min-width: 24px; text-align: center; font-size: 18px; }
+  .lf-bar { position: sticky; bottom: 0; display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; background: var(--color-bg); }
+  .lf-form { display: grid; gap: 10px; max-width: 420px; }
+  .lf-form label { display: grid; gap: 4px; font-size: 13px; }
+  .lf-form input, .lf-form select, .lf-form textarea {
+    padding: 8px; border-radius: var(--radius-sm); border: 1px solid var(--color-divider);
+    background: var(--color-bg); color: var(--color-text); font: inherit; font-size: 15px;
+  }
+  .lf-chart { width: 100%; height: auto; display: block; color: color-mix(in srgb, var(--color-text) 66%, transparent); }
+  .lf-error { color: var(--color-text); border: 1px solid var(--color-divider); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 13px; }
 </style>
 </head>
 <body>
@@ -1162,6 +1205,7 @@
           <div class="nav-label">Training</div>
           <a class="nav" data-route="week" href="#/week"><i class="ic i-calendar" aria-hidden="true"></i><span class="nav-txt">This week</span></a>
           <a class="nav" data-route="calendar" href="#/calendar"><i class="ic i-month" aria-hidden="true"></i><span class="nav-txt">Calendar</span></a>
+          <a class="nav" data-route="strength" href="#/strength"><i class="ic i-barbell" aria-hidden="true"></i><span class="nav-txt">Strength</span></a>
           <button type="button" class="nav" id="setup-btn"><i class="ic i-flag" aria-hidden="true"></i><span class="nav-txt">Plan setup</span></button>
           <button type="button" class="nav" id="events-btn"><i class="ic i-flame" aria-hidden="true"></i><span class="nav-txt">Events</span></button>
         </div>
@@ -1350,6 +1394,17 @@
         </div>
       </div>
     </section>
+  </div>
+
+  <div class="page hidden" data-page="strength" tabindex="-1">
+    <header>
+      <div class="hdr-top">
+        <span class="kicker">Training</span>
+      </div>
+      <h1 class="im-h1">Strength</h1>
+      <p class="im-sub">Four calisthenics sessions and two leg sessions, in rotation. Finish one and it is logged on the plan with the weights you lifted.</p>
+    </header>
+    <div id="strength-root"></div>
   </div>
 
   <div class="page hidden" data-page="local" tabindex="-1">
@@ -1559,7 +1614,11 @@
   import { fitToRace, planLandings, LONG_RUNWAY_WEEKS } from './assets/coach/season.js';
   import { weeksUntil, nextMonday } from './assets/coach/dates.js';
   import {
-    dateOf, weekIndexOf, monthOf, firstOfMonth, addMonths, monthGrid, clampMonth,
+    LIFT_SESSIONS, liftSessionById, tickBoxes, sessionProgress, trackedLifts, liftLog, topSetSeries,
+    lastKg, nextInRotation, liftNote,
+  } from './assets/coach/lifts.js';
+  import {
+    dateOf, weekIndexOf, weekdayOf, monthOf, firstOfMonth, addMonths, monthGrid, clampMonth,
   } from './assets/coach/calendar.js';
   import {
     RACE_TYPES, KNOWN_RACE_TYPES, SECONDARY_RACE_TYPES, raceTypeLabel,
@@ -2065,6 +2124,7 @@
           (isDone
             ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-check-circle"></i>Done</button>'
             : '<button type="button" class="done-toggle" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-circle"></i>Mark done</button>') +
+          (s.disc === 'Strength' && !isDone ? '<button type="button" class="done-toggle" data-act="lift-start" data-id="' + esc(s.id) + '"><i class="ic i-barbell"></i>Start</button>' : '') +
         '</div>' +
       '</div>'
     );
@@ -2166,6 +2226,7 @@
           (isDone
             ? '<button type="button" class="done-toggle is-done" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-check-circle"></i>Done</button>'
             : '<button type="button" class="btn btn-primary" data-act="done" data-id="' + esc(s.id) + '"><i class="ic i-check-circle"></i>Mark done</button>') +
+          (s.disc === 'Strength' && !isDone ? '<button type="button" class="btn btn-secondary" data-act="lift-start" data-id="' + esc(s.id) + '"><i class="ic i-barbell"></i>Start</button>' : '') +
           '<button type="button" class="icon-btn" data-act="edit" data-id="' + esc(s.id) + '" title="Edit session" aria-label="Edit session"><i class="ic i-pencil"></i></button>' +
         '</div></div>';
     };
@@ -2178,6 +2239,7 @@
     if (!act) return;
     if (act.dataset.act === 'edit') { state.editingId = act.dataset.id; renderModal(); }
     else if (act.dataset.act === 'done') toggleDone(act.dataset.id);
+    else if (act.dataset.act === 'lift-start') startLift(null, act.dataset.id);
   });
 
   function applyMobileDay() {
@@ -2893,6 +2955,7 @@
     renderViewBody();
     renderChart();
     renderFitness();
+    renderStrength();
     // A page with typed-but-unsaved boxes is not redrawn under the typist, unless the plan changed.
     if (state.page === 'biometrics' && (!bioDirty || bioPlanId !== plan.id)) renderBiometrics();
   }
@@ -4531,6 +4594,276 @@
     state.editingId = id;
     renderModal();
   }
+
+  /* ---- Strength sessions ----
+     The six sessions are data (lifts.js). One under way is kept in this browser
+     only — ticks, weights, rounds — and Finish writes it to the plan as the
+     session's log: `setActual` with the weights in `lifts`, the same path the
+     session modal takes. Nothing here edits a week except to name the session
+     that was done, or to add one on today when none was planned. */
+
+  const LIFT_DRAFT_KEY = 'yootri_lift_draft_v1';
+  const kgText = (n) => String(Math.round(Number(n) * 10) / 10);
+
+  function readLiftDraft() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(LIFT_DRAFT_KEY) || 'null');
+      if (!raw || !liftSessionById(raw.session)) return null;
+      const obj = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : {});
+      return {
+        session: raw.session,
+        sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : null,
+        startedAt: Number(raw.startedAt) || Date.now(),
+        ticks: obj(raw.ticks),
+        kg: obj(raw.kg),
+        rounds: Math.max(0, Math.min(20, Math.round(Number(raw.rounds) || 0))),
+        finishing: false,
+        problem: '',
+      };
+    } catch (e) { return null; }
+  }
+  let liftDraft = readLiftDraft();
+
+  function saveLiftDraft() {
+    try {
+      if (liftDraft) {
+        const { problem, finishing, ...keep } = liftDraft;
+        localStorage.setItem(LIFT_DRAFT_KEY, JSON.stringify(keep));
+      } else localStorage.removeItem(LIFT_DRAFT_KEY);
+    } catch (e) {}
+  }
+
+  function startLift(templateId, planSessionId) {
+    const id = templateId && liftSessionById(templateId) ? templateId : nextInRotation(plan);
+    if (liftDraft && liftDraft.session === id) {
+      if (planSessionId) liftDraft.sessionId = planSessionId;
+    } else {
+      liftDraft = { session: id, sessionId: planSessionId || null, startedAt: Date.now(), ticks: {}, kg: {}, rounds: 0, finishing: false, problem: '' };
+    }
+    saveLiftDraft();
+    navigate('strength');
+  }
+
+  function liftChartHTML(name, series) {
+    const W = 340, H = 132, L = 36, R = 14, T = 16, B = 26;
+    const vals = series.map((r) => r.kg);
+    let lo = Math.min(...vals), hi = Math.max(...vals);
+    if (hi === lo) { lo -= 5; hi += 5; } else { const pad = (hi - lo) * 0.18; lo -= pad; hi += pad; }
+    lo = Math.max(0, lo);
+    const x = (i) => (series.length === 1 ? L + (W - L - R) / 2 : L + (i * (W - L - R)) / (series.length - 1));
+    const y = (v) => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+    const pts = series.map((r, i) => [x(i), y(r.kg)]);
+    const label = name + ': ' + series.map((r) => kgText(r.kg) + ' kg on ' + fmtDayISO(r.date)).join(', ');
+    return '<svg class="lf-chart" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' +
+      '<line x1="' + L + '" y1="' + y(lo + (hi - lo) * 0.02) + '" x2="' + (W - R) + '" y2="' + y(lo + (hi - lo) * 0.02) + '" stroke="currentColor" stroke-opacity=".25"/>' +
+      '<text x="' + (L - 6) + '" y="' + (T + 4) + '" text-anchor="end" font-size="11" fill="currentColor">' + Math.round(hi) + '</text>' +
+      '<text x="' + (L - 6) + '" y="' + (H - B + 4) + '" text-anchor="end" font-size="11" fill="currentColor">' + Math.round(lo) + '</text>' +
+      (pts.length > 1 ? '<polyline fill="none" stroke="var(--disc-strength)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' + pts.map((q) => q[0].toFixed(1) + ',' + q[1].toFixed(1)).join(' ') + '"/>' : '') +
+      pts.map((q, i) => '<circle cx="' + q[0].toFixed(1) + '" cy="' + q[1].toFixed(1) + '" r="4.5" fill="var(--disc-strength)" stroke="var(--color-surface)" stroke-width="2"><title>' + esc(kgText(series[i].kg) + ' kg · ' + fmtDayISO(series[i].date)) + '</title></circle>').join('') +
+      '<text x="' + x(0) + '" y="' + (H - 8) + '" text-anchor="' + (series.length === 1 ? 'middle' : 'start') + '" font-size="11" fill="currentColor">' + esc(fmtDayISO(series[0].date)) + '</text>' +
+      (series.length > 1 ? '<text x="' + x(series.length - 1) + '" y="' + (H - 8) + '" text-anchor="end" font-size="11" fill="currentColor">' + esc(fmtDayISO(series[series.length - 1].date)) + '</text>' : '') +
+      '</svg>';
+  }
+
+  function liftHomeHTML() {
+    const next = liftSessionById(nextInRotation(plan));
+    const log = liftLog(plan);
+    const lastOf = (id) => { const rows = log.filter((e) => e.session === id); return rows.length ? rows[rows.length - 1].date : null; };
+    const rowFor = (t) => {
+      const last = lastOf(t.id);
+      return '<div class="lf-card"><div class="lf-row"><div><div class="lf-title">' + esc(t.code) + ' · ' + esc(t.name) + '</div>' +
+        '<div class="lf-sub">' + esc(t.minutes) + ' min' + (last ? ' · last done ' + esc(fmtDayISO(last)) : ' · not done yet') + '</div></div>' +
+        '<button type="button" class="btn ' + (t.id === next.id ? 'btn-primary' : 'btn-secondary') + '" data-lf="start" data-s="' + esc(t.id) + '"><i class="ic i-barbell" aria-hidden="true"></i> ' +
+        (liftDraft && liftDraft.session === t.id ? 'Resume' : 'Start') + '</button></div></div>';
+    };
+
+    const charts = trackedLifts().map((l) => {
+      const series = topSetSeries(plan, l.id, 10);
+      if (!series.length) return '';
+      const best = Math.max(...series.map((r) => r.kg));
+      return '<div class="lf-card"><div class="lf-row"><div class="lf-title">' + esc(l.name) + '</div>' +
+        '<div class="lf-sub">last ' + kgText(series[series.length - 1].kg) + ' kg · best ' + kgText(best) + ' kg</div></div>' + liftChartHTML(l.name, series) + '</div>';
+    }).filter(Boolean);
+
+    const recent = log.slice(-6).reverse().map((e) => {
+      const t = liftSessionById(e.session);
+      const sets = Object.keys(e.kg).length;
+      return '<div class="lf-row"><span>' + esc(fmtDayISO(e.date)) + ' · ' + esc(t.code) + ' ' + esc(t.name) + '</span>' +
+        '<span class="lf-sub">' + (sets ? sets + ' weighted sets' : 'no weights') + '</span></div>';
+    }).join('');
+
+    return '<div class="lf-wrap">' +
+      '<div class="lf-card"><div class="lf-sub">Next in the rotation</div><div class="lf-title">' + esc(next.code) + ' · ' + esc(next.name) + '</div>' +
+      '<div class="lf-sub">' + esc(next.eyebrow) + '</div></div>' +
+      '<div class="lf-list">' + LIFT_SESSIONS.map(rowFor).join('') + '</div>' +
+      '<h2 class="lf-sec">Weights, heaviest set per session</h2>' +
+      (charts.length ? charts.join('') : '<p class="note">No weights are logged yet. They show here once a leg session is finished.</p>') +
+      (recent ? '<h2 class="lf-sec">Recent sessions</h2><div class="lf-card">' + recent + '</div>' : '') +
+      '</div>';
+  }
+
+  function liftExerciseHTML(item, log) {
+    const head = '<div class="lf-row"><span class="lf-ex-name">' + esc(item.name) + '</span><span class="lf-ex-rx">' + esc(item.rx) + '</span></div>' +
+      (item.cue ? '<div class="lf-ex-cue">' + esc(item.cue) + '</div>' : '');
+    const guide = item.guide
+      ? '<details class="lf-guide"><summary>' + esc(item.guideTitle || 'Stages') + '</summary><ol>' + item.guide.map((g) => '<li>' + esc(g.replace(/^\d+\s*/, '')) + '</li>').join('') + '</ol></details>'
+      : '';
+    const tickBtn = (t) => '<button type="button" class="lf-tick' + (liftDraft.ticks[t.key] ? ' on' : '') + '" data-lf="tick" data-k="' + esc(t.key) + '" aria-pressed="' + (liftDraft.ticks[t.key] ? 'true' : 'false') + '">' + esc(t.label) + '</button>';
+    let body;
+    if (item.weighted) {
+      let rows = '';
+      for (let i = 1; i <= item.sets; i++) {
+        const key = item.id + '-' + i;
+        const boxes = tickBoxes(item).filter((t) => t.key === key || t.key.startsWith(key + '-'));
+        const last = lastKg(log, item.id, i);
+        const val = liftDraft.kg[key] ?? '';
+        rows += '<div class="lf-set"><span class="lf-set-n">Set ' + i + '</span>' +
+          '<label class="lf-kg"><span class="sr-only">Weight for set ' + i + ' of ' + esc(item.name) + ', in kilograms</span>' +
+          '<input type="number" inputmode="decimal" min="0" max="500" step="0.5" data-lf="kg" data-k="' + esc(key) + '" value="' + esc(val) + '" placeholder="' + (last ? kgText(last) : '') + '">kg</label>' +
+          '<span class="lf-ticks">' + boxes.map(tickBtn).join('') + '</span></div>';
+      }
+      body = rows;
+    } else {
+      body = '<div class="lf-ticks">' + tickBoxes(item).map(tickBtn).join('') + '</div>';
+    }
+    return '<div class="lf-ex">' + head + guide + body + '</div>';
+  }
+
+  function liftRunnerHTML() {
+    const t = liftSessionById(liftDraft.session);
+    const prog = sessionProgress(t, liftDraft.ticks);
+    const sections = t.sections.map((sec) => {
+      const title = '<h2 class="lf-sec">' + esc(sec.title) + (sec.meta ? ' · ' + esc(sec.meta) : '') + '</h2>';
+      if (sec.kind === 'circuit') {
+        const key = sec.id + 'done';
+        return title + '<div class="lf-card"><div class="lf-ex-cue">' + esc(sec.note) + '</div><div class="lf-sub">Target: ' + esc(sec.target) + '</div>' +
+          sec.items.map((i) => '<div class="lf-ex"><div class="lf-row"><span class="lf-ex-name">' + esc(i.name) + '</span><span class="lf-ex-rx">' + esc(i.rx) + '</span></div><div class="lf-ex-cue">' + esc(i.cue) + '</div></div>').join('') +
+          '<div class="lf-row"><span class="lf-rounds"><button type="button" class="lf-tick" data-lf="rounds" data-d="-1" aria-label="One round fewer">−</button>' +
+          '<b id="lf-rounds" aria-live="polite">' + liftDraft.rounds + '</b><button type="button" class="lf-tick" data-lf="rounds" data-d="1" aria-label="One round more">+</button><span class="lf-sub">rounds</span></span>' +
+          '<button type="button" class="lf-tick' + (liftDraft.ticks[key] ? ' on' : '') + '" data-lf="tick" data-k="' + key + '" aria-pressed="' + (liftDraft.ticks[key] ? 'true' : 'false') + '">Circuit done</button></div></div>';
+      }
+      return title + '<div class="lf-card">' + sec.items.map((i) => liftExerciseHTML(i, plan)).join('') + '</div>';
+    }).join('');
+
+    if (liftDraft.finishing) {
+      const elapsed = Math.round((Date.now() - liftDraft.startedAt) / 60000);
+      const min = elapsed >= 10 && elapsed <= 240 ? elapsed : t.minutes;
+      return '<div class="lf-wrap"><div class="lf-card"><div class="lf-title">Finish ' + esc(t.code) + ' · ' + esc(t.name) + '</div>' +
+        '<div class="lf-sub">' + prog.done + ' of ' + prog.total + ' boxes ticked. It is logged on the plan as done.</div>' +
+        '<div class="lf-form">' +
+        '<label>Minutes<input id="lf-min" type="number" inputmode="numeric" min="1" max="600" value="' + min + '"></label>' +
+        '<label>How hard it felt, 1 to 10<select id="lf-rpe"><option value="">Not set</option>' +
+        [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => '<option value="' + n + '">' + n + '</option>').join('') + '</select></label>' +
+        '<label>Note<textarea id="lf-note" rows="3" maxlength="500"></textarea></label>' +
+        (liftDraft.problem ? '<div class="lf-error" role="alert">' + esc(liftDraft.problem) + '</div>' : '') +
+        '<div class="lf-row"><button type="button" class="btn btn-secondary" data-lf="back">Back to the session</button>' +
+        '<button type="button" class="btn btn-primary" data-lf="save"><i class="ic i-check" aria-hidden="true"></i> Save to plan</button></div>' +
+        '</div></div></div>';
+    }
+
+    return '<div class="lf-wrap">' +
+      '<div class="lf-card"><div class="lf-row"><div><div class="lf-sub">' + esc(t.eyebrow) + '</div><div class="lf-title">' + esc(t.code) + ' · ' + esc(t.name) + '</div></div>' +
+      '<button type="button" class="btn btn-ghost" data-lf="discard">Discard</button></div>' +
+      '<div class="lf-ex-cue">' + esc(t.intro) + '</div>' +
+      '<div class="lf-sub">Rest: ' + t.rest.map((r) => esc(r[1])).join(' · ') + '</div>' +
+      (t.notes && t.notes.length ? '<ul class="lf-ex-cue" style="margin:0;padding-left:18px">' + t.notes.map((n) => '<li>' + esc(n) + '</li>').join('') + '</ul>' : '') + '</div>' +
+      sections +
+      '<div class="lf-bar"><span class="lf-sub" id="lf-progress" aria-live="polite">' + prog.done + ' of ' + prog.total + ' ticked</span>' +
+      '<button type="button" class="btn btn-primary" data-lf="finish">Finish</button></div></div>';
+  }
+
+  function renderStrength() {
+    if (state.page !== 'strength') return;
+    const root = $('strength-root');
+    if (!root) return;
+    const at = document.activeElement;
+    // A box being typed in is not redrawn under the typist.
+    if (liftDraft && at && root.contains(at) && /^(INPUT|TEXTAREA|SELECT)$/.test(at.tagName)) return;
+    root.innerHTML = liftDraft ? liftRunnerHTML() : liftHomeHTML();
+  }
+
+  /* Which planned session a finished one is logged against: the one it was started
+     from, else an open Strength session today, else a new one on today. */
+  function liftTarget(t, min) {
+    if (liftDraft.sessionId && locateSession(liftDraft.sessionId)) return liftDraft.sessionId;
+    const todayISO = toISO(new Date());
+    const w = weekIndexOf(state.start, todayISO);
+    if (!Number.isInteger(w) || w < 0 || w >= totalWeeks()) return null;
+    const day = weekdayOf(todayISO);
+    const open = sessionsFor(w).find((s) => s.disc === 'Strength' && s.day === day && !state.done[s.id]);
+    if (open) return open.id;
+    const id = 'cus-' + uid4();
+    writeWeek(w, [...sessionsFor(w), { d: day, day, disc: 'Strength', focus: liftNote(t), dur: minToDur(min), zone: '—', desc: '', id, custom: true }]);
+    return id;
+  }
+
+  function finishLift() {
+    const t = liftSessionById(liftDraft.session);
+    const min = Number($('lf-min').value);
+    const rpe = $('lf-rpe').value;
+    const note = $('lf-note').value;
+    const id = liftTarget(t, Number.isFinite(min) && min > 0 ? min : t.minutes);
+    if (!id) {
+      liftDraft.problem = 'Today is outside the weeks of this plan, so there is no session to log it on. Start it from a Strength session in the calendar instead.';
+      renderStrengthForce();
+      return;
+    }
+    plan = setActual(plan, id, { status: 'done', min, rpe, note, lifts: { session: t.id, kg: liftDraft.kg } });
+    state.done = plan.done;
+    updateSession(id, { focus: liftNote(t) });
+    liftDraft = null;
+    saveLiftDraft();
+    setStatus('Logged ' + liftNote(t));
+    renderAll();
+  }
+
+  function renderStrengthForce() {
+    const root = $('strength-root');
+    root.innerHTML = liftDraft ? liftRunnerHTML() : liftHomeHTML();
+  }
+
+  $('strength-root').addEventListener('click', async (e) => {
+    const b = e.target.closest('[data-lf]');
+    if (!b) return;
+    const a = b.dataset.lf;
+    if (a === 'start') {
+      startLift(b.dataset.s, null);
+    } else if (a === 'tick' && liftDraft) {
+      const k = b.dataset.k;
+      if (liftDraft.ticks[k]) delete liftDraft.ticks[k]; else liftDraft.ticks[k] = true;
+      saveLiftDraft();
+      b.classList.toggle('on', !!liftDraft.ticks[k]);
+      b.setAttribute('aria-pressed', liftDraft.ticks[k] ? 'true' : 'false');
+      const p = sessionProgress(liftSessionById(liftDraft.session), liftDraft.ticks);
+      $('lf-progress').textContent = p.done + ' of ' + p.total + ' ticked';
+    } else if (a === 'rounds' && liftDraft) {
+      liftDraft.rounds = Math.max(0, Math.min(20, liftDraft.rounds + Number(b.dataset.d)));
+      saveLiftDraft();
+      $('lf-rounds').textContent = String(liftDraft.rounds);
+    } else if (a === 'finish' && liftDraft) {
+      liftDraft.finishing = true;
+      renderStrengthForce();
+    } else if (a === 'back' && liftDraft) {
+      liftDraft.finishing = false;
+      liftDraft.problem = '';
+      renderStrengthForce();
+    } else if (a === 'save' && liftDraft) {
+      finishLift();
+    } else if (a === 'discard' && liftDraft) {
+      const ok = await confirmDialog('Discard this session?', 'The ticks and weights entered so far are removed. Nothing has been logged on the plan.', 'Discard');
+      if (!ok) return;
+      liftDraft = null;
+      saveLiftDraft();
+      renderStrengthForce();
+    }
+  });
+
+  $('strength-root').addEventListener('input', (e) => {
+    const inp = e.target.closest('[data-lf="kg"]');
+    if (!inp || !liftDraft) return;
+    liftDraft.kg[inp.dataset.k] = inp.value;
+    saveLiftDraft();
+  });
 
   /* ---- Status ---- */
 
@@ -7297,7 +7630,7 @@
      back, forward and a reload land where the athlete was. Calendar is the week
      page in its Month view; This week is that page on the week today falls in. */
 
-  const ROUTES = ['week', 'calendar', 'status', 'biometrics', 'health', 'local'];
+  const ROUTES = ['week', 'calendar', 'strength', 'status', 'biometrics', 'health', 'local'];
 
   /* Local setup — the commands for the two helper programs, as a page. Off
      unless this browser opted in, with the checkbox in Coach settings (OpenAI-compatible provider) or `?localdocs=1` (`?localdocs=0` turns it
@@ -7565,6 +7898,8 @@
         openActivityPanel(id);
       } else if (act.dataset.act === 'done') {
         toggleDone(id);
+      } else if (act.dataset.act === 'lift-start') {
+        startLift(null, id);
       }
       return;
     }
